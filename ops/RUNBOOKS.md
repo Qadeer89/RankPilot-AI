@@ -1,12 +1,13 @@
 # RankPilot AI — Operational Runbooks
 
 Covers RP-0906 (`docs/DEVELOPMENT_TASKS.md`) and the backup/restore and incident-response
-requirements in `docs/SECURITY_SPECIFICATION.md` #7–#8. These procedures have **not been run
-against a real production host** — this development environment has no VPS to run them
-against. Before going live, run every procedure here once for real, on the actual host, and
-record the date and result at the bottom of this file. Treat an unverified backup as having a
-100% chance of being broken: a backup earns trust from a restore that worked, not from a
-`pg_dump` that returned exit code 0.
+requirements in `docs/SECURITY_SPECIFICATION.md` #7–#8. Section 1–2's backup/restore procedure
+has now been run for real once (see the verification log, RP13-021) against this development
+environment's Postgres — but **never against a real production VPS**, since this development
+environment has no VPS to run it against. Before going live, run every procedure here once for
+real on the actual host, with its actual backup destination, and record the date and result at
+the bottom of this file. Treat an unverified backup as having a 100% chance of being broken: a
+backup earns trust from a restore that worked, not from a `pg_dump` that returned exit code 0.
 
 ## 1. Backup
 
@@ -181,4 +182,4 @@ have only been specified, never executed.
 
 | Date | Procedure | Result | Notes |
 |------|-----------|--------|-------|
-| _(none yet)_ | | | |
+| 2026-11-02 | Backup + restore (section 1–2), dev environment | **Pass** | Seeded a real org+website, ran the exact `pg_dump`/`gpg --symmetric`/delete-plaintext sequence from 1.2, then the exact `gpg --decrypt`/`createdb`/`pg_restore` sequence from 2.1 into a fresh `rankpilot_restore_test` database. Verified row counts and content matched exactly (not just non-zero), `alembic_version` matched the current migration head with no `alembic upgrade head` needed, and a real API process pointed at the restored database passed both `/health` and `/ready`. **Not yet run**: against a real production VPS, its real off-host backup destination, or its real disk/network conditions — this run only proves the procedure and commands are correct, not production readiness. |
