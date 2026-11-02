@@ -114,6 +114,58 @@ def test_throttle_sleeps_for_the_minimum_delay_by_default(monkeypatch):
     assert slept["seconds"] == orchestrator_module.MIN_CRAWL_DELAY_SECONDS
 
 
+def test_run_crawl_stops_early_when_cancelled_mid_run(db_session, monkeypatch):
+    from app.models.crawl_job import CrawlStatus
+    from tests.crawl_fixtures import fake_safe_fetch
+
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+    crawl_job = orchestrator_module.create_crawl_job(db_session, website)
+    db_session.flush()
+
+    def fetch_then_cancel(url, **kwargs):
+        result = fake_safe_fetch(url, **kwargs)
+        if url == website.canonical_url:
+            # Simulate a concurrent cancel request committing while this
+            # crawl is mid-run.
+            crawl_job.status = CrawlStatus.cancelled
+            db_session.flush()
+        return result
+
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", fetch_then_cancel)
+
+    finished = run_crawl(db_session, website, crawl_job)
+    db_session.flush()
+
+    assert finished.status == CrawlStatus.cancelled
+    assert finished.pages_fetched < 5  # the fixture site has 5 fetchable pages
+    assert "cancelled" in finished.error_summary.lower()
+
+
+def test_run_crawl_stops_early_when_website_is_paused_mid_run(db_session, monkeypatch):
+    from app.models.crawl_job import CrawlStatus
+    from app.models.website import WebsiteStatus
+    from tests.crawl_fixtures import fake_safe_fetch
+
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+
+    def fetch_then_pause(url, **kwargs):
+        result = fake_safe_fetch(url, **kwargs)
+        if url == website.canonical_url:
+            website.status = WebsiteStatus.paused
+            db_session.flush()
+        return result
+
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", fetch_then_pause)
+
+    finished = run_crawl(db_session, website)
+    db_session.flush()
+
+    assert finished.status == CrawlStatus.cancelled
+    assert "paused" in finished.error_summary.lower()
+
+
 def test_throttle_respects_a_longer_robots_crawl_delay(monkeypatch):
     from protego import Protego
 

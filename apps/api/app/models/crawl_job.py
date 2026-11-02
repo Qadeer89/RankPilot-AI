@@ -22,6 +22,7 @@ class CrawlStatus(str, enum.Enum):
     running = "running"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class CrawlJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):

@@ -23,7 +23,7 @@ from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.page import IndexabilityState, Page
 from app.models.page_snapshot import PageSnapshot
-from app.models.website import Website
+from app.models.website import Website, WebsiteStatus
 
 logger = logging.getLogger(__name__)
 
@@ -158,8 +158,23 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
         pages_fetched = 0
         pages_requested = 0
         errors: list[str] = []
+        cancelled_reason: str | None = None
 
         while pages_requested < website.crawl_budget:
+            # RP13-010: pick up an external cancel (POST .../cancel) or a
+            # website pause issued by another request while this crawl is
+            # mid-run. Both are committed by a different session, so these
+            # ORM objects must be refreshed rather than trusted from
+            # memory.
+            db.refresh(crawl_job)
+            if crawl_job.status == CrawlStatus.cancelled:
+                cancelled_reason = "Crawl was cancelled."
+                break
+            db.refresh(website)
+            if website.status != WebsiteStatus.active:
+                cancelled_reason = "Website automation was paused during the crawl."
+                break
+
             frontier_entry = (
                 db.query(CrawlFrontier)
                 .filter(
@@ -234,10 +249,11 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             db.flush()
             _throttle(robots_policy, USER_AGENT)
 
-        crawl_job.status = CrawlStatus.completed
+        crawl_job.status = CrawlStatus.cancelled if cancelled_reason else CrawlStatus.completed
         crawl_job.pages_requested = pages_requested
         crawl_job.pages_fetched = pages_fetched
-        crawl_job.error_summary = "; ".join(errors[:20]) if errors else None
+        summary_parts = ([cancelled_reason] if cancelled_reason else []) + errors[:20]
+        crawl_job.error_summary = "; ".join(summary_parts) if summary_parts else None
         crawl_job.completed_at = datetime.now(timezone.utc)
         db.flush()
         return crawl_job

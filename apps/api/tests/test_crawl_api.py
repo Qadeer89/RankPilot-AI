@@ -117,3 +117,63 @@ def test_crawl_list_and_detail_are_tenant_scoped(client, monkeypatch):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert denied_detail.status_code == 403
+
+
+def test_triggering_a_crawl_twice_rejects_the_second_as_duplicate(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    monkeypatch.setattr(crawls_endpoint.run_site_crawl, "delay", MagicMock())
+
+    token, org_id = _register_with_org(client, "crawl-dup@example.com", "Crawl Dup Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls", headers=headers)
+    assert first.status_code == 202
+
+    second = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls", headers=headers)
+    assert second.status_code == 409
+    assert "already" in second.json()["detail"].lower()
+
+
+def test_triggering_a_crawl_on_a_paused_website_is_rejected(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    monkeypatch.setattr(crawls_endpoint.run_site_crawl, "delay", MagicMock())
+
+    token, org_id = _register_with_org(client, "crawl-paused@example.com", "Crawl Paused Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    paused = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/pause", headers=headers)
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+
+    response = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls", headers=headers)
+    assert response.status_code == 409
+    assert "paused" in response.json()["detail"].lower()
+
+
+def test_cancel_endpoint_marks_an_active_crawl_cancelled(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    monkeypatch.setattr(crawls_endpoint.run_site_crawl, "delay", MagicMock())
+
+    token, org_id = _register_with_org(client, "crawl-cancel@example.com", "Crawl Cancel Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls", headers=headers)
+    crawl_id = created.json()["id"]
+
+    cancelled = client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls/{crawl_id}/cancel", headers=headers
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    again = client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls/{crawl_id}/cancel", headers=headers
+    )
+    assert again.status_code == 409
+
+    # Cancelling freed up the website for a new crawl -- no stale "active" job left behind.
+    retried = client.post(f"/api/v1/organizations/{org_id}/websites/{website_id}/crawls", headers=headers)
+    assert retried.status_code == 202
