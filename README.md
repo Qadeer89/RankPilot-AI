@@ -9,28 +9,47 @@ covers what's implemented so far and how to run it.
 
 ## Status
 
-Phase 0 (environment readiness, documented here) and the first slice of Phase 1
-(`MVP_IMPLEMENTATION_ROADMAP.md`, "Platform foundation") are scaffolded:
+Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_ROADMAP.md`,
+"Platform foundation"), and Phase 2 ("Crawl and deterministic SEO baseline") are built:
 
 - Authentication (register/login/me), organizations, role-based memberships, tenant isolation.
 - Website registration with SSRF-safe URL validation (RP-0202) and a working domain
   ownership verification flow (`html_file` method, RP-0203).
+- A bounded, SSRF-safe crawler (`apps/api/app/crawler/`): robots.txt + sitemap discovery
+  (RP-0301), per-redirect-hop safety re-validation and size/time-limited fetching (RP-0302),
+  HTML extraction into title/description/canonical/robots/headings/structured-data/internal-links
+  (RP-0303), page snapshots (RP-0305), and a persisted, deduplicated crawl frontier (RP-0306).
+- A deterministic SEO rule engine (`apps/api/app/seo_rules/`, RP-0401–RP-0407): HTTP status and
+  redirect-chain checks, indexability/canonical checks, sitemap-inclusion checks, title/
+  description/heading heuristics (labeled as heuristics, not confirmed errors, per
+  `MASTER_SPEC.md` #8), structured-data parse-error detection, duplicate title/description
+  detection, broken-internal-link detection, and orphan-page candidates. Findings are
+  evidence-backed, upserted across crawls, and auto-resolve when a rule stops firing.
+- `site_crawl` + `technical_audit` run as one Celery task per crawl (`app/tasks/crawl.py`),
+  triggered via `POST .../crawls` and polled via `GET .../crawls/{id}`, `.../pages`,
+  `.../findings`.
 - Audit logging for sensitive actions.
 - Health/readiness endpoints, structured JSON logging.
 - Postgres schema + Alembic migrations, Celery worker/scheduler wiring against Redis.
-- A minimal Next.js frontend (register, login, dashboard with add-website + verification UI).
+- A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
+  crawl/findings UI not yet built).
 
-Not yet built: crawler, SEO rule engine, Search Console integration, AI agents, WordPress
-connector, billing. See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+Not yet built: Search Console integration, AI agents, WordPress connector, billing. See
+`docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
 ### Deliberate deviations from the doc pack
 
-- `API_SPECIFICATION.md` lists bare `/websites` routes. Websites are implemented nested under
-  `/organizations/{organization_id}/websites` instead, so tenant scoping is enforced by the
-  route itself rather than trusted from a body field
+- `API_SPECIFICATION.md` lists bare `/websites` and `/crawls` routes. Both are implemented
+  nested under `/organizations/{organization_id}/websites[/{website_id}]/...` instead, so
+  tenant scoping is enforced by the route itself rather than trusted from a body field
   (`SECURITY_SPECIFICATION.md` #2: "Apply tenant scoping to every database query").
 - Only the `html_file` verification method is implemented; `dns_txt` and `meta_tag` are declared
   in the schema for forward compatibility but not yet wired up.
+- Playwright rendering fallback (RP-0304, for JS-rendered pages) is not implemented — the
+  crawler is static-HTTP-only for now. Mobile/accessibility and page-performance signals
+  (MASTER_SPEC.md #8) are out of scope until a Lighthouse-equivalent is integrated.
+- Redirect-chain length is tracked per snapshot (`page_snapshots.redirect_count`), a column not
+  explicitly listed in `DATABASE_SCHEMA.md`, needed for the `REDIRECT_CHAIN` rule.
 
 ## Repository layout
 
@@ -106,4 +125,6 @@ figures in `docs/README.md` are point-in-time observations, not a capacity guara
   (non-founder-pilot) usage, move to an httpOnly session cookie per
   `docs/SECURITY_SPECIFICATION.md` #2.
 - The SSRF-safe URL validator (`apps/api/app/core/url_safety.py`) is shared by website
-  onboarding today and is intended for reuse by the Phase 2 crawler.
+  onboarding and the crawler's fetch layer (`apps/api/app/crawler/fetch.py`), which
+  re-validates every redirect hop independently rather than trusting httpx's own
+  `follow_redirects`.

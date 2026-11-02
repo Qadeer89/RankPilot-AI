@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.core.deps import RequireRole
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
-from app.models.user import User
 from app.schemas.organization import MemberResponse
 
 router = APIRouter(tags=["organizations"])

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import RequireRole
+from app.core.resources import get_website_or_404 as _get_website_or_404
 from app.core.url_safety import UnsafeUrlError, validate_public_url
 from app.core.verification import build_instructions, check_html_file_verification, generate_token, hash_token
 from app.db.session import get_db
@@ -21,17 +22,6 @@ from app.schemas.website import (
 )
 
 router = APIRouter(tags=["websites"])
-
-
-def _get_website_or_404(db: Session, organization_id: uuid.UUID, website_id: uuid.UUID) -> Website:
-    website = (
-        db.query(Website)
-        .filter(Website.id == website_id, Website.organization_id == organization_id)
-        .one_or_none()
-    )
-    if website is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Website not found")
-    return website
 
 
 @router.post(

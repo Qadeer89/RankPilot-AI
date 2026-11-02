@@ -16,7 +16,7 @@ celery_app = Celery(
     "rankpilot",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.example"],
+    include=["app.tasks.example", "app.tasks.crawl"],
 )
 
 celery_app.conf.update(

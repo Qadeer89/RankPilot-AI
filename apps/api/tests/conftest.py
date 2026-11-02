@@ -38,7 +38,11 @@ def db_session(engine):
     connection = engine.connect()
     outer_transaction = connection.begin()
 
-    session_factory = sessionmaker(bind=connection, future=True)
+    # autoflush=False matches app.db.session.SessionLocal: a test that
+    # relied on autoflush to see its own uncommitted writes would pass here
+    # but hit a real bug in production (see app/crawler/orchestrator.py
+    # history for an example this caught).
+    session_factory = sessionmaker(bind=connection, future=True, autoflush=False)
     session = session_factory()
 
     nested = connection.begin_nested()
