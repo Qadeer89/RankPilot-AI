@@ -958,3 +958,43 @@ First priority is to finish P0 safety, tenant isolation, crawler limits, AI cost
 Use founder-owned custom websites to validate read-only crawling and SEO finding quality first. Add controlled writes only after the safety gates in this document pass.
 
 No new paid SEO provider is required to begin this validation. The user's OpenAI API key can power AI explanations and proposals, while deterministic code remains responsible for technical SEO checks, scoring, permissions, and execution policy.
+
+---
+
+# 19. P0 Completion Status (added after this document, not part of the original)
+
+Per Section 15's change-control policy: record whether each item is implemented,
+partial, planned, blocked, or not applicable, rather than silently assuming. This
+section was added in a follow-up session that worked the P0 register in Section 12
+end to end. The original Section 12 table above is left exactly as given; this is a
+status overlay on it, not an edit to it.
+
+| ID | Status | Evidence |
+|---|---|---|
+| RP13-001 | **Done** | Full audit of every `db.query`/`db.get` call across all 10 endpoint files; no cross-tenant defect found. Added the few missing regression tests (crawls, usage, audit-events, verification). |
+| RP13-002 | **Done** | `Settings` fails closed (`ValueError` at process startup) if `RANKPILOT_ENVIRONMENT=production` and the JWT secret is still the default. |
+| RP13-003 | **Done** | `website_verifications.expires_at` now enforced (`RANKPILOT_VERIFICATION_TOKEN_EXPIRE_MINUTES`, default 24h). |
+| RP13-004 | **Done** | Confirm attempts capped per verification row (`RANKPILOT_VERIFICATION_MAX_ATTEMPTS`, default 10), then locked out with a 429. |
+| RP13-005 | **Done** (pre-existing, now directly tested) | Response-size cap (5 MB) was already in `fetch.py`; added direct unit tests against the real implementation. |
+| RP13-006 | **Done** (pre-existing, bug fixed) | Redirect-hop ceiling existed; found and fixed a real bug in the same code path -- `httpx.URL.human_repr()` doesn't exist in the installed httpx version, so every real redirect previously raised. |
+| RP13-007 | **Done** | Found and fixed a real DNS-rebinding gap: the crawler and verification fetchers re-resolved DNS at connect time after `validate_public_url` had already validated a different resolution. Fixed by pinning the connection to the validated IP (Host header + TLS SNI kept on the real hostname), confirmed correct against httpcore's own source. IPv6 was already covered by the existing resolver logic. |
+| RP13-008 | **Done** | Crawls now wait a minimum 0.5s between same-host fetches, or longer if robots.txt declares a larger `Crawl-delay`. |
+| RP13-009 | **Done** (pre-existing limits, new protection added) | File/URL-count limits already existed; added a DOCTYPE rejection in sitemap XML parsing to close an entity-expansion ("billion laughs") path the size cap didn't cover. |
+| RP13-010 | **Done** | New `CrawlStatus.cancelled`, a cancel endpoint, and pause-triggered cancellation checked every loop iteration via `db.refresh`. |
+| RP13-011 | **Done** | `trigger_crawl` rejects a second concurrent crawl for the same website with 409. |
+| RP13-012 | **Done** | Global daily budget (`RANKPILOT_AI_GLOBAL_DAILY_BUDGET_USD`) and kill switch (`RANKPILOT_AI_KILL_SWITCH_ENABLED`). |
+| RP13-013 | **Done** | Budget check now acquires a transaction-scoped Postgres advisory lock per website; verified with real concurrent threads against a real Postgres connection, not mocks. |
+| RP13-014 | **Done** | `RANKPILOT_AI_MAX_PROMPT_CHARACTERS` (default 20000) rejects an oversized prompt before any budget check or API call. |
+| RP13-015 | **Done** | Full audit: no frontend reference, no logging near settings, no custom exception handler, `debug=False` confirmed. Added regression tests (allowed-file-list check, generic-500 check). |
+| RP13-016 | **Done** | New `docs/CONNECTOR_OPERATIONS_REFERENCE.md`. Found and fixed a real scope-accuracy gap: Shopify's recorded scopes didn't cover product metafields. |
+| RP13-017 | **Done** | Every connector now has a full `execute_task` happy-path test with before/after evidence. |
+| RP13-018 | **Done** | Found a real gap: a GitHub test claimed to prove rollback but never triggered it. Fixed, and added the two other missing rollback tests (Shopify, and confirmed Webflow/WordPress already had theirs). |
+| RP13-019 | **Done** | `alembic check` reports no drift; `scripts/check_clean_install.sh` runs the full migration chain against a brand-new database and the full test suite against the result -- run and verified in this session. |
+| RP13-020 | **Done** | Found a real gap: `AuditEvent`/`UsageRecord` cascade-deleted with their organization/website. Changed to `SET NULL`; verified at the database level that the rows survive a real delete. |
+| RP13-021 | **Done** | Ran the existing runbook's backup/restore procedure for real: seeded data, `pg_dump`, `gpg` encrypt, delete plaintext, decrypt, `pg_restore` into a fresh database, verified exact row counts and a live API against it. Recorded in `ops/RUNBOOKS.md`'s verification log. Not run against a real production VPS. |
+| RP13-022 | **Blocked** | Requires the real shared VPS; cannot be performed from this sandbox. |
+| RP13-023 | **Done** | 45 new direct unit tests cover all 18 rule codes with positive/negative/boundary fixtures. |
+| RP13-024 | **Needs the user** | Requires picking one of the user's actual websites and walking through Phase A of Section 13. |
+
+All P0 items are closed except the two that structurally cannot be: RP13-022 needs
+real infrastructure, and RP13-024 needs the account owner's own site and judgment.
