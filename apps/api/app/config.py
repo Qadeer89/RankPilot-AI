@@ -40,6 +40,22 @@ class Settings(BaseSettings):
     # Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str | None = None
 
+    # Email notifications (RP-0804). All optional: unset means
+    # notifications are recorded as skipped_not_configured, never a crash.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "no-reply@rankpilot.ai"
+    smtp_use_tls: bool = True
+
+    # Retention (RP-0807, SECURITY_SPECIFICATION.md #8). Point-in-time
+    # defaults for the founder pilot; make these plan-specific before
+    # onboarding external customers.
+    page_snapshot_retention_days: int = 90
+    audit_event_retention_days: int = 365
+    notification_retention_days: int = 180
+
 
 @lru_cache
 def get_settings() -> Settings:

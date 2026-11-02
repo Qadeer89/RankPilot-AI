@@ -11,7 +11,8 @@ covers what's implemented so far and how to run it.
 
 Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_ROADMAP.md`,
 "Platform foundation"), Phase 2 ("Crawl and deterministic SEO baseline"), most of Phase 3
-("Search performance and AI opportunities"), and most of Phase 4 ("Safe execution") are built:
+("Search performance and AI opportunities"), most of Phase 4 ("Safe execution"), and most of
+Phase 5 ("Daily operations and reporting") are built:
 
 - Authentication (register/login/me), organizations, role-based memberships, tenant isolation.
 - Website registration with SSRF-safe URL validation (RP-0202) and a working domain
@@ -58,15 +59,34 @@ Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_R
   validation, and automatic rollback restricted to the one case
   `SEO_AUTOMATION_ENGINE.md` #8 allows it — validation failing immediately after the write that
   caused it. Pause/resume reuses the existing website status field from Phase 1.
-- Audit logging for sensitive actions.
+- Celery Beat schedule (`apps/api/app/tasks/scheduler.py`, RP-0801): a daily crawl for every
+  verified, active website (RP-0802 — a full re-crawl within budget each time, not true
+  changed-page detection; see deviations), daily usage metering (RP-0806), a weekly report per
+  website (RP-0805), and daily retention cleanup (RP-0807). "A daily schedule means daily
+  checks, not forced daily edits" (`SYSTEM_ARCHITECTURE.md` #9) — crawling runs daily;
+  execution still only happens through the same risk-tier/approval gates as a manual run.
+- Credential-gated email notifications (`apps/api/app/notifications/email.py`, RP-0804): every
+  send attempt is recorded as `sent`/`failed`/`skipped_not_configured`, never silently dropped.
+- Deterministic per-site usage metering (`apps/api/app/usage/metering.py`, RP-0806) and a
+  weekly activity report (`apps/api/app/reporting/weekly_report.py`, RP-0805) summarizing
+  crawls, findings, opportunities and executed changes — with an explicit disclaimer that
+  Search-Console figures aren't attributed to any specific change.
+- Audit logging for sensitive actions, now with a read endpoint
+  (`GET .../audit-events`, admin-only).
 - Health/readiness endpoints, structured JSON logging.
 - Postgres schema + Alembic migrations, Celery worker/scheduler wiring against Redis.
 - A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
-  crawl/findings/opportunities/Search-Console/execution UI not yet built).
+  crawl/findings/opportunities/Search-Console/execution/reporting UI not yet built).
 
 Not yet built: GA4, the remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant,
-Post-change QA Assistant), the daily scheduler (Phase 5), reporting, billing. See
-`docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+Post-change QA Assistant), agency multi-client views, billing, security/load testing (Phase 6).
+See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+
+### Credential-gated: email
+
+Add **email notifications** to the credential-gated list above: it needs
+`RANKPILOT_SMTP_HOST` / `RANKPILOT_SMTP_USERNAME` / `RANKPILOT_SMTP_PASSWORD`. Unset, every
+send is recorded with status `skipped_not_configured` rather than raising.
 
 ### Credential-gated integrations
 
@@ -125,6 +145,18 @@ to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection
 - `change_records.page_id` isn't populated yet (`None`): the WordPress connector resolves a
   target by URL at execution time rather than by the crawler's `Page` row, so there's no
   `Page` lookup in the execution path yet to populate it from.
+- `DATABASE_SCHEMA.md`'s `reports.storage_reference` assumes an external object store, which
+  this MVP doesn't have; report content is stored inline as `reports.content_json` instead.
+  Same for `oauth_connections`/`website_connections`, which already use a reference-style
+  column name for what's actually an encrypted inline blob.
+- "Changed-page recrawl" (RP-0802) isn't real incremental crawling yet — the daily scheduled
+  crawl is a full re-crawl within the website's existing `crawl_budget`, the same as a manual
+  "re-crawl" button would do. True changed-page detection (conditional requests, content-hash
+  short-circuiting) is deferred.
+- Weekly reports (RP-0805) are generated but not yet emailed automatically — there's no
+  per-organization "who gets the weekly report" preference modeled yet, so
+  `generate_weekly_reports` only writes the `Report` row; wiring it to
+  `app/notifications/email.py` is straightforward once that preference exists.
 
 ## Repository layout
 
