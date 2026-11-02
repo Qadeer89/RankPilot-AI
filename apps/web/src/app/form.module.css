@@ -1,0 +1,82 @@
+.page {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background-color: #fafafa;
+}
+
+.card {
+  display: flex;
+  width: 100%;
+  max-width: 400px;
+  flex-direction: column;
+  gap: 16px;
+  background-color: #fff;
+  padding: 48px;
+  border-radius: 12px;
+}
+
+.card h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.field input {
+  padding: 10px 12px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.submit {
+  margin-top: 8px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 128px;
+  background: #000;
+  color: #fff;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error {
+  color: #c0392b;
+  font-size: 14px;
+}
+
+.footerLink {
+  font-size: 14px;
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    background-color: #000;
+  }
+  .card {
+    background-color: #0a0a0a;
+    color: #ededed;
+  }
+  .field input {
+    background-color: #111;
+    border-color: #1a1a1a;
+    color: #ededed;
+  }
+  .submit {
+    background: #ededed;
+    color: #000;
+  }
+}
