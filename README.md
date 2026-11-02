@@ -78,8 +78,23 @@ Phase 5 ("Daily operations and reporting") are built:
 - A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
   crawl/findings/opportunities/Search-Console/execution/reporting UI not yet built).
 
-Not yet built: GA4, the remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant,
-Post-change QA Assistant), agency multi-client views, billing, security/load testing (Phase 6).
+- Backup/restore and incident-response runbooks (`ops/RUNBOOKS.md`, RP-0906) — specified in
+  full, but **not yet run against a real host**: this environment has no production VPS to
+  back up or restore. The verification log at the bottom of that file is empty until someone
+  runs it for real.
+
+Not yet built, and not buildable from inside this environment without more than code:
+
+- **Load/resource testing on the shared VPS** (RP-0905): needs the actual host — its real
+  CPU/RAM/disk, the other products already running on it, real network conditions. Numbers
+  from this sandbox would not transfer and would be actively misleading if reported as if they
+  did.
+- **Founder pilot acceptance and beta go/no-go** (RP-0907): a product and business decision
+  for the founder to make by using the product against real pilot sites, not something that
+  gets built.
+- GA4, the remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change
+  QA Assistant), agency multi-client views, billing.
+
 See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
 ### Credential-gated: email
@@ -165,6 +180,7 @@ docs/           Product/architecture/security/QA spec pack (source of truth)
 apps/api/       FastAPI backend + Celery worker/scheduler (modular monolith)
 apps/web/       Next.js + TypeScript frontend
 pm2/            PM2 process definitions for the shared VPS
+ops/            Backup/restore and incident runbooks (RP-0906) — see ops/RUNBOOKS.md
 ```
 
 ## Local development
