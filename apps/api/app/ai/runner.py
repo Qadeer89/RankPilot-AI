@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+class PromptTooLarge(RuntimeError):
+    pass
+
+
 def run_ai_agent(
     db: Session,
     website: Website,
@@ -39,9 +43,19 @@ def run_ai_agent(
     response_json_schema: dict,
     parse_fn: Callable[[str], T],
 ) -> T:
+    settings = get_settings()
+
+    # RP13-014: reject an oversized prompt before spending any budget or
+    # tokens on it. user_prompt is built from crawled page content and
+    # other untrusted input, which is otherwise unbounded in size.
+    if len(user_prompt) > settings.ai_max_prompt_characters:
+        raise PromptTooLarge(
+            f"Prompt is {len(user_prompt)} characters, over the "
+            f"{settings.ai_max_prompt_characters}-character limit (RANKPILOT_AI_MAX_PROMPT_CHARACTERS)."
+        )
+
     enforce_daily_budget(db, website.id)
 
-    settings = get_settings()
     client = get_openai_client()
 
     agent_run = AgentRun(

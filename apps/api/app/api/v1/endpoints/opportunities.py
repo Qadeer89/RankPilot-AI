@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.ai.budget import BudgetExceeded
 from app.ai.client import AINotConfigured
 from app.ai.content_agent import propose_content_fix
+from app.ai.runner import PromptTooLarge
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
 from app.db.session import get_db
@@ -80,6 +81,9 @@ def create_proposal(
     except BudgetExceeded as exc:
         db.rollback()
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except PromptTooLarge as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         # Unlike the two cases above, propose_content_fix may already have
         # written a "failed" AgentRun audit row before raising; commit (not

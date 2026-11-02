@@ -118,6 +118,23 @@ def test_weekly_strategy_endpoint(client, monkeypatch, db_session):
     assert response.json()["focus_areas"] == ["technical"]
 
 
+def test_weekly_strategy_rejects_an_oversized_prompt_with_400(client, monkeypatch, db_session):
+    from app.config import get_settings
+
+    _stub_dns(monkeypatch)
+    patch_crawler_network(monkeypatch)
+    token, org_id = _register_with_org(client, "strategy-oversized@example.com", "Strategy Oversized Org")
+    website_id = _crawl_website(client, token, org_id, db_session)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(get_settings(), "ai_max_prompt_characters", 1)
+
+    response = client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/strategy", headers=headers
+    )
+    assert response.status_code == 400, response.text
+
+
 def test_qa_summary_endpoint(client, monkeypatch, db_session):
     _stub_dns(monkeypatch)
     token, org_id = _register_with_org(client, "qa-api@example.com", "QA API Org")

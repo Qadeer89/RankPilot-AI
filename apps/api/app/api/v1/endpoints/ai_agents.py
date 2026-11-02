@@ -13,6 +13,7 @@ from app.ai.budget import BudgetExceeded
 from app.ai.client import AINotConfigured
 from app.ai.internal_linking import InternalLinkSuggestions, suggest_internal_links
 from app.ai.qa_assistant import QaSummary, summarize_change
+from app.ai.runner import PromptTooLarge
 from app.ai.strategy_assistant import StrategySummary, generate_weekly_strategy
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
@@ -34,6 +35,8 @@ def _ai_call_or_error(fn, *args, **kwargs):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BudgetExceeded as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except PromptTooLarge as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=f"AI agent call failed: {exc}") from exc
 

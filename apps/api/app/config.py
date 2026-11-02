@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     openai_max_output_tokens: int = 1200
     # Per-site daily AI spend ceiling in USD (AI_AGENT_SPECIFICATION.md #7).
     ai_daily_budget_usd_per_site: float = 1.0
+    # RP13-012: a global ceiling across every website/organization, and a
+    # kill switch that disables AI calls outright regardless of budget.
+    ai_global_daily_budget_usd: float = 50.0
+    ai_kill_switch_enabled: bool = False
+    # RP13-014: reject an oversized prompt before spending any tokens on
+    # it -- crawled page content is untrusted and otherwise unbounded.
+    ai_max_prompt_characters: int = 20000
 
     # Google OAuth / Search Console (RP-0501..RP-0504). All optional: unset
     # means the integration is simply not available yet, not a crash.
