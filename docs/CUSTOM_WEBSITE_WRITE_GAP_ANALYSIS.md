@@ -46,15 +46,34 @@ These are genuine new work, not extensions:
 
 ## 3. Unresolved inputs this analysis will not invent
 
-Per the addendum's own instruction (§14: "Do not invent Gul'sRehab schema fields, repository paths, deployment provider, or credential scopes") and item 6 of your request, the following are genuinely unknown from the repo and must come from you before Phase A/B/C of the Gul'sRehab pilot can start for real:
+Per the addendum's own instruction (§14: "Do not invent Gul'sRehab schema fields, repository paths, deployment provider, or credential scopes") and item 6 of your request, the following were genuinely unknown from the RankPilot repo alone. Confirmed directly against the real `Qadeer89/gulsrehab-website` repository (cloned read-only, commit `56a0d4d`) on 2026-11-02:
 
-- Gul'sRehab's actual GitHub repository (owner/name) — the existing `GitHubCredentials`/`connect_github()` path needs this to connect at all.
-- Gul'sRehab's Sanity project ID, dataset name, and the API token's actual scope (viewer vs. editor vs. admin).
-- The actual Sanity document type and field names used for page title/meta description/alt-text on Gul'sRehab (cannot be assumed — CW-006 is a read-only discovery step against the real project).
-- The deployment provider for the Next.js site (Vercel, Netlify, self-hosted via PM2, etc.) — affects CW-013/CW-014/CW-020 (how "preview" and "post-deploy" are actually observed).
-- Whether Gul'sRehab already has CI (lint/type-check/build) configured in its GitHub Actions, and what it's called — CW-013 needs to read existing CI, not invent one.
+| Input | Status |
+|---|---|
+| GitHub repository | **Confirmed:** `Qadeer89/gulsrehab-website` |
+| Deployment provider | **Confirmed:** PM2 self-hosted (founder-stated) |
+| Sanity project ID | **Confirmed:** `6hfrrnn7` — committed in `.env.example` as `NEXT_PUBLIC_SANITY_PROJECT_ID`; not a secret (the `NEXT_PUBLIC_` prefix means it already ships to the browser) |
+| Sanity dataset | **Confirmed:** `production` — `.env.example`'s `NEXT_PUBLIC_SANITY_DATASET` |
+| Sanity schema (document types + fields) | **Confirmed by reading `src/sanity/schemaTypes/*.ts` directly** — see table below |
+| CI configured in the repo | **Confirmed absent:** no `.github/workflows` directory exists in the repo |
+| Sanity API token (actual secret, scoped) | **Still needed** — cannot exist in source by design; founder must generate one in `manage.sanity.io` → project `6hfrrnn7` → API → Tokens, least-privilege (Editor, not Admin), for RankPilot specifically |
+| Staging/test environment for Gul'sRehab | **Still needed** — not yet confirmed whether PM2 serves a separate staging instance or production only |
 
-Nothing in Phase B or Phase C of the pilot plan can be executed against real Gul'sRehab resources until these are supplied. Everything else in the revised sequence below (Section 4, steps 1–15) is buildable and testable today against the existing architecture without needing any of this.
+### Confirmed Sanity schema (`src/sanity/schemaTypes/`)
+
+The Sanity dataset governs **only three document types** — `blog`, `blogCategory`, `blogTag` — plus a near-empty `service` reference type. This is a materially smaller write surface than the addendum assumed, and it changes the pilot's scope:
+
+| Document type | Fields relevant to RankPilot writes |
+|---|---|
+| `blog` (blog article) | `seoTitle` (string, ≤60), `seoDescription` (text, ≤160), `canonicalUrl` (url), `noIndex` (boolean), `openGraphImage` (image), `featuredImage.alt` (string, required), inline `image.alt` inside the `content` portable-text array, `title`, `excerpt` |
+| `blogCategory`, `blogTag` | taxonomy only — no independent SEO fields observed |
+| `service` | **only** `title` + `slug` — no SEO fields, no content fields in Sanity at all |
+
+**Implication:** the repo also uses Prisma/Postgres (Neon) (`prisma/schema.prisma`, `DATABASE_URL` in `.env.example`) alongside Sanity. Service/landing pages — likely the commercially important pages — are not Sanity-managed at all; their content lives in the database and/or directly in Next.js route code under `src/app`. This means:
+- **Blog-page SEO fixes** (title/meta/canonical/noindex/alt-text) → Sanity connector, CW-006..CW-009 as scoped.
+- **Service-page SEO fixes** → not reachable through Sanity at all; these would need either the GitHub connector (if hardcoded in route/component code) or a **new, not-yet-scoped Prisma/Postgres write path** if they're database-driven. This needs a dedicated discovery pass against `src/app` and `prisma/schema.prisma` before Phase A's "map important routes to CMS documents or code-owned pages" step can be called complete — do not assume service pages are covered by the Sanity connector alone.
+
+Everything else in the revised sequence below (Section 4, steps 1–15) remains buildable and testable today against the existing RankPilot execution architecture without needing the two still-open inputs (Sanity token, staging environment). Phase B (Sanity staging-document test) needs the token; Phase C/D's "preview" steps need the staging-environment answer, given PM2 self-hosted has no automatic per-PR preview like Vercel/Netlify.
 
 ---
 
