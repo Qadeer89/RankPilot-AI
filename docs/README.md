@@ -73,6 +73,14 @@ supported connector.
 11. [Development Tasks](DEVELOPMENT_TASKS.md)
 12. [Connector Operations Reference](CONNECTOR_OPERATIONS_REFERENCE.md) --- exact,
     code-grounded operation/scope/rollback reference for every write connector (RP13-016)
+13. [Custom Website Write & Autonomous Execution Addendum](RANKPILOT_V1_3_CUSTOM_WEBSITE_WRITE_EXECUTION_ADDENDUM.md)
+    --- extends v1.3 with Sanity CMS + GitHub-PR execution, structured change
+    proposals, autonomy levels, and the Gul'sRehab founder pilot (CW-001..CW-024).
+    Does not replace v1.3; same source-of-truth hierarchy applies.
+14. [Custom Website Write — Gap Analysis](CUSTOM_WEBSITE_WRITE_GAP_ANALYSIS.md) ---
+    maps the addendum's CW-series work register against what the repo's existing
+    execution engine already does, so implementation extends it instead of
+    duplicating it. Analysis only; nothing in it should be read as implemented.
 
 ## Recommended reading order
 
@@ -80,7 +88,9 @@ RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS (authoritative) → this
 README → MASTER_SPEC → SYSTEM_ARCHITECTURE → SECURITY_SPECIFICATION →
 SEO_AUTOMATION_ENGINE → WEBSITE_CONNECTORS → AI_AGENT_SPECIFICATION →
 DATABASE_SCHEMA → API_SPECIFICATION → QA_TEST_STRATEGY →
-MVP_IMPLEMENTATION_ROADMAP → DEVELOPMENT_TASKS.
+MVP_IMPLEMENTATION_ROADMAP → DEVELOPMENT_TASKS →
+CUSTOM_WEBSITE_WRITE_EXECUTION_ADDENDUM → CUSTOM_WEBSITE_WRITE_GAP_ANALYSIS
+(read together before starting any CW-series work).
 
 ## Global implementation rules
 
