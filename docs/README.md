@@ -1,11 +1,17 @@
-# RankPilot AI --- Documentation Pack (v1.2)
+# RankPilot AI --- Documentation Pack (v1.2, superseded by v1.3)
 
 **Product:** RankPilot AI\
 **Positioning:** Autonomous SEO Growth Platform\
 **Tagline:** Give us your website. We'll continuously find, implement
 and validate SEO improvements.\
 **Status:** Product specification for MVP implementation planning\
-**Revision:** 1.2 --- consolidated authoritative specification
+**Revision:** 1.2 --- superseded as the authoritative document by
+[RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS.md](RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS.md),
+which is grounded in repository inspection (verified enum values, SEO
+rule thresholds, the opportunity scoring formula, environment variables,
+and a prioritized P0 work register) rather than pre-implementation
+intent. This v1.2 pack remains useful for product-direction narrative
+and detail that does not conflict with v1.3.
 
 ## Product direction
 
@@ -48,6 +54,12 @@ supported connector.
 
 ## Documents
 
+0.  [**v1.3 Implementation & Readiness Requirements**](RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS.md)
+    --- **authoritative**. Supersedes this v1.2 pack per its own source-of-truth
+    hierarchy (its Section 15.1): security/product-safety requirements in that
+    document, then executable code/migrations/tests, then that document for
+    consolidated intent/gaps, then these older files for detail *only* where
+    they do not conflict with it.
 1.  [Master Product Specification](MASTER_SPEC.md)
 2.  [System Architecture](SYSTEM_ARCHITECTURE.md)
 3.  [Database Schema](DATABASE_SCHEMA.md)
@@ -62,6 +74,7 @@ supported connector.
 
 ## Recommended reading order
 
+RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS (authoritative) → this
 README → MASTER_SPEC → SYSTEM_ARCHITECTURE → SECURITY_SPECIFICATION →
 SEO_AUTOMATION_ENGINE → WEBSITE_CONNECTORS → AI_AGENT_SPECIFICATION →
 DATABASE_SCHEMA → API_SPECIFICATION → QA_TEST_STRATEGY →
@@ -100,6 +113,12 @@ suitable for a constrained pilot only after these checks.
 
 ## Versioning
 
-This v1.2 pack is the clean, consolidated source of truth and supersedes
-earlier v1.0/v1.1 documents and append-only amendments. If a conflict is
-found, this pack takes precedence.
+This v1.2 pack was the clean, consolidated source of truth superseding
+earlier v1.0/v1.1 documents and append-only amendments. It is now itself
+superseded by `RANKPILOT_AI_V1.3_IMPLEMENTATION_REQUIREMENTS.md`, whose
+own source-of-truth hierarchy (its Section 15.1) applies: security/product-safety
+requirements in v1.3 first, then executable code/migrations/tests, then
+v1.3 for consolidated intent/gaps, then this v1.2 pack for detail only
+where it does not conflict with v1.3. When code and documentation
+disagree, follow v1.3 Section 15.1's reconciliation process rather than
+assuming either side is correct.
