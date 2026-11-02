@@ -19,8 +19,16 @@ class WebsiteResponse(BaseModel):
     platform: str
     crawl_budget: int
     status: str
+    automation_policy: dict
+    search_console_site_url: str | None
 
     model_config = {"from_attributes": True}
+
+
+class WebsiteSettingsUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    crawl_budget: int | None = Field(default=None, ge=1, le=10000)
+    auto_execute_risk_tier_1: bool | None = None
 
 
 class VerificationConfirmRequest(BaseModel):

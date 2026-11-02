@@ -19,6 +19,7 @@ from app.schemas.website import (
     VerificationResultResponse,
     WebsiteCreateRequest,
     WebsiteResponse,
+    WebsiteSettingsUpdateRequest,
 )
 
 router = APIRouter(tags=["websites"])
@@ -80,6 +81,43 @@ def get_website(
     _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
 ) -> WebsiteResponse:
     website = _get_website_or_404(db, organization_id, website_id)
+    return WebsiteResponse.model_validate(website)
+
+
+@router.patch(
+    "/organizations/{organization_id}/websites/{website_id}/settings",
+    response_model=WebsiteResponse,
+)
+def update_website_settings(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: WebsiteSettingsUpdateRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteResponse:
+    website = _get_website_or_404(db, organization_id, website_id)
+
+    if payload.display_name is not None:
+        website.display_name = payload.display_name
+    if payload.crawl_budget is not None:
+        website.crawl_budget = payload.crawl_budget
+    if payload.auto_execute_risk_tier_1 is not None:
+        website.automation_policy = {
+            **website.automation_policy,
+            "auto_execute_risk_tier_1": payload.auto_execute_risk_tier_1,
+        }
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="website.settings.update",
+            resource_type="website",
+            resource_id=str(website.id),
+            metadata_json=payload.model_dump(exclude_none=True),
+        )
+    )
+    db.commit()
     return WebsiteResponse.model_validate(website)
 
 

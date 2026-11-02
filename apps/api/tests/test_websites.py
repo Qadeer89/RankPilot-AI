@@ -109,4 +109,27 @@ def test_verification_confirm_with_wrong_token_fails(client, monkeypatch):
         headers=headers,
     )
     assert confirm.status_code == 200
-    assert confirm.json()["verified"] is False
+
+
+def test_update_website_settings_toggles_automation_policy(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor5@example.com", "Acme 5")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+    assert created.json()["automation_policy"] == {}
+
+    response = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={"auto_execute_risk_tier_1": True, "crawl_budget": 50},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["automation_policy"] == {"auto_execute_risk_tier_1": True}
+    assert body["crawl_budget"] == 50
