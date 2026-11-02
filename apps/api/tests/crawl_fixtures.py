@@ -87,3 +87,6 @@ def patch_crawler_network(monkeypatch) -> None:
     monkeypatch.setattr(robots_module, "safe_fetch", fake_safe_fetch)
     monkeypatch.setattr(sitemap_module, "safe_fetch", fake_safe_fetch)
     monkeypatch.setattr(orchestrator_module, "safe_fetch", fake_safe_fetch)
+    # RP13-008's per-host crawl delay is real-time and would otherwise add
+    # 0.5s+ per fetched page to every crawler test.
+    monkeypatch.setattr(orchestrator_module.time, "sleep", lambda _seconds: None)

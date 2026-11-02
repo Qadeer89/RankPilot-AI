@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.core.url_safety import UnsafeUrlError, validate_public_url
+from app.core.url_safety import UnsafeUrlError, build_pinned_url, validate_public_url
 
 MAX_REDIRECTS = 5
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -65,9 +65,19 @@ def safe_fetch(
         except UnsafeUrlError as exc:
             raise FetchError(f"unsafe_url: {exc}") from exc
 
+        # Connect to the specific IP that was just validated, not the
+        # hostname: httpx would otherwise re-resolve DNS at connect time,
+        # reopening the DNS-rebinding window validate_public_url just
+        # closed. The Host header and SNI extension keep virtual hosting
+        # and TLS certificate verification targeting the real hostname.
+        pinned_url = build_pinned_url(safe_url)
         try:
             with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-                response = client.get(safe_url.normalized_url, headers={"User-Agent": user_agent})
+                request = client.build_request(
+                    "GET", pinned_url, headers={"User-Agent": user_agent, "Host": safe_url.hostname}
+                )
+                request.extensions["sni_hostname"] = safe_url.hostname
+                response = client.send(request)
         except httpx.HTTPError as exc:
             raise FetchError(f"Request failed: {exc}") from exc
 
@@ -76,7 +86,7 @@ def safe_fetch(
             if not location:
                 raise FetchError("Redirect response had no Location header.")
             redirect_chain.append(safe_url.normalized_url)
-            current_url = httpx.URL(safe_url.normalized_url).join(location).human_repr()
+            current_url = str(httpx.URL(safe_url.normalized_url).join(location))
             continue
 
         body = _read_bounded_text(response)

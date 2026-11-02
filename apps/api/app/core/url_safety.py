@@ -30,6 +30,12 @@ class UnsafeUrlError(ValueError):
 class SafeUrl:
     normalized_url: str
     hostname: str
+    # The specific IP address that was validated as safe. Callers that
+    # actually connect must connect to THIS address (RP13-007) rather than
+    # re-resolving `hostname` at connect time: DNS could change between
+    # validation and connection (DNS rebinding), and a second resolution
+    # would bypass every check this function just did.
+    resolved_ip: str
 
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -77,14 +83,17 @@ def validate_public_url(raw_url: str) -> SafeUrl:
     except ValueError:
         literal_ip = None
 
-    if literal_ip is not None and _is_disallowed_ip(literal_ip):
-        raise UnsafeUrlError("URL host is a private, loopback, or otherwise disallowed address.")
+    if literal_ip is not None:
+        if _is_disallowed_ip(literal_ip):
+            raise UnsafeUrlError("URL host is a private, loopback, or otherwise disallowed address.")
+        return SafeUrl(normalized_url=normalized, hostname=hostname, resolved_ip=str(literal_ip))
 
     try:
         resolved = socket.getaddrinfo(hostname, None)
     except socket.gaierror as exc:
         raise UnsafeUrlError(f"Could not resolve host '{hostname}'.") from exc
 
+    chosen_ip: str | None = None
     for family, *_rest, sockaddr in resolved:
         address = sockaddr[0]
         ip_obj = ipaddress.ip_address(address)
@@ -92,5 +101,24 @@ def validate_public_url(raw_url: str) -> SafeUrl:
             raise UnsafeUrlError(
                 f"Host '{hostname}' resolves to a disallowed address ({address})."
             )
+        if chosen_ip is None:
+            chosen_ip = address
 
-    return SafeUrl(normalized_url=normalized, hostname=hostname)
+    if chosen_ip is None:
+        raise UnsafeUrlError(f"Host '{hostname}' did not resolve to any address.")
+
+    return SafeUrl(normalized_url=normalized, hostname=hostname, resolved_ip=chosen_ip)
+
+
+def build_pinned_url(safe_url: SafeUrl) -> str:
+    """The same URL as `safe_url.normalized_url`, with its hostname
+    replaced by the specific IP address that was validated, so an actual
+    connection can be pinned to it (RP13-007: prevents DNS rebinding
+    between validation and connect time). Callers must also set the
+    `Host` header and TLS SNI to `safe_url.hostname` so virtual hosting
+    and certificate verification still target the real hostname.
+    """
+    parts = urlsplit(safe_url.normalized_url)
+    host_literal = f"[{safe_url.resolved_ip}]" if ":" in safe_url.resolved_ip else safe_url.resolved_ip
+    netloc = f"{host_literal}:{parts.port}" if parts.port else host_literal
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))

@@ -19,6 +19,15 @@ _NAMESPACE = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
 def _parse_sitemap_xml(body: str) -> tuple[list[str], list[str]]:
     """Return (page_urls, nested_sitemap_urls) from one sitemap document."""
+    # RP13-009: a sitemap never legitimately needs a DOCTYPE. Python's
+    # stdlib ElementTree (unlike defusedxml, which isn't a dependency
+    # here) does not disable internal entity expansion, so a crafted
+    # DOCTYPE could trigger a "billion laughs"-style memory/CPU blowup
+    # from a response well under the fetch size cap. Rejecting any
+    # DOCTYPE closes that off without adding a dependency.
+    if "<!DOCTYPE" in body.upper():
+        return [], []
+
     try:
         root = ElementTree.fromstring(body)
     except ElementTree.ParseError:

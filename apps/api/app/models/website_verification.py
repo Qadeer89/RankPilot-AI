@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,5 +35,8 @@ class WebsiteVerification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # RP13-004: throttles repeated confirm attempts against this one
+    # verification row (a fresh row via /verify/instructions resets it).
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     website: Mapped["Website"] = relationship(back_populates="verifications")

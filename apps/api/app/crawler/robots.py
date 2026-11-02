@@ -20,6 +20,11 @@ class RobotsPolicy:
             return True
         return self._parser.can_fetch(url, user_agent)
 
+    def crawl_delay(self, user_agent: str) -> float | None:
+        if self._parser is None:
+            return None
+        return self._parser.crawl_delay(user_agent)
+
 
 def fetch_robots_policy(origin_url: str, *, user_agent: str) -> RobotsPolicy:
     """Fetch and parse robots.txt for the origin of `origin_url`.

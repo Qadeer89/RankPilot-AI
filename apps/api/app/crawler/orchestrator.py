@@ -9,6 +9,7 @@ a single crawl.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from urllib.parse import urldefrag, urlsplit, urlunsplit
 
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.crawler.extract import extract_page
 from app.crawler.fetch import FetchError, safe_fetch
-from app.crawler.robots import fetch_robots_policy
+from app.crawler.robots import RobotsPolicy, fetch_robots_policy
 from app.crawler.sitemap import discover_sitemap_urls
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
@@ -27,6 +28,17 @@ from app.models.website import Website
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "RankPilotBot/0.1 (+https://rankpilot.ai/bot)"
+
+# RP13-008: a polite minimum gap between consecutive requests to the same
+# host, since one crawl job fetches many URLs on the same host in a tight
+# loop otherwise. robots.txt's own Crawl-delay (if larger) wins.
+MIN_CRAWL_DELAY_SECONDS = 0.5
+
+
+def _throttle(robots_policy: RobotsPolicy, user_agent: str) -> None:
+    delay = max(MIN_CRAWL_DELAY_SECONDS, robots_policy.crawl_delay(user_agent) or 0.0)
+    if delay > 0:
+        time.sleep(delay)
 
 
 def normalize_frontier_url(url: str) -> str:
@@ -173,6 +185,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                 frontier_entry.state = FrontierState.error
                 errors.append(f"{frontier_entry.url}: {exc}")
                 db.flush()
+                _throttle(robots_policy, USER_AGENT)
                 continue
 
             frontier_entry.state = FrontierState.fetched
@@ -219,6 +232,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                         discovered_from=frontier_entry.url,
                     )
             db.flush()
+            _throttle(robots_policy, USER_AGENT)
 
         crawl_job.status = CrawlStatus.completed
         crawl_job.pages_requested = pages_requested

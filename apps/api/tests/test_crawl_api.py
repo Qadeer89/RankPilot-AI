@@ -90,3 +90,30 @@ def test_pages_and_findings_endpoints_are_tenant_scoped(client, monkeypatch):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert denied.status_code == 403
+
+
+def test_crawl_list_and_detail_are_tenant_scoped(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    monkeypatch.setattr(crawls_endpoint.run_site_crawl, "delay", MagicMock())
+
+    token_a, org_a = _register_with_org(client, "crawl-tenant-a@example.com", "Crawl Tenant A")
+    token_b, _org_b = _register_with_org(client, "crawl-tenant-b@example.com", "Crawl Tenant B")
+    website_id = _create_website(client, token_a, org_a)
+
+    created = client.post(
+        f"/api/v1/organizations/{org_a}/websites/{website_id}/crawls",
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    crawl_id = created.json()["id"]
+
+    denied_list = client.get(
+        f"/api/v1/organizations/{org_a}/websites/{website_id}/crawls",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert denied_list.status_code == 403
+
+    denied_detail = client.get(
+        f"/api/v1/organizations/{org_a}/websites/{website_id}/crawls/{crawl_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert denied_detail.status_code == 403

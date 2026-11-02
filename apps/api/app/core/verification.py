@@ -14,7 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from app.core.url_safety import UnsafeUrlError, validate_public_url
+from app.core.url_safety import UnsafeUrlError, build_pinned_url, validate_public_url
 from app.models.website_verification import VerificationMethod
 
 VERIFICATION_FILENAME = "rankpilot-verify.txt"
@@ -46,12 +46,19 @@ def check_html_file_verification(canonical_url: str, expected_token: str) -> tup
     verify_url = f"{base}/{VERIFICATION_FILENAME}"
 
     try:
-        validate_public_url(verify_url)
+        safe_url = validate_public_url(verify_url)
     except UnsafeUrlError as exc:
         return False, f"Verification URL failed safety checks: {exc}"
 
+    # Pin the connection to the validated IP (RP13-007): otherwise httpx
+    # would re-resolve DNS at connect time, reopening the DNS-rebinding
+    # window the check above just closed.
+    pinned_url = build_pinned_url(safe_url)
     try:
-        response = httpx.get(verify_url, timeout=10.0, follow_redirects=False)
+        with httpx.Client(timeout=10.0, follow_redirects=False) as client:
+            request = client.build_request("GET", pinned_url, headers={"Host": safe_url.hostname})
+            request.extensions["sni_hostname"] = safe_url.hostname
+            response = client.send(request)
     except httpx.HTTPError as exc:
         return False, f"Could not fetch verification file: {exc}"
 

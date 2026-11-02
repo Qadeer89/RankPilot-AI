@@ -1,6 +1,10 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# RP13-002: the one value that must never reach a production process.
+DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -12,12 +16,18 @@ class Settings(BaseSettings):
 
     cors_allowed_origins: tuple[str, ...] = ("http://localhost:3000", "http://127.0.0.1:3000")
 
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
 
     # Crawl safety defaults (SSRF protections, RP-0202).
     allowed_url_schemes: tuple[str, ...] = ("http", "https")
+
+    # Domain verification (RP13-003, RP13-004): a verification token is
+    # single-purpose and time-boxed, and repeated wrong-token submissions
+    # are throttled rather than allowed indefinitely.
+    verification_token_expire_minutes: int = 60 * 24
+    verification_max_attempts: int = 10
 
     # OpenAI (AI_AGENT_SPECIFICATION.md #3). Server-side only; never exposed
     # to the frontend, never committed, never logged.
@@ -60,6 +70,19 @@ class Settings(BaseSettings):
     page_snapshot_retention_days: int = 90
     audit_event_retention_days: int = 365
     notification_retention_days: int = 180
+
+    @model_validator(mode="after")
+    def _forbid_default_jwt_secret_in_production(self) -> "Settings":
+        """RP13-002: fail closed rather than silently sign production
+        tokens with the publicly-known development default.
+        """
+        if self.environment == "production" and self.jwt_secret == DEFAULT_JWT_SECRET:
+            raise ValueError(
+                "RANKPILOT_JWT_SECRET is still the development default "
+                f"({DEFAULT_JWT_SECRET!r}) while RANKPILOT_ENVIRONMENT=production. "
+                "Set a real, unique secret before starting this process."
+            )
+        return self
 
 
 @lru_cache

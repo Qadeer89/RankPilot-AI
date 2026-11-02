@@ -1,9 +1,10 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404 as _get_website_or_404
 from app.core.url_safety import UnsafeUrlError, validate_public_url
@@ -133,9 +134,13 @@ def start_verification(
 ) -> VerificationInstructionsResponse:
     website = _get_website_or_404(db, organization_id, website_id)
 
+    settings = get_settings()
     token = generate_token()
     method = VerificationMethod.html_file
-    verification = WebsiteVerification(website_id=website.id, method=method, token_hash=hash_token(token))
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_token_expire_minutes)
+    verification = WebsiteVerification(
+        website_id=website.id, method=method, token_hash=hash_token(token), expires_at=expires_at
+    )
     website.verification_status = VerificationStatus.pending
 
     db.add(verification)
@@ -172,6 +177,7 @@ def confirm_verification(
 ) -> VerificationResultResponse:
     website = _get_website_or_404(db, organization_id, website_id)
 
+    settings = get_settings()
     pending = (
         db.query(WebsiteVerification)
         .filter(
@@ -184,8 +190,53 @@ def confirm_verification(
     if pending is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No pending verification for this website")
 
+    # RP13-004: throttle repeated confirm attempts against this one
+    # verification row rather than allowing unlimited guesses.
+    if pending.attempt_count >= settings.verification_max_attempts:
+        website.verification_status = VerificationStatus.failed
+        db.add(
+            AuditEvent(
+                organization_id=organization_id,
+                actor_user_id=membership.user_id,
+                action="website.verification.rate_limited",
+                resource_type="website",
+                resource_id=str(website.id),
+                metadata_json={"attempt_count": pending.attempt_count},
+            )
+        )
+        db.commit()
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many verification attempts. Request new verification instructions.",
+        )
+
+    pending.attempt_count += 1
+
+    # RP13-003: a verification token is single-purpose and time-boxed; an
+    # expired token must not be usable even if it is later leaked/replayed.
+    if pending.expires_at is not None and datetime.now(timezone.utc) > pending.expires_at:
+        website.verification_status = VerificationStatus.failed
+        db.add(
+            AuditEvent(
+                organization_id=organization_id,
+                actor_user_id=membership.user_id,
+                action="website.verification.confirm",
+                resource_type="website",
+                resource_id=str(website.id),
+                metadata_json={"verified": False, "detail": "expired"},
+            )
+        )
+        db.commit()
+        return VerificationResultResponse(
+            website_id=website.id,
+            verification_status=website.verification_status.value,
+            verified=False,
+            detail="Verification token has expired. Request new verification instructions.",
+        )
+
     token = payload.token
     if hash_token(token) != pending.token_hash:
+        db.commit()  # persist the attempt_count increment above
         return VerificationResultResponse(
             website_id=website.id,
             verification_status=website.verification_status.value,

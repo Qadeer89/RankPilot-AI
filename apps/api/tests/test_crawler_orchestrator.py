@@ -1,4 +1,6 @@
+from app.crawler import orchestrator as orchestrator_module
 from app.crawler.orchestrator import run_crawl
+from app.crawler.robots import RobotsPolicy
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlStatus, CrawlTrigger
 from app.models.organization import Organization
@@ -100,3 +102,26 @@ def test_recrawling_the_same_website_refetches_everything(db_session, monkeypatc
     db_session.flush()
     assert second.pages_fetched == 5
     assert second.pages_requested == 6
+
+
+def test_throttle_sleeps_for_the_minimum_delay_by_default(monkeypatch):
+    slept = {}
+    monkeypatch.setattr(orchestrator_module.time, "sleep", lambda seconds: slept.setdefault("seconds", seconds))
+
+    policy = RobotsPolicy(sitemap_urls=[], _parser=None)
+    orchestrator_module._throttle(policy, "RankPilotBot/0.1")
+
+    assert slept["seconds"] == orchestrator_module.MIN_CRAWL_DELAY_SECONDS
+
+
+def test_throttle_respects_a_longer_robots_crawl_delay(monkeypatch):
+    from protego import Protego
+
+    slept = {}
+    monkeypatch.setattr(orchestrator_module.time, "sleep", lambda seconds: slept.setdefault("seconds", seconds))
+
+    parser = Protego.parse("User-agent: *\nCrawl-delay: 5\n")
+    policy = RobotsPolicy(sitemap_urls=[], _parser=parser)
+    orchestrator_module._throttle(policy, "RankPilotBot/0.1")
+
+    assert slept["seconds"] == 5.0

@@ -95,3 +95,15 @@ def test_reports_are_tenant_scoped(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 403
+
+
+def test_usage_and_audit_events_are_tenant_scoped(client):
+    token_a, org_a = _register_with_org(client, "usage-tenant-a@example.com", "Usage Tenant A")
+    token_b, _org_b = _register_with_org(client, "usage-tenant-b@example.com", "Usage Tenant B")
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    denied_usage = client.get(f"/api/v1/organizations/{org_a}/usage", headers=headers_b)
+    assert denied_usage.status_code == 403
+
+    denied_audit = client.get(f"/api/v1/organizations/{org_a}/audit-events", headers=headers_b)
+    assert denied_audit.status_code == 403
