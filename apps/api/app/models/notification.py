@@ -14,6 +14,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class NotificationChannel(str, enum.Enum):
     email = "email"
+    slack = "slack"
 
 
 class NotificationStatus(str, enum.Enum):

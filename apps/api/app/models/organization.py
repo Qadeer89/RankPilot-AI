@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from sqlalchemy import Enum, String
+from sqlalchemy import Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -36,6 +36,9 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=OrganizationStatus.active,
         nullable=False,
     )
+    # Encrypted the same way OAuth/connector secrets are (app/core/encryption.py);
+    # a Slack incoming-webhook URL lets anyone with it post into that channel.
+    encrypted_slack_webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"

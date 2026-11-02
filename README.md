@@ -121,6 +121,15 @@ per `MASTER_SPEC.md` #5:
   - A shared `app/ai/runner.py` now holds the budget-enforcement/`AgentRun`-bookkeeping
     boilerplate all four agents (including the Phase 3 Content Optimization Agent, refactored
     to use it) share.
+- **Agency multi-client overview** (`GET /organizations/{id}/overview`,
+  `apps/api/app/api/v1/endpoints/organizations.py`): one row per website in the organization —
+  verification/crawl status, open findings/opportunities/pending-task counts, last crawl — so
+  an agency can triage which client sites need attention without opening each one.
+- **Slack notifications** (`apps/api/app/notifications/slack.py`): a per-organization incoming
+  webhook URL (`PATCH /organizations/{id}/settings`), stored encrypted the same way connector
+  tokens are. `POST /organizations/{id}/notifications/slack/test` sends a test message and
+  returns 409 if no webhook is configured yet. Same credential-gating pattern as
+  email/Search Console — unconfigured is `skipped_not_configured`, not a crash.
 
 Not yet built, and not buildable from inside this environment without more than code:
 
@@ -131,7 +140,10 @@ Not yet built, and not buildable from inside this environment without more than 
 - **Founder pilot acceptance and beta go/no-go** (RP-0907): a product and business decision
   for the founder to make by using the product against real pilot sites, not something that
   gets built.
-- Agency multi-client views, Slack notifications, billing.
+- Billing. GitHub/deployment integration for custom-code sites and additional CMS write
+  connectors (Shopify/Webflow) are deferred — no pilot site has needed them yet. No frontend UI
+  yet for GA4 connection, the new AI agents, the agency overview, or Slack settings — these P1
+  additions are API-only so far.
 
 See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
