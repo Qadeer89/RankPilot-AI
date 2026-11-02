@@ -75,8 +75,12 @@ Phase 5 ("Daily operations and reporting") are built:
   (`GET .../audit-events`, admin-only).
 - Health/readiness endpoints, structured JSON logging.
 - Postgres schema + Alembic migrations, Celery worker/scheduler wiring against Redis.
-- A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
-  crawl/findings/opportunities/Search-Console/execution/reporting UI not yet built).
+- A Next.js frontend covering the full backend surface: register/login/dashboard with
+  add-website + verification, and a per-website detail page
+  (`apps/web/src/app/dashboard/websites/[id]/`) with tabs for triggering and reading crawls,
+  browsing findings, getting an AI proposal and turning it into a task, approving/rejecting/
+  executing/rolling back tasks, connecting Google Search Console and WordPress, toggling the
+  tier-1 auto-execute policy, and reading weekly reports.
 
 - Backup/restore and incident-response runbooks (`ops/RUNBOOKS.md`, RP-0906) — specified in
   full, but **not yet run against a real host**: this environment has no production VPS to
@@ -172,6 +176,19 @@ to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection
   per-organization "who gets the weekly report" preference modeled yet, so
   `generate_weekly_reports` only writes the `Report` row; wiring it to
   `app/notifications/email.py` is straightforward once that preference exists.
+- The website detail page's role-gated actions (approve/reject/execute/rollback, connecting
+  WordPress, updating settings) all require the `admin` role server-side; the frontend doesn't
+  hide those buttons for a lower-role viewer, it just surfaces the 403 the API returns. Role-
+  aware UI (hiding vs. erroring) is a reasonable follow-up once there's more than one role in
+  practice during the founder pilot.
+- Every dynamic route under `apps/web/src/app/dashboard/` is split into a thin Server
+  Component `page.tsx` (exporting `instant = false` and a `<Suspense>` boundary) wrapping the
+  real `"use client"` page. Next.js 16's Cache Components model refuses to prerender a Client
+  Component that reads `useParams()`/`useSearchParams()` outside Suspense, and route-segment
+  config like `instant` can only be exported from a Server Component file — hence the split.
+  New dynamic route pages should follow the same pattern (see
+  `apps/web/src/app/dashboard/websites/[id]/page.tsx` for the wrapper and
+  `website-detail-client.tsx` for the actual page).
 
 ## Repository layout
 

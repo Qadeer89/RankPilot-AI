@@ -1,0 +1,253 @@
+.page {
+  min-height: 100vh;
+  background-color: #fafafa;
+  padding: 32px 24px 64px;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.header h1 {
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.backLink {
+  font-size: 13px;
+  color: #666;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #ebebeb;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.tabActive {
+  color: #000;
+  border-bottom-color: #000;
+}
+
+.card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.rowMeta {
+  font-size: 12px;
+  color: #666;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.button {
+  padding: 6px 14px;
+  border-radius: 128px;
+  border: 1px solid #ebebeb;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.buttonPrimary {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+.buttonDanger {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 128px;
+  background: #f2f2f2;
+  color: #666;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badgeGood {
+  background: #e6f4ea;
+  color: #1e7e34;
+}
+
+.badgeBad {
+  background: #fdecea;
+  color: #c0392b;
+}
+
+.badgeWarn {
+  background: #fff4e5;
+  color: #9a6700;
+}
+
+.input {
+  padding: 7px 10px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.proposalBox {
+  background: #f7f7f7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proposalActionLine {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  background: #ededed;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.error {
+  color: #c0392b;
+  font-size: 14px;
+}
+
+.empty {
+  color: #666;
+  font-size: 14px;
+}
+
+.jsonBlock {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  background: #f7f7f7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    background-color: #000;
+  }
+  .card {
+    background-color: #0a0a0a;
+    color: #ededed;
+  }
+  .row {
+    border-color: #1a1a1a;
+  }
+  .tabs {
+    border-color: #1a1a1a;
+  }
+  .tab {
+    color: #999;
+  }
+  .tabActive {
+    color: #ededed;
+    border-bottom-color: #ededed;
+  }
+  .button {
+    background: #111;
+    border-color: #1a1a1a;
+    color: #ededed;
+  }
+  .buttonPrimary {
+    background: #ededed;
+    color: #000;
+    border-color: #ededed;
+  }
+  .input {
+    background: #111;
+    border-color: #1a1a1a;
+    color: #ededed;
+  }
+  .proposalBox,
+  .jsonBlock {
+    background: #111;
+  }
+  .proposalActionLine {
+    background: #1a1a1a;
+  }
+  .badge {
+    background: #1a1a1a;
+    color: #999;
+  }
+}

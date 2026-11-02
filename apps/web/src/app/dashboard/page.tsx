@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ApiError,
   MeResponse,
@@ -161,7 +162,9 @@ export default function DashboardPage() {
           {websites.map((site) => (
             <div key={site.id} className={styles.websiteRow}>
               <div className={styles.websiteRowHeader}>
-                <strong>{site.display_name}</strong>
+                <Link href={`/dashboard/websites/${site.id}`}>
+                  <strong>{site.display_name}</strong>
+                </Link>
                 <span className={statusClassName(site.verification_status)}>
                   {site.verification_status}
                 </span>

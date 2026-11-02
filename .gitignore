@@ -25,3 +25,4 @@ next-env.d.ts
 # Logs
 *.log
 npm-debug.log*
+dump.rdb
