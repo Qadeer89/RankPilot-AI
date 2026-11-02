@@ -10,8 +10,8 @@ covers what's implemented so far and how to run it.
 ## Status
 
 Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_ROADMAP.md`,
-"Platform foundation"), Phase 2 ("Crawl and deterministic SEO baseline"), and most of Phase 3
-("Search performance and AI opportunities") are built:
+"Platform foundation"), Phase 2 ("Crawl and deterministic SEO baseline"), most of Phase 3
+("Search performance and AI opportunities"), and most of Phase 4 ("Safe execution") are built:
 
 - Authentication (register/login/me), organizations, role-based memberships, tenant isolation.
 - Website registration with SSRF-safe URL validation (RP-0202) and a working domain
@@ -46,15 +46,27 @@ Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_R
   daily USD budget enforced before every call (`POST .../opportunities/{id}/proposals`).
   Every call — including failed ones — is logged to `agent_runs` with token counts and
   estimated cost.
+- A WordPress connector (`apps/api/app/connectors/wordpress.py`, RP-0703/0704) authenticating
+  with a dedicated Application Password (never the owner's main account password), supporting
+  `set_title` (reliable, core WordPress) and a best-effort `set_meta_description` (requires a
+  Yoast-SEO-compatible REST-writable meta field; raises a clear `UnsupportedOperation` rather
+  than silently no-op'ing when a site doesn't support it).
+- A risk-tiered execution protocol (`apps/api/app/execution/`, RP-0701/0702/0705–0708,
+  `SEO_AUTOMATION_ENGINE.md` #5): turning a proposal into one or more idempotent `SEOTask` rows,
+  gating tier-1 changes on an explicit per-website opt-in and everything else on human approval,
+  tier-3 blocked outright, before/after `ChangeRecord`s with deterministic post-change
+  validation, and automatic rollback restricted to the one case
+  `SEO_AUTOMATION_ENGINE.md` #8 allows it — validation failing immediately after the write that
+  caused it. Pause/resume reuses the existing website status field from Phase 1.
 - Audit logging for sensitive actions.
 - Health/readiness endpoints, structured JSON logging.
 - Postgres schema + Alembic migrations, Celery worker/scheduler wiring against Redis.
 - A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
-  crawl/findings/opportunities/Search-Console UI not yet built).
+  crawl/findings/opportunities/Search-Console/execution UI not yet built).
 
-Not yet built: GA4, WordPress connector (execution/validation/rollback), the remaining AI
-agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change QA Assistant), approval
-workflow, daily scheduler, billing. See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+Not yet built: GA4, the remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant,
+Post-change QA Assistant), the daily scheduler (Phase 5), reporting, billing. See
+`docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
 ### Credential-gated integrations
 
@@ -103,6 +115,16 @@ to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection
 - `site_crawl`, `technical_audit`, and `opportunity_refresh` are folded into one Celery task
   (`app/tasks/crawl.py`) rather than three separate job types, since opportunity scoring is
   cheap, deterministic, and always needs to follow a rule-engine pass.
+- `API_SPECIFICATION.md`'s `/seo-tasks/{id}/...` and `/change-records/{id}/...` routes are
+  nested under the organization/website tenant path, same as everywhere else.
+- Approve/reject/execute/rollback all require the `admin` role, not `editor` — writing to a
+  customer's live website is treated as more sensitive than reading or requesting a change.
+- `requires_approval` on an `OpportunityProposal` is informational only; the actual gate is
+  `app/execution/policy.py`, evaluated server-side from the website's `risk_tier` and
+  `automation_policy`, never trusted from what the AI (or a client) claims.
+- `change_records.page_id` isn't populated yet (`None`): the WordPress connector resolves a
+  target by URL at execution time rather than by the crawler's `Page` row, so there's no
+  `Page` lookup in the execution path yet to populate it from.
 
 ## Repository layout
 
@@ -198,3 +220,9 @@ figures in `docs/README.md` are point-in-time observations, not a capacity guara
   instructs the model not to treat it as instructions; its output is independently re-checked
   against an operation allowlist in code, not trusted from the JSON schema alone
   (`SECURITY_SPECIFICATION.md` #5).
+- WordPress Application Passwords are encrypted at rest the same way OAuth tokens are, and
+  `connect_wordpress` refuses to store a credential it hasn't first verified against the live
+  site.
+- Every `SEOTask` has an idempotency key derived from `(website, opportunity, operation,
+  target_url)`, so a retried "create tasks" request can't create a duplicate pending change,
+  and `execute_task` refuses to re-run a task that's already executing or completed.

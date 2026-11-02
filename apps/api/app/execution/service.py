@@ -1,0 +1,253 @@
+"""The execution protocol (SEO_AUTOMATION_ENGINE.md #5): turn an approved,
+risk-gated SEO task into one bounded WordPress write, with before/after
+evidence and deterministic post-change validation. Automatic rollback
+only ever runs when validation fails right after the write it's
+undoing — it is never a general-purpose "undo" tool.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
+from app.ai.schemas import OpportunityProposal
+from app.connectors.wordpress import (
+    UnsupportedOperation,
+    WordPressConnectorError,
+    current_meta_description,
+    current_title,
+    find_post_by_url,
+    get_resource,
+    update_meta_description,
+    update_title,
+)
+from app.execution import policy
+from app.execution.connections import get_wordpress_credentials
+from app.execution.validation import validate_wordpress_change
+from app.models.approval import Approval, ApprovalDecision
+from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
+from app.models.rollback_record import RollbackRecord, RollbackStatus
+from app.models.seo_opportunity import SEOOpportunity
+from app.models.seo_task import ApprovalStatus, SEOTask, SEOTaskStatus
+from app.models.website import Website, WebsiteStatus
+from app.models.website_connection import ConnectorType
+
+
+class ExecutionBlocked(RuntimeError):
+    pass
+
+
+def _idempotency_key(website_id: uuid.UUID, opportunity_id: uuid.UUID, operation: str, target_url: str) -> str:
+    return hashlib.sha256(f"{website_id}:{opportunity_id}:{operation}:{target_url}".encode("utf-8")).hexdigest()
+
+
+def create_tasks_from_proposal(
+    db: Session,
+    website: Website,
+    opportunity: SEOOpportunity,
+    proposal: OpportunityProposal,
+    *,
+    requested_by: uuid.UUID,
+) -> list[SEOTask]:
+    """One SEOTask per proposed action, idempotent per (website,
+    opportunity, operation, target_url) so retried requests don't create
+    duplicate tasks (RP-0701).
+    """
+    if policy.is_risk_tier_blocked(proposal.risk_tier):
+        raise ExecutionBlocked(f"Risk tier {proposal.risk_tier} is blocked; no task was created.")
+
+    tasks: list[SEOTask] = []
+    for action in proposal.proposed_actions:
+        idempotency_key = _idempotency_key(website.id, opportunity.id, action.operation, action.target_url)
+
+        existing = db.query(SEOTask).filter(SEOTask.idempotency_key == idempotency_key).one_or_none()
+        if existing is not None:
+            tasks.append(existing)
+            continue
+
+        approval_needed = policy.requires_approval(website, proposal.risk_tier)
+        task = SEOTask(
+            website_id=website.id,
+            opportunity_id=opportunity.id,
+            task_type=action.operation,
+            risk_tier=proposal.risk_tier,
+            proposed_change_json={
+                "operation": action.operation,
+                "target_url": action.target_url,
+                "value": action.value,
+                "summary": proposal.summary,
+                "evidence": [e.model_dump() for e in proposal.evidence],
+                "validation_plan": proposal.validation_plan,
+            },
+            approval_status=ApprovalStatus.pending if approval_needed else ApprovalStatus.not_required,
+            status=SEOTaskStatus.pending,
+            idempotency_key=idempotency_key,
+        )
+        db.add(task)
+        db.flush()
+
+        if approval_needed:
+            db.add(Approval(seo_task_id=task.id, requested_by=requested_by, decision=ApprovalDecision.pending))
+
+        tasks.append(task)
+
+    db.flush()
+    return tasks
+
+
+def approve_task(db: Session, task: SEOTask, *, decided_by: uuid.UUID, reason: str | None = None) -> SEOTask:
+    if task.approval_status != ApprovalStatus.pending:
+        raise ExecutionBlocked(f"Task is not awaiting approval (current status: {task.approval_status.value}).")
+
+    approval = (
+        db.query(Approval)
+        .filter(Approval.seo_task_id == task.id, Approval.decision == ApprovalDecision.pending)
+        .order_by(Approval.created_at.desc())
+        .first()
+    )
+    if approval is not None:
+        approval.decision = ApprovalDecision.approved
+        approval.decided_by = decided_by
+        approval.reason = reason
+        approval.decided_at = datetime.now(timezone.utc)
+
+    task.approval_status = ApprovalStatus.approved
+    db.flush()
+    return task
+
+
+def reject_task(db: Session, task: SEOTask, *, decided_by: uuid.UUID, reason: str | None = None) -> SEOTask:
+    if task.approval_status != ApprovalStatus.pending:
+        raise ExecutionBlocked(f"Task is not awaiting approval (current status: {task.approval_status.value}).")
+
+    approval = (
+        db.query(Approval)
+        .filter(Approval.seo_task_id == task.id, Approval.decision == ApprovalDecision.pending)
+        .order_by(Approval.created_at.desc())
+        .first()
+    )
+    if approval is not None:
+        approval.decision = ApprovalDecision.rejected
+        approval.decided_by = decided_by
+        approval.reason = reason
+        approval.decided_at = datetime.now(timezone.utc)
+
+    task.approval_status = ApprovalStatus.rejected
+    task.status = SEOTaskStatus.rejected
+    db.flush()
+    return task
+
+
+def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
+    if website.status != WebsiteStatus.active:
+        raise ExecutionBlocked("Automation is paused for this website.")
+    if policy.is_risk_tier_blocked(task.risk_tier):
+        raise ExecutionBlocked(f"Risk tier {task.risk_tier} is blocked.")
+    if task.approval_status == ApprovalStatus.pending:
+        raise ExecutionBlocked("This task is still awaiting approval.")
+    if task.approval_status == ApprovalStatus.rejected:
+        raise ExecutionBlocked("This task was rejected and cannot be executed.")
+    if task.status in (SEOTaskStatus.completed, SEOTaskStatus.executing):
+        raise ExecutionBlocked(f"Task is already {task.status.value}; idempotent re-execution is not performed.")
+
+    try:
+        credentials = get_wordpress_credentials(db, website)
+    except LookupError as exc:
+        raise ExecutionBlocked(str(exc)) from exc
+
+    change = task.proposed_change_json
+    operation = change["operation"]
+    target_url = change["target_url"]
+    new_value = change["value"]
+
+    task.status = SEOTaskStatus.executing
+    db.flush()
+
+    try:
+        post_type, post_id = find_post_by_url(credentials, target_url)
+        before = get_resource(credentials, post_type, post_id)
+        if operation == "set_title":
+            before_value = current_title(before)
+        elif operation == "set_meta_description":
+            before_value = current_meta_description(before)
+        else:
+            raise ValueError(f"Unsupported operation: {operation}")
+
+        if operation == "set_title":
+            update_title(credentials, post_type, post_id, new_value)
+        elif operation == "set_meta_description":
+            update_meta_description(credentials, post_type, post_id, new_value)
+        else:
+            raise ValueError(f"Unsupported operation: {operation}")
+
+        passed, validation_evidence = validate_wordpress_change(
+            credentials, post_type, post_id, operation, new_value
+        )
+
+        change_record = ChangeRecord(
+            website_id=website.id,
+            page_id=None,
+            seo_task_id=task.id,
+            connector_type=ConnectorType.wordpress,
+            before_state_json={"operation": operation, "post_type": post_type, "post_id": post_id, "value": before_value},
+            after_state_json={"value": new_value, "validation_evidence": validation_evidence},
+            actor_type=ChangeActorType.system,
+            executed_at=datetime.now(timezone.utc),
+            validation_status=ValidationStatus.passed if passed else ValidationStatus.failed,
+        )
+        db.add(change_record)
+        db.flush()
+
+        if passed:
+            task.status = SEOTaskStatus.completed
+        else:
+            task.status = SEOTaskStatus.failed
+            rollback_change(db, change_record, initiated_by=None, website=website)
+
+        db.flush()
+        return change_record
+
+    except (WordPressConnectorError, UnsupportedOperation) as exc:
+        task.status = SEOTaskStatus.failed
+        db.flush()
+        raise ExecutionBlocked(str(exc)) from exc
+
+
+def rollback_change(
+    db: Session, change_record: ChangeRecord, *, initiated_by: uuid.UUID | None, website: Website
+) -> RollbackRecord:
+    before = change_record.before_state_json
+    operation = before["operation"]
+
+    rollback = RollbackRecord(
+        change_record_id=change_record.id,
+        rollback_method=f"wordpress.{operation}",
+        status=RollbackStatus.pending,
+        initiated_by=initiated_by,
+    )
+    db.add(rollback)
+    db.flush()
+
+    try:
+        credentials = get_wordpress_credentials(db, website)
+        post_type, post_id = before["post_type"], before["post_id"]
+        if operation == "set_title":
+            update_title(credentials, post_type, post_id, before["value"])
+        elif operation == "set_meta_description":
+            update_meta_description(credentials, post_type, post_id, before["value"])
+        else:
+            raise ValueError(f"No rollback method for operation: {operation}")
+
+        rollback.status = RollbackStatus.completed
+        rollback.result_json = {"restored_value": before["value"]}
+    except (WordPressConnectorError, UnsupportedOperation, LookupError, ValueError) as exc:
+        rollback.status = RollbackStatus.failed
+        rollback.result_json = {"error": str(exc)}
+    finally:
+        rollback.completed_at = datetime.now(timezone.utc)
+        db.flush()
+
+    return rollback
