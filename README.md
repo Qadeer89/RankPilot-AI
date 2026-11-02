@@ -100,6 +100,27 @@ per `MASTER_SPEC.md` #5:
   into `Ga4DailyMetric` rows, and a GA4 section in the weekly report. Same credential-gating
   pattern as Search Console (see below) — reuses the same Google OAuth client, a separate
   connection/scope/callback so a customer can grant one without the other.
+- **The three remaining MVP agents** (`AI_AGENT_SPECIFICATION.md` #2, `apps/api/app/ai/`):
+  - **Post-change QA Assistant** (`qa_assistant.py`): summarizes a `ChangeRecord`'s
+    deterministic validation evidence in plain language. The `validation_status` it returns is
+    always copied straight from the `ChangeRecord`, never decided by the model; if validation
+    failed, a response using success-implying language ("successfully", "confirmed", ...) is
+    rejected in code, not just discouraged in the prompt
+    (`AI_AGENT_SPECIFICATION.md` #4: "it cannot declare success when checks fail").
+  - **SEO Strategy Assistant** (`strategy_assistant.py`): a short weekly narrative + focus
+    areas from the site's open opportunities. Rejected in code if it uses ranking-guarantee
+    language ("guarantee", "will rank", ...) — `MASTER_SPEC.md`: "Do not promise or guarantee
+    ranking increases."
+  - **Internal Linking Analyst** (`apps/api/app/linking/candidates.py` +
+    `apps/api/app/ai/internal_linking.py`): the deterministic half finds orphan pages (an open
+    `ORPHAN_PAGE_CANDIDATE` finding) and a title-word-overlap shortlist of candidate source
+    pages from the crawl graph; the AI half only picks from and explains that shortlist — it's
+    rejected in code if it invents a source page outside it. Purely advisory: there's no
+    WordPress connector operation for "add a link", so this never creates an executable
+    `SEOTask`.
+  - A shared `app/ai/runner.py` now holds the budget-enforcement/`AgentRun`-bookkeeping
+    boilerplate all four agents (including the Phase 3 Content Optimization Agent, refactored
+    to use it) share.
 
 Not yet built, and not buildable from inside this environment without more than code:
 
@@ -110,8 +131,7 @@ Not yet built, and not buildable from inside this environment without more than 
 - **Founder pilot acceptance and beta go/no-go** (RP-0907): a product and business decision
   for the founder to make by using the product against real pilot sites, not something that
   gets built.
-- The remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change QA
-  Assistant), agency multi-client views, billing.
+- Agency multi-client views, Slack notifications, billing.
 
 See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
@@ -165,10 +185,15 @@ to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection
 - Google's `webmasters.readonly` REST API is called directly over `httpx` rather than through
   `google-api-python-client`, to keep the dependency surface small and every request
   auditable in `app/integrations/google_search_console.py`.
-- Only the Content Optimization Agent (title/meta-description proposals) is implemented from
-  `AI_AGENT_SPECIFICATION.md` #2's six MVP agents. The Internal Linking Analyst, SEO Strategy
-  Assistant, Execution Planner, and Post-change QA Assistant are not yet built — there's no
-  execution layer yet for a plan to feed into.
+- Four of `AI_AGENT_SPECIFICATION.md` #2's six MVP agents are implemented (Content
+  Optimization, Post-change QA, SEO Strategy, Internal Linking Analyst). The "Execution
+  Planner" agent isn't a separate AI call: `app/execution/service.py`'s
+  `create_tasks_from_proposal` already deterministically converts a proposal's
+  `proposed_actions` into typed `SEOTask` rows, which is that agent's whole job for the only
+  operations this MVP supports (`set_title`, `set_meta_description`) — nothing about it
+  benefits from an LLM call yet.
+- The Internal Linking Analyst's AI call is advisory-only output (no executable `SEOTask`),
+  since there's no WordPress connector operation for "add an internal link" yet.
 - `site_crawl`, `technical_audit`, and `opportunity_refresh` are folded into one Celery task
   (`app/tasks/crawl.py`) rather than three separate job types, since opportunity scoring is
   cheap, deterministic, and always needs to follow a rule-engine pass.

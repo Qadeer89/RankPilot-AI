@@ -14,6 +14,9 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class AgentType(str, enum.Enum):
     content_optimization = "content_optimization"
+    post_change_qa = "post_change_qa"
+    seo_strategy = "seo_strategy"
+    internal_linking = "internal_linking"
 
 
 class AgentRunStatus(str, enum.Enum):

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.ai import content_agent
+from app.ai import content_agent, runner
 from app.ai.budget import BudgetExceeded
 from app.ai.client import AINotConfigured
 from app.models.agent_run import AgentRun, AgentRunStatus
@@ -109,7 +109,7 @@ def test_propose_content_fix_returns_validated_proposal_and_records_agent_run(db
     website, opportunity, snapshot = _make_website_and_opportunity(db_session)
 
     fake_response = _fake_openai_response(_valid_payload(opportunity.id))
-    monkeypatch.setattr(content_agent, "get_openai_client", lambda: _FakeClient(fake_response))
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
 
     proposal = content_agent.propose_content_fix(db_session, website, opportunity, snapshot)
 
@@ -129,7 +129,7 @@ def test_propose_content_fix_rejects_disallowed_operation(db_session, monkeypatc
     bad_payload = _valid_payload(opportunity.id)
     bad_payload["proposed_actions"][0]["operation"] = "delete_page"
     fake_response = _fake_openai_response(bad_payload)
-    monkeypatch.setattr(content_agent, "get_openai_client", lambda: _FakeClient(fake_response))
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
 
     with pytest.raises(ValueError):
         content_agent.propose_content_fix(db_session, website, opportunity, snapshot)
@@ -146,7 +146,7 @@ def test_propose_content_fix_rejects_malformed_json(db_session, monkeypatch):
         choices=[SimpleNamespace(message=message)],
         usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
     )
-    monkeypatch.setattr(content_agent, "get_openai_client", lambda: _FakeClient(fake_response))
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
 
     with pytest.raises(ValidationError):
         content_agent.propose_content_fix(db_session, website, opportunity, snapshot)
@@ -161,7 +161,7 @@ def test_propose_content_fix_requires_openai_configuration(db_session, monkeypat
     def raise_not_configured():
         raise AINotConfigured("not configured")
 
-    monkeypatch.setattr(content_agent, "get_openai_client", raise_not_configured)
+    monkeypatch.setattr(runner, "get_openai_client", raise_not_configured)
 
     with pytest.raises(AINotConfigured):
         content_agent.propose_content_fix(db_session, website, opportunity, snapshot)
@@ -225,7 +225,7 @@ def test_injected_page_content_cannot_bypass_the_operation_allowlist(db_session,
     compromised_payload["requires_approval"] = False
 
     fake_response = _fake_openai_response(compromised_payload)
-    monkeypatch.setattr(content_agent, "get_openai_client", lambda: _FakeClient(fake_response))
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
 
     with pytest.raises(ValueError):
         content_agent.propose_content_fix(db_session, website, opportunity, snapshot)

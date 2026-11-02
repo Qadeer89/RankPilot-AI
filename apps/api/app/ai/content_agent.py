@@ -10,23 +10,15 @@ returned (AI_AGENT_SPECIFICATION.md #5, #6).
 from __future__ import annotations
 
 import json
-import logging
-from datetime import datetime, timezone
 
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.ai.budget import enforce_daily_budget
-from app.ai.client import get_openai_client
-from app.ai.pricing import estimate_cost_usd
+from app.ai.runner import run_ai_agent
 from app.ai.schemas import RESPONSE_JSON_SCHEMA, OpportunityProposal
-from app.config import get_settings
-from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
+from app.models.agent_run import AgentType
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_opportunity import SEOOpportunity
 from app.models.website import Website
-
-logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are the RankPilot AI Content Optimization Agent.
 
@@ -72,60 +64,22 @@ def _build_user_prompt(website: Website, opportunity: SEOOpportunity, snapshot: 
     )
 
 
+def _parse_proposal(raw_content: str) -> OpportunityProposal:
+    proposal = OpportunityProposal.model_validate_json(raw_content)
+    proposal.validate_allowed_operations()
+    return proposal
+
+
 def propose_content_fix(
     db: Session, website: Website, opportunity: SEOOpportunity, snapshot: PageSnapshot | None
 ) -> OpportunityProposal:
-    enforce_daily_budget(db, website.id)
-
-    settings = get_settings()
-    client = get_openai_client()
-
-    agent_run = AgentRun(
-        website_id=website.id,
-        agent_type=AgentType.content_optimization,
-        model=settings.openai_model,
-        status=AgentRunStatus.pending,
-        started_at=datetime.now(timezone.utc),
-        result_reference=opportunity.id,
+    return run_ai_agent(
+        db,
+        website,
+        AgentType.content_optimization,
+        opportunity.id,
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=_build_user_prompt(website, opportunity, snapshot),
+        response_json_schema=RESPONSE_JSON_SCHEMA,
+        parse_fn=_parse_proposal,
     )
-    db.add(agent_run)
-    db.flush()
-
-    try:
-        response = client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": _build_user_prompt(website, opportunity, snapshot)},
-            ],
-            response_format={"type": "json_schema", "json_schema": RESPONSE_JSON_SCHEMA},
-            max_tokens=settings.openai_max_output_tokens,
-        )
-
-        raw_content = response.choices[0].message.content
-        usage = response.usage
-
-        proposal = OpportunityProposal.model_validate_json(raw_content)
-        proposal.validate_allowed_operations()
-
-        agent_run.input_tokens = usage.prompt_tokens if usage else 0
-        agent_run.output_tokens = usage.completion_tokens if usage else 0
-        agent_run.estimated_cost = estimate_cost_usd(
-            settings.openai_model, agent_run.input_tokens, agent_run.output_tokens
-        )
-        agent_run.status = AgentRunStatus.succeeded
-        agent_run.completed_at = datetime.now(timezone.utc)
-        db.flush()
-        return proposal
-    except (ValidationError, ValueError, KeyError, AttributeError) as exc:
-        logger.warning("AI proposal failed schema/allowlist validation: %s", exc)
-        agent_run.status = AgentRunStatus.failed
-        agent_run.completed_at = datetime.now(timezone.utc)
-        db.flush()
-        raise
-    except Exception:
-        logger.exception("AI proposal call failed for opportunity %s", opportunity.id)
-        agent_run.status = AgentRunStatus.failed
-        agent_run.completed_at = datetime.now(timezone.utc)
-        db.flush()
-        raise
