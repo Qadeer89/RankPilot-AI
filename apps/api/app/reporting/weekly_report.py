@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.change_record import ChangeRecord, ValidationStatus
 from app.models.crawl_job import CrawlJob
+from app.models.ga4_daily_metric import Ga4DailyMetric
 from app.models.keyword_observation import KeywordObservation
 from app.models.report import Report, ReportType
 from app.models.seo_finding import FindingStatus, SEOFinding
@@ -87,6 +88,27 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
         )
         search_performance = {"clicks": int(totals[0]), "impressions": int(totals[1])}
 
+    ga4_summary = None
+    if website.ga4_property_id:
+        ga4_totals = (
+            db.query(
+                func.coalesce(func.sum(Ga4DailyMetric.sessions), 0),
+                func.coalesce(func.sum(Ga4DailyMetric.total_users), 0),
+                func.coalesce(func.sum(Ga4DailyMetric.conversions), 0),
+            )
+            .filter(
+                Ga4DailyMetric.website_id == website.id,
+                Ga4DailyMetric.date >= period_start,
+                Ga4DailyMetric.date <= period_end,
+            )
+            .one()
+        )
+        ga4_summary = {
+            "sessions": int(ga4_totals[0]),
+            "total_users": int(ga4_totals[1]),
+            "conversions": int(ga4_totals[2]),
+        }
+
     content = {
         "crawls": {
             "count": len(crawl_jobs),
@@ -103,8 +125,9 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
             "failed_validation": changes_failed,
         },
         "search_performance": search_performance,
+        "ga4": ga4_summary,
         "disclaimer": (
-            "Search performance figures are delayed/aggregated Search Console data and are "
+            "Search performance and GA4 figures are delayed/aggregated data and are "
             "not attributed to any specific change in this report."
         ),
     }

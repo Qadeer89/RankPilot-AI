@@ -39,6 +39,7 @@ def test_weekly_report_summarizes_crawl_and_findings(db_session, monkeypatch):
     assert report.content_json["findings"]["open_now"] > 0
     assert report.content_json["changes"]["executed"] == 0
     assert report.content_json["search_performance"] is None
+    assert report.content_json["ga4"] is None
     assert "disclaimer" in report.content_json
 
 
@@ -67,3 +68,28 @@ def test_weekly_report_includes_search_performance_when_connected(db_session, mo
 
     report = generate_weekly_report(db_session, website)
     assert report.content_json["search_performance"] == {"clicks": 5, "impressions": 100}
+
+
+def test_weekly_report_includes_ga4_when_connected(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+    website.ga4_property_id = "properties/111"
+    db_session.flush()
+
+    from datetime import date, timedelta
+
+    from app.models.ga4_daily_metric import Ga4DailyMetric
+
+    db_session.add(
+        Ga4DailyMetric(
+            website_id=website.id,
+            date=date.today() - timedelta(days=2),
+            sessions=42,
+            total_users=30,
+            conversions=5,
+        )
+    )
+    db_session.flush()
+
+    report = generate_weekly_report(db_session, website)
+    assert report.content_json["ga4"] == {"sessions": 42, "total_users": 30, "conversions": 5}

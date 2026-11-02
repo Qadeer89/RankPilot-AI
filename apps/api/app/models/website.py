@@ -54,6 +54,7 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Enum(WebsiteStatus, name="website_status"), default=WebsiteStatus.active, nullable=False
     )
     search_console_site_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    ga4_property_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="websites")
     verifications: Mapped[list["WebsiteVerification"]] = relationship(

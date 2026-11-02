@@ -1,4 +1,5 @@
-"""Encrypted storage and refresh of Google OAuth tokens
+"""Encrypted storage and refresh of Google OAuth tokens, shared by every
+Google integration (Search Console, GA4, ...)
 (RP-0501, SECURITY_SPECIFICATION.md #3: "Encrypt OAuth/connector tokens at
 rest ... rotate/revoke on disconnect").
 """
@@ -7,13 +8,14 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.core.encryption import decrypt_text, encrypt_text
-from app.integrations.google_search_console import TokenSet, refresh_access_token
+from app.integrations.google_oauth_common import TokenSet
 from app.models.oauth_connection import OAuthConnection, OAuthConnectionStatus, OAuthProvider
 
 
@@ -34,19 +36,18 @@ def _deserialize(encrypted: str) -> dict:
     return json.loads(decrypt_text(encrypted))
 
 
-def upsert_connection(db: Session, organization_id: uuid.UUID, token_set: TokenSet) -> OAuthConnection:
+def upsert_connection(
+    db: Session, organization_id: uuid.UUID, provider: OAuthProvider, token_set: TokenSet
+) -> OAuthConnection:
     connection = (
         db.query(OAuthConnection)
-        .filter(
-            OAuthConnection.organization_id == organization_id,
-            OAuthConnection.provider == OAuthProvider.google_search_console,
-        )
+        .filter(OAuthConnection.organization_id == organization_id, OAuthConnection.provider == provider)
         .one_or_none()
     )
     if connection is None:
         connection = OAuthConnection(
             organization_id=organization_id,
-            provider=OAuthProvider.google_search_console,
+            provider=provider,
             encrypted_token_reference=_serialize(token_set),
             scopes=[token_set.scope],
             status=OAuthConnectionStatus.connected,
@@ -73,18 +74,24 @@ def upsert_connection(db: Session, organization_id: uuid.UUID, token_set: TokenS
     return connection
 
 
-def get_valid_access_token(db: Session, organization_id: uuid.UUID) -> str:
+def get_valid_access_token(
+    db: Session,
+    organization_id: uuid.UUID,
+    provider: OAuthProvider,
+    *,
+    refresh_fn: Callable[[str], TokenSet],
+) -> str:
     connection = (
         db.query(OAuthConnection)
         .filter(
             OAuthConnection.organization_id == organization_id,
-            OAuthConnection.provider == OAuthProvider.google_search_console,
+            OAuthConnection.provider == provider,
             OAuthConnection.status == OAuthConnectionStatus.connected,
         )
         .one_or_none()
     )
     if connection is None:
-        raise LookupError("No connected Google Search Console account for this organization.")
+        raise LookupError(f"No connected {provider.value} account for this organization.")
 
     stored = _deserialize(connection.encrypted_token_reference)
 
@@ -96,20 +103,17 @@ def get_valid_access_token(db: Session, organization_id: uuid.UUID) -> str:
         db.flush()
         raise LookupError("Access token expired and no refresh token is available; reconnect required.")
 
-    refreshed = refresh_access_token(stored["refresh_token"])
+    refreshed = refresh_fn(stored["refresh_token"])
     connection.encrypted_token_reference = _serialize(refreshed)
     connection.expires_at = refreshed.expires_at
     db.flush()
     return refreshed.access_token
 
 
-def disconnect(db: Session, organization_id: uuid.UUID) -> None:
+def disconnect(db: Session, organization_id: uuid.UUID, provider: OAuthProvider) -> None:
     connection = (
         db.query(OAuthConnection)
-        .filter(
-            OAuthConnection.organization_id == organization_id,
-            OAuthConnection.provider == OAuthProvider.google_search_console,
-        )
+        .filter(OAuthConnection.organization_id == organization_id, OAuthConnection.provider == provider)
         .one_or_none()
     )
     if connection is None:

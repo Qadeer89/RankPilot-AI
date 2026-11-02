@@ -34,3 +34,24 @@ class SearchPerformanceResponse(BaseModel):
         "Search Console data is delayed and aggregated; it is not real-time ranking telemetry."
     )
     rows: list[SearchPerformanceRow]
+
+
+class Ga4PropertiesResponse(BaseModel):
+    properties: list[dict]
+
+
+class SelectGa4PropertyRequest(BaseModel):
+    property_id: str
+
+
+class Ga4MetricsRow(BaseModel):
+    date: date
+    sessions: int
+    total_users: int
+    conversions: int
+
+
+class Ga4MetricsResponse(BaseModel):
+    source: str = "ga4"
+    freshness_note: str = "GA4 data is delayed and aggregated, not real-time."
+    rows: list[Ga4MetricsRow]

@@ -13,8 +13,9 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.integrations import token_store
-from app.integrations.google_search_console import query_search_analytics
+from app.integrations.google_search_console import query_search_analytics, refresh_access_token
 from app.models.keyword_observation import KeywordObservation
+from app.models.oauth_connection import OAuthProvider
 from app.models.website import Website
 
 REPORTING_LAG_DAYS = 3
@@ -27,7 +28,9 @@ def sync_search_performance(
     if not website.search_console_site_url:
         raise LookupError("No Search Console property is selected for this website yet.")
 
-    access_token = token_store.get_valid_access_token(db, website.organization_id)
+    access_token = token_store.get_valid_access_token(
+        db, website.organization_id, OAuthProvider.google_search_console, refresh_fn=refresh_access_token
+    )
 
     end_date = date.today() - timedelta(days=REPORTING_LAG_DAYS)
     start_date = end_date - timedelta(days=window_days)

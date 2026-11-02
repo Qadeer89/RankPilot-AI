@@ -15,9 +15,11 @@ from app.integrations.google_search_console import (
     decode_state,
     exchange_code_for_tokens,
     list_sites,
+    refresh_access_token,
 )
 from app.models.keyword_observation import KeywordObservation
 from app.models.membership import Membership, MembershipRole
+from app.models.oauth_connection import OAuthProvider
 from app.schemas.integrations import (
     ConnectUrlResponse,
     SearchPerformanceResponse,
@@ -58,7 +60,7 @@ def google_search_console_callback(
     try:
         organization_id = decode_state(state)
         token_set = exchange_code_for_tokens(code)
-        token_store.upsert_connection(db, organization_id, token_set)
+        token_store.upsert_connection(db, organization_id, OAuthProvider.google_search_console, token_set)
         db.commit()
     except (GoogleApiError, GoogleIntegrationNotConfigured) as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -75,7 +77,7 @@ def disconnect_google(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
 ) -> None:
-    token_store.disconnect(db, organization_id)
+    token_store.disconnect(db, organization_id, OAuthProvider.google_search_console)
     db.commit()
 
 
@@ -91,7 +93,9 @@ def get_search_properties(
 ) -> SearchPropertiesResponse:
     get_website_or_404(db, organization_id, website_id)
     try:
-        access_token = token_store.get_valid_access_token(db, organization_id)
+        access_token = token_store.get_valid_access_token(
+            db, organization_id, OAuthProvider.google_search_console, refresh_fn=refresh_access_token
+        )
         db.commit()
         return SearchPropertiesResponse(site_urls=list_sites(access_token))
     except LookupError as exc:

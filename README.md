@@ -87,6 +87,20 @@ Phase 5 ("Daily operations and reporting") are built:
   back up or restore. The verification log at the bottom of that file is empty until someone
   runs it for real.
 
+## Beyond MVP (P1)
+
+The MVP (Phases 0-5 above) is functionally complete end to end. Work since then is P1 scope
+per `MASTER_SPEC.md` #5:
+
+- **GA4 integration** (`apps/api/app/integrations/google_analytics.py`, `ga4_sync.py`):
+  mirrors the Search Console integration — OAuth plumbing is shared
+  (`google_oauth_common.py`, also refactored `token_store.py` to be provider-generic rather
+  than hardcoded to Search Console), property listing via the Admin API's
+  `accountSummaries`, a daily sessions/users/conversions sync via the Data API's `runReport`
+  into `Ga4DailyMetric` rows, and a GA4 section in the weekly report. Same credential-gating
+  pattern as Search Console (see below) — reuses the same Google OAuth client, a separate
+  connection/scope/callback so a customer can grant one without the other.
+
 Not yet built, and not buildable from inside this environment without more than code:
 
 - **Load/resource testing on the shared VPS** (RP-0905): needs the actual host — its real
@@ -96,8 +110,8 @@ Not yet built, and not buildable from inside this environment without more than 
 - **Founder pilot acceptance and beta go/no-go** (RP-0907): a product and business decision
   for the founder to make by using the product against real pilot sites, not something that
   gets built.
-- GA4, the remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change
-  QA Assistant), agency multi-client views, billing.
+- The remaining AI agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change QA
+  Assistant), agency multi-client views, billing.
 
 See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
 
@@ -117,11 +131,15 @@ credential:
   (a Google Cloud OAuth client with the Search Console API enabled) and
   `RANKPILOT_GOOGLE_OAUTH_REDIRECT_URI` matching what's registered there. Unset, `/connect`
   returns a clear 503 rather than crashing.
+- **GA4** needs the same `RANKPILOT_GOOGLE_CLIENT_ID` / `RANKPILOT_GOOGLE_CLIENT_SECRET` (the
+  Admin API and Data API enabled on that OAuth client) plus
+  `RANKPILOT_GOOGLE_GA4_OAUTH_REDIRECT_URI` (defaults to
+  `.../integrations/google/analytics/callback`, a separate callback from Search Console's).
 - **OpenAI** needs `RANKPILOT_OPENAI_API_KEY`. Unset, `/proposals` returns a clear 503. API
   billing is separate from a ChatGPT subscription (`AI_AGENT_SPECIFICATION.md` #3) — check the
   OpenAI platform account has credit before relying on this.
 
-Both also need `RANKPILOT_TOKEN_ENCRYPTION_KEY` (generate with
+All three also need `RANKPILOT_TOKEN_ENCRYPTION_KEY` (generate with
 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
 to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection.
 

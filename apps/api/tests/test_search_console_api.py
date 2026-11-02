@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.api.v1.endpoints import search_console as search_console_endpoint
 from app.core import url_safety
-from app.integrations.google_search_console import TokenSet
+from app.integrations.google_oauth_common import TokenSet
+from app.models.oauth_connection import OAuthProvider
 
 
 def _register_with_org(client, email, org_name):
@@ -57,6 +58,7 @@ def test_select_property_then_sync_and_read_performance(client, monkeypatch, db_
     token_store.upsert_connection(
         db_session,
         uuid.UUID(org_id),
+        OAuthProvider.google_search_console,
         TokenSet(
             access_token="access-1",
             refresh_token="refresh-1",

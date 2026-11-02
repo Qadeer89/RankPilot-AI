@@ -4,6 +4,7 @@ from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
+from app.models.ga4_daily_metric import Ga4DailyMetric
 from app.models.keyword_observation import KeywordObservation
 from app.models.membership import Membership, MembershipRole
 from app.models.notification import Notification, NotificationChannel, NotificationStatus
@@ -37,6 +38,7 @@ __all__ = [
     "CrawlJob",
     "CrawlStatus",
     "CrawlTrigger",
+    "Ga4DailyMetric",
     "KeywordObservation",
     "Membership",
     "MembershipRole",

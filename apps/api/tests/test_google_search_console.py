@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from app.config import get_settings
+from app.integrations import google_oauth_common
 from app.integrations import google_search_console as gsc
 
 
@@ -34,7 +35,7 @@ def test_build_authorization_url_requires_configuration(monkeypatch):
         google_client_id = None
         google_client_secret = None
 
-    monkeypatch.setattr(gsc, "get_settings", lambda: _UnconfiguredSettings())
+    monkeypatch.setattr(google_oauth_common, "get_settings", lambda: _UnconfiguredSettings())
     with pytest.raises(gsc.GoogleIntegrationNotConfigured):
         gsc.build_authorization_url(uuid.uuid4())
 
@@ -46,7 +47,7 @@ def test_decode_state_rejects_invalid_token():
 
 def test_exchange_code_for_tokens(monkeypatch):
     def fake_post(url, data=None, json=None, headers=None, timeout=None):
-        assert url == gsc.TOKEN_ENDPOINT
+        assert url == google_oauth_common.TOKEN_ENDPOINT
         assert data["grant_type"] == "authorization_code"
         return _FakeResponse(
             200,
@@ -59,7 +60,7 @@ def test_exchange_code_for_tokens(monkeypatch):
             },
         )
 
-    monkeypatch.setattr(gsc.httpx, "post", fake_post)
+    monkeypatch.setattr(google_oauth_common.httpx, "post", fake_post)
     token_set = gsc.exchange_code_for_tokens("some-code")
     assert token_set.access_token == "access-123"
     assert token_set.refresh_token == "refresh-456"
@@ -67,7 +68,7 @@ def test_exchange_code_for_tokens(monkeypatch):
 
 def test_exchange_code_for_tokens_surfaces_http_errors(monkeypatch):
     monkeypatch.setattr(
-        gsc.httpx, "post", lambda *a, **k: _FakeResponse(400, {"error": "invalid_grant"})
+        google_oauth_common.httpx, "post", lambda *a, **k: _FakeResponse(400, {"error": "invalid_grant"})
     )
     with pytest.raises(gsc.GoogleApiError):
         gsc.exchange_code_for_tokens("bad-code")

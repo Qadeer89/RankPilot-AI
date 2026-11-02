@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/integrations/google/search-console/callback"
 
+    # GA4, optional per MASTER_SPEC.md ("GA4 is optional"). Same OAuth
+    # client as Search Console; a separate connection/scope/callback since
+    # a customer may grant one without the other.
+    google_ga4_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/integrations/google/analytics/callback"
+
     # Symmetric key (Fernet) used to encrypt OAuth tokens at rest
     # (SECURITY_SPECIFICATION.md #3: "Encrypt OAuth/connector tokens at
     # rest"). Generate with: python -c "from cryptography.fernet import

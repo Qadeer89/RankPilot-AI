@@ -14,6 +14,7 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class OAuthProvider(str, enum.Enum):
     google_search_console = "google_search_console"
+    google_analytics = "google_analytics"
 
 
 class OAuthConnectionStatus(str, enum.Enum):
