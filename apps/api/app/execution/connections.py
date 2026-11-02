@@ -181,7 +181,10 @@ def connect_shopify(db: Session, website: Website, shop_domain: str, access_toke
         ConnectorType.shopify,
         encrypted_secret=encrypted,
         config={"shop_domain": shop_domain},
-        granted_scopes=["read_content", "write_content"],
+        # RP13-016: find_target searches both pages and products
+        # (RESOURCE_TYPES_TO_SEARCH), so both resource types' scopes are
+        # needed -- write_content alone doesn't cover product metafields.
+        granted_scopes=["read_content", "write_content", "read_products", "write_products"],
     )
 
 

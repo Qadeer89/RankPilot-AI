@@ -71,6 +71,8 @@ supported connector.
 9.  [QA Test Strategy](QA_TEST_STRATEGY.md)
 10. [MVP Implementation Roadmap](MVP_IMPLEMENTATION_ROADMAP.md)
 11. [Development Tasks](DEVELOPMENT_TASKS.md)
+12. [Connector Operations Reference](CONNECTOR_OPERATIONS_REFERENCE.md) --- exact,
+    code-grounded operation/scope/rollback reference for every write connector (RP13-016)
 
 ## Recommended reading order
 
