@@ -17,8 +17,13 @@ class AuditEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "audit_events"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    # RP13-020: audit records must outlive the organization they were
+    # about -- deleting a workspace (MASTER_SPEC.md #11: "Customer can ...
+    # delete the workspace") must not silently erase the accountability
+    # trail of writes/approvals/executions that happened before deletion.
+    # SET NULL keeps the row; only the now-meaningless link is dropped.
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -21,11 +21,16 @@ class UsageRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "usage_records"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    # RP13-020: billing/usage history must outlive the organization or
+    # website it was about -- deleting either must not silently erase
+    # cost-accounting history that's still needed for revenue/cost
+    # reconciliation. SET NULL keeps the row; only the now-meaningless
+    # link is dropped.
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
     website_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("websites.id", ondelete="CASCADE"), nullable=True, index=True
+        UUID(as_uuid=True), ForeignKey("websites.id", ondelete="SET NULL"), nullable=True, index=True
     )
     metric: Mapped[str] = mapped_column(String(64), nullable=False)
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
