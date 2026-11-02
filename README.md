@@ -10,7 +10,8 @@ covers what's implemented so far and how to run it.
 ## Status
 
 Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_ROADMAP.md`,
-"Platform foundation"), and Phase 2 ("Crawl and deterministic SEO baseline") are built:
+"Platform foundation"), Phase 2 ("Crawl and deterministic SEO baseline"), and most of Phase 3
+("Search performance and AI opportunities") are built:
 
 - Authentication (register/login/me), organizations, role-based memberships, tenant isolation.
 - Website registration with SSRF-safe URL validation (RP-0202) and a working domain
@@ -27,15 +28,51 @@ Phase 0 (environment readiness, documented here), Phase 1 (`MVP_IMPLEMENTATION_R
   evidence-backed, upserted across crawls, and auto-resolve when a rule stops firing.
 - `site_crawl` + `technical_audit` run as one Celery task per crawl (`app/tasks/crawl.py`),
   triggered via `POST .../crawls` and polled via `GET .../crawls/{id}`, `.../pages`,
-  `.../findings`.
+  `.../findings`. The same task also refreshes opportunities (below) as its last step.
+- Deterministic opportunity scoring (`apps/api/app/opportunities/`, RP-0603,
+  `SEO_AUTOMATION_ENGINE.md` #3): a fixed per-rule-code table of impact/effort/risk_tier turns
+  open findings into scored, explainable opportunities (`GET .../opportunities`). AI never
+  decides impact or priority — only this deterministic scoring does.
+- Google OAuth + Search Console integration (`apps/api/app/integrations/`, RP-0501–RP-0504):
+  authorization-code flow with encrypted-at-rest token storage and automatic refresh,
+  property listing/selection, and a sync job that stores click/impression/CTR/position data
+  as `KeywordObservation` rows with an explicit "delayed and aggregated" freshness note on
+  every read (`GET .../search-performance`).
+- A server-side OpenAI Content Optimization Agent (`apps/api/app/ai/`, RP-0601/0602/0604/0607):
+  drafts a title/meta-description proposal for one opportunity at a time, with page content
+  wrapped and labeled as untrusted input the model must not treat as instructions
+  (`AI_AGENT_SPECIFICATION.md` #6), a strict JSON-schema response format, an explicit
+  operation allowlist re-checked in code (not just trusted from the schema), and a per-site
+  daily USD budget enforced before every call (`POST .../opportunities/{id}/proposals`).
+  Every call — including failed ones — is logged to `agent_runs` with token counts and
+  estimated cost.
 - Audit logging for sensitive actions.
 - Health/readiness endpoints, structured JSON logging.
 - Postgres schema + Alembic migrations, Celery worker/scheduler wiring against Redis.
 - A minimal Next.js frontend (register, login, dashboard with add-website + verification UI;
-  crawl/findings UI not yet built).
+  crawl/findings/opportunities/Search-Console UI not yet built).
 
-Not yet built: Search Console integration, AI agents, WordPress connector, billing. See
-`docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+Not yet built: GA4, WordPress connector (execution/validation/rollback), the remaining AI
+agents (Internal Linking Analyst, SEO Strategy Assistant, Post-change QA Assistant), approval
+workflow, daily scheduler, billing. See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+
+### Credential-gated integrations
+
+Both of the following are fully implemented and unit-tested (with the external call mocked),
+but **not yet exercised against the real services**, since this environment has neither
+credential:
+
+- **Google Search Console** needs `RANKPILOT_GOOGLE_CLIENT_ID` / `RANKPILOT_GOOGLE_CLIENT_SECRET`
+  (a Google Cloud OAuth client with the Search Console API enabled) and
+  `RANKPILOT_GOOGLE_OAUTH_REDIRECT_URI` matching what's registered there. Unset, `/connect`
+  returns a clear 503 rather than crashing.
+- **OpenAI** needs `RANKPILOT_OPENAI_API_KEY`. Unset, `/proposals` returns a clear 503. API
+  billing is separate from a ChatGPT subscription (`AI_AGENT_SPECIFICATION.md` #3) — check the
+  OpenAI platform account has credit before relying on this.
+
+Both also need `RANKPILOT_TOKEN_ENCRYPTION_KEY` (generate with
+`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)
+to encrypt OAuth tokens at rest. Rotating it invalidates every stored connection.
 
 ### Deliberate deviations from the doc pack
 
@@ -50,6 +87,22 @@ Not yet built: Search Console integration, AI agents, WordPress connector, billi
   (MASTER_SPEC.md #8) are out of scope until a Lighthouse-equivalent is integrated.
 - Redirect-chain length is tracked per snapshot (`page_snapshots.redirect_count`), a column not
   explicitly listed in `DATABASE_SCHEMA.md`, needed for the `REDIRECT_CHAIN` rule.
+- `API_SPECIFICATION.md` lists bare `/integrations/google/search-console/connect` and
+  `/opportunities/{id}/proposals` routes. Both are nested under the organization/website tenant
+  path for the same reason as above, **except** the OAuth callback itself
+  (`GET /integrations/google/search-console/callback`), which is intentionally left
+  un-nested: it's a fixed redirect target Google calls directly, and recovers the
+  organization from a signed `state` parameter instead of a path segment.
+- Google's `webmasters.readonly` REST API is called directly over `httpx` rather than through
+  `google-api-python-client`, to keep the dependency surface small and every request
+  auditable in `app/integrations/google_search_console.py`.
+- Only the Content Optimization Agent (title/meta-description proposals) is implemented from
+  `AI_AGENT_SPECIFICATION.md` #2's six MVP agents. The Internal Linking Analyst, SEO Strategy
+  Assistant, Execution Planner, and Post-change QA Assistant are not yet built — there's no
+  execution layer yet for a plan to feed into.
+- `site_crawl`, `technical_audit`, and `opportunity_refresh` are folded into one Celery task
+  (`app/tasks/crawl.py`) rather than three separate job types, since opportunity scoring is
+  cheap, deterministic, and always needs to follow a rule-engine pass.
 
 ## Repository layout
 
@@ -71,6 +124,15 @@ cd apps/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env   # edit RANKPILOT_DATABASE_URL / RANKPILOT_JWT_SECRET as needed
+```
+
+Generate a token-encryption key (required even if you don't configure Google/OpenAI yet —
+only the connect/sync/proposal endpoints need it at call time, but `oauth_connections` rows
+can't round-trip without one):
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# paste the output as RANKPILOT_TOKEN_ENCRYPTION_KEY in .env
 ```
 
 Create the local database once (adjust role/db names to match `.env`):
@@ -119,8 +181,9 @@ figures in `docs/README.md` are point-in-time observations, not a capacity guara
 
 ## Security notes for this scaffold
 
-- The OpenAI API key, when added, must only ever be set as a server-side environment variable
-  (`RANKPILOT_OPENAI_API_KEY`) — never committed, never sent to the frontend.
+- The OpenAI API key and Google OAuth client secret must only ever be set as server-side
+  environment variables — never committed, never sent to the frontend. Same for
+  `RANKPILOT_TOKEN_ENCRYPTION_KEY`.
 - The frontend currently stores the JWT in `localStorage` for simplicity. Before any real
   (non-founder-pilot) usage, move to an httpOnly session cookie per
   `docs/SECURITY_SPECIFICATION.md` #2.
@@ -128,3 +191,10 @@ figures in `docs/README.md` are point-in-time observations, not a capacity guara
   onboarding and the crawler's fetch layer (`apps/api/app/crawler/fetch.py`), which
   re-validates every redirect hop independently rather than trusting httpx's own
   `follow_redirects`.
+- Google OAuth access/refresh tokens are encrypted at rest (Fernet) in
+  `oauth_connections.encrypted_token_reference` and never logged; disconnecting best-effort
+  revokes the token with Google in addition to flipping local status.
+- The AI content agent's user prompt explicitly labels crawled page content as untrusted and
+  instructs the model not to treat it as instructions; its output is independently re-checked
+  against an operation allowlist in code, not trusted from the JSON schema alone
+  (`SECURITY_SPECIFICATION.md` #5).

@@ -225,10 +225,12 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
         crawl_job.pages_fetched = pages_fetched
         crawl_job.error_summary = "; ".join(errors[:20]) if errors else None
         crawl_job.completed_at = datetime.now(timezone.utc)
+        db.flush()
         return crawl_job
     except Exception as exc:  # noqa: BLE001 - surface any unexpected failure on the job record
         logger.exception("Crawl failed for website %s", website.id)
         crawl_job.status = CrawlStatus.failed
         crawl_job.error_summary = str(exc)[:2000]
         crawl_job.completed_at = datetime.now(timezone.utc)
+        db.flush()
         return crawl_job

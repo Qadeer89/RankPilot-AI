@@ -19,7 +19,26 @@ class Settings(BaseSettings):
     # Crawl safety defaults (SSRF protections, RP-0202).
     allowed_url_schemes: tuple[str, ...] = ("http", "https")
 
+    # OpenAI (AI_AGENT_SPECIFICATION.md #3). Server-side only; never exposed
+    # to the frontend, never committed, never logged.
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    openai_request_timeout_seconds: float = 30.0
+    openai_max_output_tokens: int = 1200
+    # Per-site daily AI spend ceiling in USD (AI_AGENT_SPECIFICATION.md #7).
+    ai_daily_budget_usd_per_site: float = 1.0
+
+    # Google OAuth / Search Console (RP-0501..RP-0504). All optional: unset
+    # means the integration is simply not available yet, not a crash.
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/integrations/google/search-console/callback"
+
+    # Symmetric key (Fernet) used to encrypt OAuth tokens at rest
+    # (SECURITY_SPECIFICATION.md #3: "Encrypt OAuth/connector tokens at
+    # rest"). Generate with: python -c "from cryptography.fernet import
+    # Fernet; print(Fernet.generate_key().decode())"
+    token_encryption_key: str | None = None
 
 
 @lru_cache

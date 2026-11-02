@@ -142,6 +142,11 @@ def _persist_findings(
             if in_scope and (finding.page_id, finding.rule_code) not in touched_keys:
                 finding.status = FindingStatus.resolved
 
+    # Flush so a caller that immediately runs another read (e.g.
+    # refresh_opportunities_for_website, in the same transaction) sees these
+    # status changes rather than stale pre-mutation rows: the production
+    # session runs with autoflush=False.
+    db.flush()
     return persisted
 
 
