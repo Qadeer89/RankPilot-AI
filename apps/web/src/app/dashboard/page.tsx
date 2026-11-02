@@ -128,9 +128,14 @@ export default function DashboardPage() {
       <div className={styles.container}>
         <div className={styles.header}>
           <h1>{organization?.name ?? "Dashboard"}</h1>
-          <button className={styles.logout} onClick={handleLogout}>
-            Log out ({me.user.email})
-          </button>
+          <div>
+            <Link href="/dashboard/organization" style={{ marginRight: 16, fontSize: 14 }}>
+              Agency overview &amp; settings
+            </Link>
+            <button className={styles.logout} onClick={handleLogout}>
+              Log out ({me.user.email})
+            </button>
+          </div>
         </div>
 
         {error && <p className={styles.error}>{error}</p>}

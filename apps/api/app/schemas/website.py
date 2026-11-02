@@ -21,6 +21,7 @@ class WebsiteResponse(BaseModel):
     status: str
     automation_policy: dict
     search_console_site_url: str | None
+    ga4_property_id: str | None
 
     model_config = {"from_attributes": True}
 

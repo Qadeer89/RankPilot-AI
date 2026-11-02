@@ -17,12 +17,14 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from app.connectors.errors import ConnectorError, safe_request
+
 YOAST_META_DESCRIPTION_KEY = "_yoast_wpseo_metadesc"
 POST_TYPES_TO_SEARCH = ("pages", "posts")
 REQUEST_TIMEOUT_SECONDS = 15.0
 
 
-class WordPressConnectorError(RuntimeError):
+class WordPressConnectorError(ConnectorError):
     pass
 
 
@@ -50,10 +52,12 @@ def verify_credentials(credentials: WordPressCredentials) -> dict:
     """Confirm the Application Password works and return the WP user it
     authenticates as. Raises WordPressConnectorError on any failure.
     """
-    response = httpx.get(
+    response = safe_request(
+        httpx.get,
         f"{_api_base(credentials.site_url)}/users/me",
         auth=credentials.auth,
         timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
     )
     if response.status_code != 200:
         raise WordPressConnectorError(
@@ -70,11 +74,13 @@ def find_post_by_url(credentials: WordPressCredentials, target_url: str) -> tupl
     slug = urlsplit(target_url).path.rstrip("/").rsplit("/", 1)[-1] or ""
 
     for post_type in POST_TYPES_TO_SEARCH:
-        response = httpx.get(
+        response = safe_request(
+            httpx.get,
             f"{_api_base(credentials.site_url)}/{post_type}",
             params={"slug": slug},
             auth=credentials.auth,
             timeout=REQUEST_TIMEOUT_SECONDS,
+            error_cls=WordPressConnectorError,
         )
         if response.status_code == 200:
             results = response.json()
@@ -85,10 +91,12 @@ def find_post_by_url(credentials: WordPressCredentials, target_url: str) -> tupl
 
 
 def get_resource(credentials: WordPressCredentials, post_type: str, post_id: int) -> dict:
-    response = httpx.get(
+    response = safe_request(
+        httpx.get,
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
     )
     if response.status_code != 200:
         raise WordPressConnectorError(
@@ -106,11 +114,13 @@ def current_meta_description(resource: dict) -> str:
 
 
 def update_title(credentials: WordPressCredentials, post_type: str, post_id: int, new_title: str) -> dict:
-    response = httpx.post(
+    response = safe_request(
+        httpx.post,
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         json={"title": new_title},
         timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
     )
     if response.status_code != 200:
         raise WordPressConnectorError(
@@ -122,11 +132,13 @@ def update_title(credentials: WordPressCredentials, post_type: str, post_id: int
 def update_meta_description(
     credentials: WordPressCredentials, post_type: str, post_id: int, new_description: str
 ) -> dict:
-    response = httpx.post(
+    response = safe_request(
+        httpx.post,
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         json={"meta": {YOAST_META_DESCRIPTION_KEY: new_description}},
         timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
     )
     if response.status_code == 400:
         raise UnsupportedOperation(

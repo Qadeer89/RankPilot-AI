@@ -7,37 +7,58 @@ import {
   ApiError,
   ChangeRecord,
   CrawlJob,
+  Ga4Metrics,
+  Ga4Property,
+  InternalLinkSuggestions,
   Opportunity,
   OpportunityProposal,
   Page,
+  QaSummary,
   Report,
   SEOFinding,
   SEOTask,
   SearchPerformance,
+  StrategySummary,
   Website,
   WebsiteConnection,
   approveTask,
+  connectGitHub,
+  connectShopify,
+  connectWebflow,
   connectWordPress,
   createProposal,
   createTasks,
+  disconnectGa4,
+  disconnectGitHub,
+  disconnectShopify,
+  disconnectWebflow,
   disconnectWordPress,
   executeTask,
+  getGa4Metrics,
+  getGa4Properties,
+  getInternalLinkSuggestions,
   getMe,
+  getQaSummary,
   getSearchPerformance,
   getSearchProperties,
   getWebsite,
+  getWeeklyStrategy,
   listConnections,
   listCrawls,
   listFindings,
   listOpportunities,
+  listOrphanPages,
   listPages,
   listReports,
   listTasks,
   pauseWebsite,
   rejectTask,
   rollbackChange,
+  selectGa4Property,
   selectSearchProperty,
+  startGa4Connect,
   startGoogleConnect,
+  syncGa4,
   syncSearchConsole,
   triggerCrawl,
   updateWebsiteSettings,
@@ -52,6 +73,7 @@ const TABS = [
   "opportunities",
   "tasks",
   "integrations",
+  "ai-agents",
   "reports",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -63,6 +85,7 @@ const TAB_LABELS: Record<Tab, string> = {
   opportunities: "Opportunities",
   tasks: "Tasks",
   integrations: "Integrations",
+  "ai-agents": "AI Agents",
   reports: "Reports",
 };
 
@@ -103,6 +126,24 @@ export default function WebsiteDetailClient() {
   const [wpUsername, setWpUsername] = useState("");
   const [wpPassword, setWpPassword] = useState("");
   const [sitePropertyInput, setSitePropertyInput] = useState("");
+
+  const [shopifyDomain, setShopifyDomain] = useState("");
+  const [shopifyToken, setShopifyToken] = useState("");
+  const [webflowSiteId, setWebflowSiteId] = useState("");
+  const [webflowToken, setWebflowToken] = useState("");
+  const [githubOwner, setGithubOwner] = useState("");
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubBranch, setGithubBranch] = useState("main");
+  const [githubToken, setGithubToken] = useState("");
+
+  const [ga4Properties, setGa4Properties] = useState<Ga4Property[]>([]);
+  const [ga4PropertyInput, setGa4PropertyInput] = useState("");
+  const [ga4Metrics, setGa4Metrics] = useState<Ga4Metrics | null>(null);
+
+  const [strategySummary, setStrategySummary] = useState<StrategySummary | null>(null);
+  const [orphanPages, setOrphanPages] = useState<Page[]>([]);
+  const [linkSuggestions, setLinkSuggestions] = useState<Record<string, InternalLinkSuggestions>>({});
+  const [qaSummaries, setQaSummaries] = useState<Record<string, QaSummary>>({});
 
   const pageUrlById = Object.fromEntries(pages.map((p) => [p.id, p.normalized_url]));
 
@@ -341,6 +382,208 @@ export default function WebsiteDetailClient() {
     }
   }
 
+  async function handleConnectShopify() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await connectShopify(token, orgId, websiteId, shopifyDomain, shopifyToken);
+      setShopifyDomain("");
+      setShopifyToken("");
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to connect Shopify.");
+    }
+  }
+
+  async function handleDisconnectShopify() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await disconnectShopify(token, orgId, websiteId);
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Shopify.");
+    }
+  }
+
+  async function handleConnectWebflow() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await connectWebflow(token, orgId, websiteId, webflowSiteId, webflowToken);
+      setWebflowSiteId("");
+      setWebflowToken("");
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to connect Webflow.");
+    }
+  }
+
+  async function handleDisconnectWebflow() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await disconnectWebflow(token, orgId, websiteId);
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Webflow.");
+    }
+  }
+
+  async function handleConnectGitHub() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await connectGitHub(token, orgId, websiteId, githubOwner, githubRepo, githubBranch, githubToken);
+      setGithubOwner("");
+      setGithubRepo("");
+      setGithubToken("");
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to connect GitHub.");
+    }
+  }
+
+  async function handleDisconnectGitHub() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await disconnectGitHub(token, orgId, websiteId);
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GitHub.");
+    }
+  }
+
+  async function handleConnectGa4() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      const { authorization_url } = await startGa4Connect(token, orgId);
+      window.location.href = authorization_url;
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to start GA4 connect.");
+    }
+  }
+
+  async function handleDisconnectGa4() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await disconnectGa4(token, orgId);
+      setGa4Properties([]);
+      setGa4Metrics(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GA4.");
+    }
+  }
+
+  async function handleLoadGa4Properties() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      const { properties } = await getGa4Properties(token, orgId, websiteId);
+      setGa4Properties(properties);
+      if (properties.length > 0) setGa4PropertyInput(properties[0].property_id);
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to load GA4 properties.");
+    }
+  }
+
+  async function handleSelectGa4Property() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || !ga4PropertyInput) return;
+    setError(null);
+    try {
+      setWebsite(await selectGa4Property(token, orgId, websiteId, ga4PropertyInput));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to select GA4 property.");
+    }
+  }
+
+  async function handleSyncGa4() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await syncGa4(token, orgId, websiteId);
+      setGa4Metrics(await getGa4Metrics(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to sync GA4.");
+    }
+  }
+
+  async function handleGetWeeklyStrategy() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      setStrategySummary(await getWeeklyStrategy(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to generate strategy.");
+    }
+  }
+
+  async function handleLoadOrphanPages() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      setOrphanPages(await listOrphanPages(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to load orphan pages.");
+    }
+  }
+
+  async function handleGetLinkSuggestions(pageId: string) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      const suggestions = await getInternalLinkSuggestions(token, orgId, websiteId, pageId);
+      setLinkSuggestions((prev) => ({ ...prev, [pageId]: suggestions }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to get link suggestions.");
+    }
+  }
+
+  async function handleGetQaSummary(taskId: string) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    const changeRecord = changeRecords[taskId];
+    if (!token || !orgId || !changeRecord) return;
+    setError(null);
+    try {
+      const summary = await getQaSummary(token, orgId, websiteId, changeRecord.id);
+      setQaSummaries((prev) => ({ ...prev, [taskId]: summary }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to get QA summary.");
+    }
+  }
+
   if (loading) {
     return (
       <div className={styles.page}>
@@ -564,11 +807,24 @@ export default function WebsiteDetailClient() {
                       Roll back
                     </button>
                   )}
+                  {changeRecords[task.id] && !qaSummaries[task.id] && (
+                    <button className={styles.button} onClick={() => handleGetQaSummary(task.id)}>
+                      Get QA summary
+                    </button>
+                  )}
                 </div>
                 {changeRecords[task.id] && (
                   <span className={styles.rowMeta}>
                     last execution validation: {changeRecords[task.id].validation_status}
                   </span>
+                )}
+                {qaSummaries[task.id] && (
+                  <div className={styles.proposalBox}>
+                    <span>{qaSummaries[task.id].summary}</span>
+                    <span className={styles.rowMeta}>
+                      validation status: {qaSummaries[task.id].validation_status}
+                    </span>
+                  </div>
                 )}
               </div>
             ))}
@@ -677,6 +933,291 @@ export default function WebsiteDetailClient() {
                     </div>
                   ))
               )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Google Analytics (GA4)</h2>
+              <div className={styles.row}>
+                <div className={styles.rowMain}>
+                  <span>{website.ga4_property_id ? `Property: ${website.ga4_property_id}` : "No property selected"}</span>
+                  <span className={styles.rowMeta}>
+                    Connect at the organization level first, then select a property below.
+                  </span>
+                </div>
+                <div className={styles.actions}>
+                  <button className={styles.button} onClick={handleConnectGa4}>
+                    Connect Google
+                  </button>
+                  <button className={styles.button} onClick={handleLoadGa4Properties}>
+                    Load properties
+                  </button>
+                  <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectGa4}>
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+              <div className={styles.actions}>
+                {ga4Properties.length > 0 ? (
+                  <select
+                    className={styles.input}
+                    value={ga4PropertyInput}
+                    onChange={(e) => setGa4PropertyInput(e.target.value)}
+                  >
+                    {ga4Properties.map((p) => (
+                      <option key={p.property_id} value={p.property_id}>
+                        {p.display_name || p.property_id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="properties/123456789"
+                    value={ga4PropertyInput}
+                    onChange={(e) => setGa4PropertyInput(e.target.value)}
+                  />
+                )}
+                <button className={styles.button} onClick={handleSelectGa4Property}>
+                  Select property
+                </button>
+                <button className={styles.button} onClick={handleSyncGa4}>
+                  Sync now
+                </button>
+              </div>
+              {ga4Metrics && (
+                <>
+                  <p className={styles.rowMeta}>{ga4Metrics.freshness_note}</p>
+                  {ga4Metrics.rows.slice(0, 10).map((row, i) => (
+                    <div key={i} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>{row.date}</span>
+                      </div>
+                      <span className={styles.rowMeta}>
+                        {row.sessions} sessions · {row.total_users} users · {row.conversions} conversions
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Shopify connector</h2>
+              {connections.filter((c) => c.connector_type === "shopify").length === 0 ? (
+                <div className={styles.actions}>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="shop.myshopify.com"
+                    value={shopifyDomain}
+                    onChange={(e) => setShopifyDomain(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="password"
+                    placeholder="Admin API access token"
+                    value={shopifyToken}
+                    onChange={(e) => setShopifyToken(e.target.value)}
+                  />
+                  <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleConnectShopify}>
+                    Connect
+                  </button>
+                </div>
+              ) : (
+                connections
+                  .filter((c) => c.connector_type === "shopify")
+                  .map((connection) => (
+                    <div key={connection.id} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>Shopify</span>
+                        <span className={styles.rowMeta}>
+                          {String(connection.config_json.shop_domain ?? "")} · last verified{" "}
+                          {connection.last_verified_at ?? "never"}
+                        </span>
+                      </div>
+                      <div className={styles.actions}>
+                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectShopify}>
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Webflow connector</h2>
+              {connections.filter((c) => c.connector_type === "webflow").length === 0 ? (
+                <div className={styles.actions}>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="Webflow site ID"
+                    value={webflowSiteId}
+                    onChange={(e) => setWebflowSiteId(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="password"
+                    placeholder="Site API token"
+                    value={webflowToken}
+                    onChange={(e) => setWebflowToken(e.target.value)}
+                  />
+                  <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleConnectWebflow}>
+                    Connect
+                  </button>
+                </div>
+              ) : (
+                connections
+                  .filter((c) => c.connector_type === "webflow")
+                  .map((connection) => (
+                    <div key={connection.id} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>Webflow</span>
+                        <span className={styles.rowMeta}>
+                          site {String(connection.config_json.site_id ?? "")} · last verified{" "}
+                          {connection.last_verified_at ?? "never"}
+                        </span>
+                      </div>
+                      <div className={styles.actions}>
+                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectWebflow}>
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>GitHub connector (custom-code sites)</h2>
+              <p className={styles.rowMeta}>
+                For sites with no live write API, changes are proposed as a pull request for a human to
+                review and merge — RankPilot AI never merges or deploys automatically.
+              </p>
+              {connections.filter((c) => c.connector_type === "github").length === 0 ? (
+                <div className={styles.actions}>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="owner"
+                    value={githubOwner}
+                    onChange={(e) => setGithubOwner(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="repo"
+                    value={githubRepo}
+                    onChange={(e) => setGithubRepo(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="base branch"
+                    value={githubBranch}
+                    onChange={(e) => setGithubBranch(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="password"
+                    placeholder="Personal access token"
+                    value={githubToken}
+                    onChange={(e) => setGithubToken(e.target.value)}
+                  />
+                  <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleConnectGitHub}>
+                    Connect
+                  </button>
+                </div>
+              ) : (
+                connections
+                  .filter((c) => c.connector_type === "github")
+                  .map((connection) => (
+                    <div key={connection.id} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>GitHub</span>
+                        <span className={styles.rowMeta}>
+                          {String(connection.config_json.owner ?? "")}/{String(connection.config_json.repo ?? "")} (
+                          {String(connection.config_json.base_branch ?? "")}) · last verified{" "}
+                          {connection.last_verified_at ?? "never"}
+                        </span>
+                      </div>
+                      <div className={styles.actions}>
+                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectGitHub}>
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </>
+        )}
+
+        {activeTab === "ai-agents" && (
+          <>
+            <div className={styles.card}>
+              <h2>SEO Strategy Assistant</h2>
+              <p className={styles.rowMeta}>
+                A short weekly narrative and focus areas generated from this site&apos;s open opportunities.
+              </p>
+              <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleGetWeeklyStrategy}>
+                Generate this week&apos;s strategy
+              </button>
+              {strategySummary && (
+                <div className={styles.proposalBox}>
+                  <span>{strategySummary.narrative}</span>
+                  {strategySummary.focus_areas.map((area, i) => (
+                    <span key={i} className={styles.rowMeta}>
+                      • {area}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Internal Linking Analyst</h2>
+              <p className={styles.rowMeta}>
+                Finds orphan pages (no internal links pointing to them) and suggests which existing pages
+                could link to them. Advisory only — there&apos;s no connector operation to add a link
+                automatically.
+              </p>
+              <button className={styles.button} onClick={handleLoadOrphanPages}>
+                Find orphan pages
+              </button>
+              {orphanPages.length === 0 && <p className={styles.empty}>No orphan pages loaded yet.</p>}
+              {orphanPages.map((page) => (
+                <div key={page.id} className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <div className={styles.row} style={{ border: "none", padding: 0 }}>
+                    <div className={styles.rowMain}>
+                      <span>{page.normalized_url}</span>
+                      <span className={styles.rowMeta}>indexability: {page.indexability_state}</span>
+                    </div>
+                    {!linkSuggestions[page.id] && (
+                      <button className={styles.button} onClick={() => handleGetLinkSuggestions(page.id)}>
+                        Suggest internal links
+                      </button>
+                    )}
+                  </div>
+                  {linkSuggestions[page.id] && (
+                    <div className={styles.proposalBox}>
+                      {linkSuggestions[page.id].suggestions.length === 0 && (
+                        <span className={styles.rowMeta}>No confident suggestions found.</span>
+                      )}
+                      {linkSuggestions[page.id].suggestions.map((s, i) => (
+                        <div key={i} className={styles.proposalActionLine}>
+                          {s.source_url} → &quot;{s.anchor_text}&quot; ({s.rationale})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </>
         )}

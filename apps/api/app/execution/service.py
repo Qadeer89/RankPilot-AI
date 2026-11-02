@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import OpportunityProposal
+from app.connectors import github_pr, shopify, webflow
+from app.connectors.errors import ConnectorError
 from app.connectors.wordpress import (
     UnsupportedOperation,
     WordPressConnectorError,
@@ -25,7 +27,11 @@ from app.connectors.wordpress import (
     update_title,
 )
 from app.execution import policy
-from app.execution.connections import get_wordpress_credentials
+from app.execution.connections import (
+    get_connected_content_connector,
+    get_connector_credentials,
+    get_wordpress_credentials,
+)
 from app.execution.validation import validate_wordpress_change
 from app.models.approval import Approval, ApprovalDecision
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
@@ -38,6 +44,17 @@ from app.models.website_connection import ConnectorType
 
 class ExecutionBlocked(RuntimeError):
     pass
+
+
+# Connector modules sharing the standardized find_target/get_current_value/
+# apply_change/validate_change/rollback function set (everything except
+# WordPress, which keeps its own historical function names and code path
+# below unchanged).
+GENERIC_CONNECTOR_MODULES = {
+    ConnectorType.shopify: shopify,
+    ConnectorType.webflow: webflow,
+    ConnectorType.github: github_pr,
+}
 
 
 def _idempotency_key(website_id: uuid.UUID, opportunity_id: uuid.UUID, operation: str, target_url: str) -> str:
@@ -153,10 +170,9 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
     if task.status in (SEOTaskStatus.completed, SEOTaskStatus.executing):
         raise ExecutionBlocked(f"Task is already {task.status.value}; idempotent re-execution is not performed.")
 
-    try:
-        credentials = get_wordpress_credentials(db, website)
-    except LookupError as exc:
-        raise ExecutionBlocked(str(exc)) from exc
+    connector_type = get_connected_content_connector(db, website)
+    if connector_type is None:
+        raise ExecutionBlocked("No content connector is connected for this website.")
 
     change = task.proposed_change_json
     operation = change["operation"]
@@ -166,34 +182,81 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
     task.status = SEOTaskStatus.executing
     db.flush()
 
+    if connector_type == ConnectorType.wordpress:
+        try:
+            credentials = get_wordpress_credentials(db, website)
+        except LookupError as exc:
+            raise ExecutionBlocked(str(exc)) from exc
+
+        try:
+            post_type, post_id = find_post_by_url(credentials, target_url)
+            before = get_resource(credentials, post_type, post_id)
+            if operation == "set_title":
+                before_value = current_title(before)
+            elif operation == "set_meta_description":
+                before_value = current_meta_description(before)
+            else:
+                raise ValueError(f"Unsupported operation: {operation}")
+
+            if operation == "set_title":
+                update_title(credentials, post_type, post_id, new_value)
+            elif operation == "set_meta_description":
+                update_meta_description(credentials, post_type, post_id, new_value)
+            else:
+                raise ValueError(f"Unsupported operation: {operation}")
+
+            passed, validation_evidence = validate_wordpress_change(
+                credentials, post_type, post_id, operation, new_value
+            )
+
+            change_record = ChangeRecord(
+                website_id=website.id,
+                page_id=None,
+                seo_task_id=task.id,
+                connector_type=ConnectorType.wordpress,
+                before_state_json={"operation": operation, "post_type": post_type, "post_id": post_id, "value": before_value},
+                after_state_json={"value": new_value, "validation_evidence": validation_evidence},
+                actor_type=ChangeActorType.system,
+                executed_at=datetime.now(timezone.utc),
+                validation_status=ValidationStatus.passed if passed else ValidationStatus.failed,
+            )
+            db.add(change_record)
+            db.flush()
+
+            if passed:
+                task.status = SEOTaskStatus.completed
+            else:
+                task.status = SEOTaskStatus.failed
+                rollback_change(db, change_record, initiated_by=None, website=website)
+
+            db.flush()
+            return change_record
+
+        except (WordPressConnectorError, UnsupportedOperation) as exc:
+            task.status = SEOTaskStatus.failed
+            db.flush()
+            raise ExecutionBlocked(str(exc)) from exc
+
+    # Generic path shared by Shopify, Webflow, and the GitHub PR connector.
+    module = GENERIC_CONNECTOR_MODULES[connector_type]
     try:
-        post_type, post_id = find_post_by_url(credentials, target_url)
-        before = get_resource(credentials, post_type, post_id)
-        if operation == "set_title":
-            before_value = current_title(before)
-        elif operation == "set_meta_description":
-            before_value = current_meta_description(before)
-        else:
-            raise ValueError(f"Unsupported operation: {operation}")
+        credentials = get_connector_credentials(db, website, connector_type)
+    except LookupError as exc:
+        raise ExecutionBlocked(str(exc)) from exc
 
-        if operation == "set_title":
-            update_title(credentials, post_type, post_id, new_value)
-        elif operation == "set_meta_description":
-            update_meta_description(credentials, post_type, post_id, new_value)
-        else:
-            raise ValueError(f"Unsupported operation: {operation}")
-
-        passed, validation_evidence = validate_wordpress_change(
-            credentials, post_type, post_id, operation, new_value
-        )
+    try:
+        target_ref = module.find_target(credentials, target_url)
+        before_value = module.get_current_value(credentials, target_ref, operation)
+        apply_result = module.apply_change(credentials, target_ref, operation, new_value)
+        passed, validation_evidence = module.validate_change(credentials, target_ref, operation, new_value, apply_result)
 
         change_record = ChangeRecord(
             website_id=website.id,
             page_id=None,
             seo_task_id=task.id,
-            connector_type=ConnectorType.wordpress,
-            before_state_json={"operation": operation, "post_type": post_type, "post_id": post_id, "value": before_value},
-            after_state_json={"value": new_value, "validation_evidence": validation_evidence},
+            connector_type=connector_type,
+            before_state_json={"operation": operation, "target_ref": target_ref, "value": before_value},
+            after_state_json={"apply_result": apply_result, "validation_evidence": validation_evidence},
             actor_type=ChangeActorType.system,
             executed_at=datetime.now(timezone.utc),
             validation_status=ValidationStatus.passed if passed else ValidationStatus.failed,
@@ -210,7 +273,7 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
         db.flush()
         return change_record
 
-    except (WordPressConnectorError, UnsupportedOperation) as exc:
+    except ConnectorError as exc:
         task.status = SEOTaskStatus.failed
         db.flush()
         raise ExecutionBlocked(str(exc)) from exc
@@ -221,29 +284,48 @@ def rollback_change(
 ) -> RollbackRecord:
     before = change_record.before_state_json
     operation = before["operation"]
+    connector_type = change_record.connector_type
 
     rollback = RollbackRecord(
         change_record_id=change_record.id,
-        rollback_method=f"wordpress.{operation}",
+        rollback_method=f"{connector_type.value}.{operation}",
         status=RollbackStatus.pending,
         initiated_by=initiated_by,
     )
     db.add(rollback)
     db.flush()
 
-    try:
-        credentials = get_wordpress_credentials(db, website)
-        post_type, post_id = before["post_type"], before["post_id"]
-        if operation == "set_title":
-            update_title(credentials, post_type, post_id, before["value"])
-        elif operation == "set_meta_description":
-            update_meta_description(credentials, post_type, post_id, before["value"])
-        else:
-            raise ValueError(f"No rollback method for operation: {operation}")
+    if connector_type == ConnectorType.wordpress:
+        try:
+            credentials = get_wordpress_credentials(db, website)
+            post_type, post_id = before["post_type"], before["post_id"]
+            if operation == "set_title":
+                update_title(credentials, post_type, post_id, before["value"])
+            elif operation == "set_meta_description":
+                update_meta_description(credentials, post_type, post_id, before["value"])
+            else:
+                raise ValueError(f"No rollback method for operation: {operation}")
 
+            rollback.status = RollbackStatus.completed
+            rollback.result_json = {"restored_value": before["value"]}
+        except (WordPressConnectorError, UnsupportedOperation, LookupError, ValueError) as exc:
+            rollback.status = RollbackStatus.failed
+            rollback.result_json = {"error": str(exc)}
+        finally:
+            rollback.completed_at = datetime.now(timezone.utc)
+            db.flush()
+
+        return rollback
+
+    module = GENERIC_CONNECTOR_MODULES[connector_type]
+    try:
+        credentials = get_connector_credentials(db, website, connector_type)
+        result = module.rollback(
+            credentials, before["target_ref"], operation, before["value"], change_record.after_state_json
+        )
         rollback.status = RollbackStatus.completed
-        rollback.result_json = {"restored_value": before["value"]}
-    except (WordPressConnectorError, UnsupportedOperation, LookupError, ValueError) as exc:
+        rollback.result_json = result
+    except (ConnectorError, LookupError, ValueError, KeyError) as exc:
         rollback.status = RollbackStatus.failed
         rollback.result_json = {"error": str(exc)}
     finally:

@@ -9,11 +9,29 @@ class WordPressConnectRequest(BaseModel):
     application_password: str = Field(min_length=1, max_length=255)
 
 
+class ShopifyConnectRequest(BaseModel):
+    shop_domain: str = Field(min_length=1, max_length=255)
+    access_token: str = Field(min_length=1, max_length=512)
+
+
+class WebflowConnectRequest(BaseModel):
+    site_id: str = Field(min_length=1, max_length=255)
+    access_token: str = Field(min_length=1, max_length=512)
+
+
+class GitHubConnectRequest(BaseModel):
+    owner: str = Field(min_length=1, max_length=255)
+    repo: str = Field(min_length=1, max_length=255)
+    base_branch: str = Field(min_length=1, max_length=255, default="main")
+    access_token: str = Field(min_length=1, max_length=512)
+
+
 class WebsiteConnectionResponse(BaseModel):
     id: uuid.UUID
     website_id: uuid.UUID
     connector_type: str
     status: str
+    config_json: dict
     last_verified_at: datetime | None
 
     model_config = {"from_attributes": True}

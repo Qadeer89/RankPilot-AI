@@ -14,6 +14,9 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class ConnectorType(str, enum.Enum):
     wordpress = "wordpress"
+    shopify = "shopify"
+    webflow = "webflow"
+    github = "github"
 
 
 class WebsiteConnectionStatus(str, enum.Enum):
@@ -36,6 +39,10 @@ class WebsiteConnection(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     connector_type: Mapped[ConnectorType] = mapped_column(Enum(ConnectorType, name="connector_type"), nullable=False)
     encrypted_secret_reference: Mapped[str] = mapped_column(Text, nullable=False)
     granted_scopes: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    # Non-secret, connector-specific settings (Shopify shop domain, Webflow
+    # site id, GitHub repo/branch) — kept separate from the encrypted
+    # credential so the UI can display them without decrypting anything.
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     status: Mapped[WebsiteConnectionStatus] = mapped_column(
         Enum(WebsiteConnectionStatus, name="website_connection_status"),
         default=WebsiteConnectionStatus.connected,

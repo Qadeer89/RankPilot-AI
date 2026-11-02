@@ -32,6 +32,17 @@ def test_verify_credentials_failure(monkeypatch):
         wp.verify_credentials(CREDENTIALS)
 
 
+def test_verify_credentials_network_failure_raises_connector_error_not_httpx_error(monkeypatch):
+    import httpx
+
+    def fake_get(*a, **k):
+        raise httpx.ConnectError("DNS resolution failed")
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    with pytest.raises(wp.WordPressConnectorError):
+        wp.verify_credentials(CREDENTIALS)
+
+
 def test_find_post_by_url_checks_pages_then_posts(monkeypatch):
     calls = []
 

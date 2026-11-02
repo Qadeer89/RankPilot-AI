@@ -68,6 +68,7 @@ export interface Website {
   status: string;
   automation_policy: { auto_execute_risk_tier_1?: boolean };
   search_console_site_url: string | null;
+  ga4_property_id: string | null;
 }
 
 export interface CrawlJob {
@@ -169,6 +170,7 @@ export interface WebsiteConnection {
   website_id: string;
   connector_type: string;
   status: string;
+  config_json: Record<string, unknown>;
   last_verified_at: string | null;
 }
 
@@ -455,6 +457,86 @@ export function listConnections(token: string, organizationId: string, websiteId
   );
 }
 
+// --- Shopify connector ---
+
+export function connectShopify(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  shopDomain: string,
+  accessToken: string
+) {
+  return request<WebsiteConnection>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/shopify`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ shop_domain: shopDomain, access_token: accessToken }),
+    }
+  );
+}
+
+export function disconnectShopify(token: string, organizationId: string, websiteId: string) {
+  return request<void>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/shopify`,
+    { method: "DELETE", headers: authHeaders(token) }
+  );
+}
+
+// --- Webflow connector ---
+
+export function connectWebflow(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  siteId: string,
+  accessToken: string
+) {
+  return request<WebsiteConnection>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/webflow`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ site_id: siteId, access_token: accessToken }),
+    }
+  );
+}
+
+export function disconnectWebflow(token: string, organizationId: string, websiteId: string) {
+  return request<void>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/webflow`,
+    { method: "DELETE", headers: authHeaders(token) }
+  );
+}
+
+// --- GitHub connector (custom-code sites) ---
+
+export function connectGitHub(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  owner: string,
+  repo: string,
+  baseBranch: string,
+  accessToken: string
+) {
+  return request<WebsiteConnection>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/github`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ owner, repo, base_branch: baseBranch, access_token: accessToken }),
+    }
+  );
+}
+
+export function disconnectGitHub(token: string, organizationId: string, websiteId: string) {
+  return request<void>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/github`,
+    { method: "DELETE", headers: authHeaders(token) }
+  );
+}
+
 // --- Google Search Console ---
 
 export function startGoogleConnect(token: string, organizationId: string) {
@@ -508,6 +590,183 @@ export function getSearchPerformance(token: string, organizationId: string, webs
 
 export function listReports(token: string, organizationId: string, websiteId: string) {
   return request<Report[]>(`/organizations/${organizationId}/websites/${websiteId}/reports`, {
+    headers: authHeaders(token),
+  });
+}
+
+// --- Google Analytics (GA4) ---
+
+export interface Ga4Property {
+  property_id: string;
+  display_name: string;
+}
+
+export interface Ga4MetricsRow {
+  date: string;
+  sessions: number;
+  total_users: number;
+  conversions: number;
+}
+
+export interface Ga4Metrics {
+  source: string;
+  freshness_note: string;
+  rows: Ga4MetricsRow[];
+}
+
+export function startGa4Connect(token: string, organizationId: string) {
+  return request<{ authorization_url: string }>(
+    `/organizations/${organizationId}/integrations/google/analytics/connect`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function disconnectGa4(token: string, organizationId: string) {
+  return request<void>(`/organizations/${organizationId}/integrations/google/analytics/disconnect`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function getGa4Properties(token: string, organizationId: string, websiteId: string) {
+  return request<{ properties: Ga4Property[] }>(
+    `/organizations/${organizationId}/websites/${websiteId}/ga4-properties`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function selectGa4Property(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  propertyId: string
+) {
+  return request<Website>(`/organizations/${organizationId}/websites/${websiteId}/ga4/select`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ property_id: propertyId }),
+  });
+}
+
+export function syncGa4(token: string, organizationId: string, websiteId: string) {
+  return request<{ rows_synced: number }>(
+    `/organizations/${organizationId}/websites/${websiteId}/ga4/sync`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export function getGa4Metrics(token: string, organizationId: string, websiteId: string) {
+  return request<Ga4Metrics>(`/organizations/${organizationId}/websites/${websiteId}/ga4-metrics`, {
+    headers: authHeaders(token),
+  });
+}
+
+// --- AI agents (QA Assistant, Strategy Assistant, Internal Linking Analyst) ---
+
+export interface QaSummary {
+  summary: string;
+  validation_status: string;
+}
+
+export interface StrategySummary {
+  narrative: string;
+  focus_areas: string[];
+}
+
+export interface LinkSuggestion {
+  source_url: string;
+  anchor_text: string;
+  rationale: string;
+}
+
+export interface InternalLinkSuggestions {
+  target_url: string;
+  suggestions: LinkSuggestion[];
+}
+
+export function getQaSummary(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  changeId: string
+) {
+  return request<QaSummary>(
+    `/organizations/${organizationId}/websites/${websiteId}/change-records/${changeId}/qa-summary`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export function getWeeklyStrategy(token: string, organizationId: string, websiteId: string) {
+  return request<StrategySummary>(
+    `/organizations/${organizationId}/websites/${websiteId}/strategy`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export function listOrphanPages(token: string, organizationId: string, websiteId: string) {
+  return request<Page[]>(`/organizations/${organizationId}/websites/${websiteId}/orphan-pages`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function getInternalLinkSuggestions(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  pageId: string
+) {
+  return request<InternalLinkSuggestions>(
+    `/organizations/${organizationId}/websites/${websiteId}/pages/${pageId}/internal-link-suggestions`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+// --- Agency multi-client overview ---
+
+export interface WebsiteOverviewRow {
+  website_id: string;
+  display_name: string;
+  hostname: string;
+  verification_status: string;
+  status: string;
+  open_findings_count: number;
+  open_opportunities_count: number;
+  pending_tasks_count: number;
+  last_crawl_at: string | null;
+  last_crawl_status: string | null;
+}
+
+export function getOrganizationOverview(token: string, organizationId: string) {
+  return request<WebsiteOverviewRow[]>(`/organizations/${organizationId}/overview`, {
+    headers: authHeaders(token),
+  });
+}
+
+// --- Organization settings (Slack notifications) ---
+
+export interface OrganizationResponse {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  status: string;
+}
+
+export function updateOrganizationSettings(
+  token: string,
+  organizationId: string,
+  payload: { slack_webhook_url: string | null }
+) {
+  return request<OrganizationResponse>(`/organizations/${organizationId}/settings`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function sendSlackTestNotification(token: string, organizationId: string) {
+  return request<{ status: string }>(`/organizations/${organizationId}/notifications/slack/test`, {
+    method: "POST",
     headers: authHeaders(token),
   });
 }

@@ -7,7 +7,16 @@ from app.ai.schemas import OpportunityProposal
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
 from app.db.session import get_db
-from app.execution.connections import connect_wordpress, disconnect_wordpress
+from app.execution.connections import (
+    connect_github,
+    connect_shopify,
+    connect_webflow,
+    connect_wordpress,
+    disconnect_github,
+    disconnect_shopify,
+    disconnect_webflow,
+    disconnect_wordpress,
+)
 from app.execution.service import ExecutionBlocked, approve_task, create_tasks_from_proposal, execute_task, reject_task, rollback_change
 from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeRecord
@@ -19,8 +28,11 @@ from app.models.website_connection import WebsiteConnection
 from app.schemas.execution import (
     ApprovalDecisionRequest,
     ChangeRecordResponse,
+    GitHubConnectRequest,
     RollbackRecordResponse,
     SEOTaskResponse,
+    ShopifyConnectRequest,
+    WebflowConnectRequest,
     WebsiteConnectionResponse,
     WordPressConnectRequest,
 )
@@ -89,6 +101,144 @@ def disconnect_wordpress_connector(
 ) -> None:
     website = get_website_or_404(db, organization_id, website_id)
     disconnect_wordpress(db, website)
+    db.commit()
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/connections/shopify",
+    response_model=WebsiteConnectionResponse,
+)
+def connect_shopify_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: ShopifyConnectRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteConnectionResponse:
+    website = get_website_or_404(db, organization_id, website_id)
+    try:
+        connection = connect_shopify(db, website, payload.shop_domain, payload.access_token)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="connector.shopify.connect",
+            resource_type="website_connection",
+            resource_id=str(connection.id),
+            metadata_json={},
+        )
+    )
+    db.commit()
+    return WebsiteConnectionResponse.model_validate(connection)
+
+
+@router.delete(
+    "/organizations/{organization_id}/websites/{website_id}/connections/shopify",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def disconnect_shopify_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> None:
+    website = get_website_or_404(db, organization_id, website_id)
+    disconnect_shopify(db, website)
+    db.commit()
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/connections/webflow",
+    response_model=WebsiteConnectionResponse,
+)
+def connect_webflow_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: WebflowConnectRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteConnectionResponse:
+    website = get_website_or_404(db, organization_id, website_id)
+    try:
+        connection = connect_webflow(db, website, payload.site_id, payload.access_token)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="connector.webflow.connect",
+            resource_type="website_connection",
+            resource_id=str(connection.id),
+            metadata_json={},
+        )
+    )
+    db.commit()
+    return WebsiteConnectionResponse.model_validate(connection)
+
+
+@router.delete(
+    "/organizations/{organization_id}/websites/{website_id}/connections/webflow",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def disconnect_webflow_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> None:
+    website = get_website_or_404(db, organization_id, website_id)
+    disconnect_webflow(db, website)
+    db.commit()
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/connections/github",
+    response_model=WebsiteConnectionResponse,
+)
+def connect_github_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: GitHubConnectRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteConnectionResponse:
+    website = get_website_or_404(db, organization_id, website_id)
+    try:
+        connection = connect_github(db, website, payload.owner, payload.repo, payload.base_branch, payload.access_token)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="connector.github.connect",
+            resource_type="website_connection",
+            resource_id=str(connection.id),
+            metadata_json={},
+        )
+    )
+    db.commit()
+    return WebsiteConnectionResponse.model_validate(connection)
+
+
+@router.delete(
+    "/organizations/{organization_id}/websites/{website_id}/connections/github",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def disconnect_github_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> None:
+    website = get_website_or_404(db, organization_id, website_id)
+    disconnect_github(db, website)
     db.commit()
 
 

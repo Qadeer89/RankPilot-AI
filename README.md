@@ -130,6 +130,38 @@ per `MASTER_SPEC.md` #5:
   tokens are. `POST /organizations/{id}/notifications/slack/test` sends a test message and
   returns 409 if no webhook is configured yet. Same credential-gating pattern as
   email/Search Console — unconfigured is `skipped_not_configured`, not a crash.
+- **Shopify and Webflow write connectors** (`apps/api/app/connectors/shopify.py`,
+  `webflow.py`): same `set_title`/`set_meta_description` operation vocabulary as the WordPress
+  connector, so the execution engine's risk-tier/approval/rollback machinery didn't need to
+  change, only generalize. Shopify maps the two operations to the `global.title_tag` /
+  `global.description_tag` metafields (the fields Shopify's own "Edit website SEO" panel
+  writes), not the product/page's display title. Webflow maps them to the Data API v2 Pages
+  resource's `title` / `seo.description`. Connect via
+  `POST /organizations/{id}/websites/{id}/connections/{shopify|webflow}`.
+- **GitHub connector for custom-code sites** (`apps/api/app/connectors/github_pr.py`,
+  MASTER_SPEC.md #5: "GitHub/deployment integration"): a custom-code site has no live write
+  API, so this connector never writes live — its one operation is opening a branch + commit +
+  pull request with the proposed `<title>`/meta-description change, for a human to merge.
+  Finds the file to edit via a short list of conventional static-site path guesses
+  (`about.html`, `about/index.html`, `pages/about.html`, ...); a site that doesn't follow one of
+  these conventions isn't supported yet. "Rollback" closes the still-open PR rather than
+  reverting a live change, since nothing has shipped. "Validation" is correspondingly shallower
+  than for a live connector — it confirms the PR is open and its diff contains the expected
+  value, not that a deployed site serves it, which this platform can't observe without knowing
+  the deploy pipeline. This is a deliberate, documented limitation, not an oversight.
+- **Execution engine generalized to a connector dispatch** (`apps/api/app/execution/service.py`):
+  the WordPress code path is untouched byte-for-byte; Shopify/Webflow/GitHub share one generic
+  path keyed by a standardized `find_target`/`get_current_value`/`apply_change`/
+  `validate_change`/`rollback` function set each new connector module implements. Which
+  connector a website uses is resolved at execute time by which one has a `connected`
+  `WebsiteConnection` row (`get_connected_content_connector`), not stored on the task.
+- **Frontend UI for every P1 addition above**: GA4 connect/property-select/sync/metrics,
+  Shopify/Webflow/GitHub connector connect/disconnect forms, and the three agent-triggering
+  panels (QA summary on a task's change record, weekly Strategy Assistant narrative, Internal
+  Linking Analyst orphan-page finder + suggestions) are in the website detail page's
+  Integrations and new AI Agents tabs (`apps/web/src/app/dashboard/websites/[id]/`). The agency
+  overview and Slack settings got their own page,
+  `apps/web/src/app/dashboard/organization/page.tsx`, linked from the main dashboard.
 
 Not yet built, and not buildable from inside this environment without more than code:
 
@@ -140,12 +172,23 @@ Not yet built, and not buildable from inside this environment without more than 
 - **Founder pilot acceptance and beta go/no-go** (RP-0907): a product and business decision
   for the founder to make by using the product against real pilot sites, not something that
   gets built.
-- Billing. GitHub/deployment integration for custom-code sites and additional CMS write
-  connectors (Shopify/Webflow) are deferred — no pilot site has needed them yet. No frontend UI
-  yet for GA4 connection, the new AI agents, the agency overview, or Slack settings — these P1
-  additions are API-only so far.
+- Billing.
 
 See `docs/MVP_IMPLEMENTATION_ROADMAP.md` for the phase plan.
+
+### Credential-gated: Shopify, Webflow, GitHub
+
+Same credential-gating pattern as every other connector: each is fully implemented and
+unit-tested (external calls mocked), and the connect endpoint verifies the credential against
+the live API before storing it (`ValueError` → `400`), so a bad shop domain, site ID, repo, or
+token is rejected cleanly rather than stored. A real-service exercise from this sandbox hit a
+genuine gap worth calling out: the connectors originally only turned a *bad HTTP status* into a
+clean error — a network-level failure (DNS failure, connection refused, the sandbox's own
+egress proxy) propagated as a raw `httpx` exception and 500'd instead. Fixed for all four
+connectors (WordPress included) via a shared `safe_request()` helper in
+`app/connectors/errors.py` that wraps every connector `httpx` call; verified with a live
+Playwright smoke test (Shopify connect against an unreachable domain now returns `400`, not
+`500`) and regression tests per connector.
 
 ### Credential-gated: email
 
