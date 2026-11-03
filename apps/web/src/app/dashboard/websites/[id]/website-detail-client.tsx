@@ -924,7 +924,7 @@ export default function WebsiteDetailClient() {
 
             <div className={styles.card}>
               <h2>WordPress connector</h2>
-              {connections.filter((c) => c.connector_type === "wordpress").length === 0 ? (
+              {connections.filter((c) => c.connector_type === "wordpress" && c.status === "connected").length === 0 ? (
                 <div className={styles.actions}>
                   <input
                     className={styles.input}
@@ -946,7 +946,7 @@ export default function WebsiteDetailClient() {
                 </div>
               ) : (
                 connections
-                  .filter((c) => c.connector_type === "wordpress")
+                  .filter((c) => c.connector_type === "wordpress" && c.status === "connected")
                   .map((connection) => (
                     <div key={connection.id} className={styles.row}>
                       <div className={styles.rowMain}>
@@ -1038,7 +1038,7 @@ export default function WebsiteDetailClient() {
 
             <div className={styles.card}>
               <h2>Shopify connector</h2>
-              {connections.filter((c) => c.connector_type === "shopify").length === 0 ? (
+              {connections.filter((c) => c.connector_type === "shopify" && c.status === "connected").length === 0 ? (
                 <div className={styles.actions}>
                   <input
                     className={styles.input}
@@ -1060,7 +1060,7 @@ export default function WebsiteDetailClient() {
                 </div>
               ) : (
                 connections
-                  .filter((c) => c.connector_type === "shopify")
+                  .filter((c) => c.connector_type === "shopify" && c.status === "connected")
                   .map((connection) => (
                     <div key={connection.id} className={styles.row}>
                       <div className={styles.rowMain}>
@@ -1083,7 +1083,7 @@ export default function WebsiteDetailClient() {
 
             <div className={styles.card}>
               <h2>Webflow connector</h2>
-              {connections.filter((c) => c.connector_type === "webflow").length === 0 ? (
+              {connections.filter((c) => c.connector_type === "webflow" && c.status === "connected").length === 0 ? (
                 <div className={styles.actions}>
                   <input
                     className={styles.input}
@@ -1105,7 +1105,7 @@ export default function WebsiteDetailClient() {
                 </div>
               ) : (
                 connections
-                  .filter((c) => c.connector_type === "webflow")
+                  .filter((c) => c.connector_type === "webflow" && c.status === "connected")
                   .map((connection) => (
                     <div key={connection.id} className={styles.row}>
                       <div className={styles.rowMain}>
@@ -1132,7 +1132,7 @@ export default function WebsiteDetailClient() {
                 Reads and patches mapped SEO fields (title/meta description) on this site's Sanity
                 documents. Only touches explicitly mapped fields, never slugs or publishing.
               </p>
-              {connections.filter((c) => c.connector_type === "sanity").length === 0 ? (
+              {connections.filter((c) => c.connector_type === "sanity" && c.status === "connected").length === 0 ? (
                 <div className={styles.actions}>
                   <input
                     className={styles.input}
@@ -1161,7 +1161,7 @@ export default function WebsiteDetailClient() {
                 </div>
               ) : (
                 connections
-                  .filter((c) => c.connector_type === "sanity")
+                  .filter((c) => c.connector_type === "sanity" && c.status === "connected")
                   .map((connection) => (
                     <div key={connection.id} className={styles.row}>
                       <div className={styles.rowMain}>
@@ -1189,7 +1189,7 @@ export default function WebsiteDetailClient() {
                 For sites with no live write API, changes are proposed as a pull request for a human to
                 review and merge — RankPilot AI never merges or deploys automatically.
               </p>
-              {connections.filter((c) => c.connector_type === "github").length === 0 ? (
+              {connections.filter((c) => c.connector_type === "github" && c.status === "connected").length === 0 ? (
                 <div className={styles.actions}>
                   <input
                     className={styles.input}
@@ -1225,7 +1225,7 @@ export default function WebsiteDetailClient() {
                 </div>
               ) : (
                 connections
-                  .filter((c) => c.connector_type === "github")
+                  .filter((c) => c.connector_type === "github" && c.status === "connected")
                   .map((connection) => (
                     <div key={connection.id} className={styles.row}>
                       <div className={styles.rowMain}>
