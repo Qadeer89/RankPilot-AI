@@ -19,6 +19,12 @@ class WebflowConnectRequest(BaseModel):
     access_token: str = Field(min_length=1, max_length=512)
 
 
+class SanityConnectRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=64)
+    dataset: str = Field(min_length=1, max_length=64)
+    token: str = Field(min_length=1, max_length=512)
+
+
 class GitHubConnectRequest(BaseModel):
     owner: str = Field(min_length=1, max_length=255)
     repo: str = Field(min_length=1, max_length=255)

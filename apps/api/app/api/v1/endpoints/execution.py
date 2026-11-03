@@ -9,10 +9,12 @@ from app.core.resources import get_website_or_404
 from app.db.session import get_db
 from app.execution.connections import (
     connect_github,
+    connect_sanity,
     connect_shopify,
     connect_webflow,
     connect_wordpress,
     disconnect_github,
+    disconnect_sanity,
     disconnect_shopify,
     disconnect_webflow,
     disconnect_wordpress,
@@ -41,6 +43,7 @@ from app.schemas.execution import (
     DryRunResponse,
     GitHubConnectRequest,
     RollbackRecordResponse,
+    SanityConnectRequest,
     SEOTaskResponse,
     ShopifyConnectRequest,
     WebflowConnectRequest,
@@ -251,6 +254,52 @@ def disconnect_github_connector(
 ) -> None:
     website = get_website_or_404(db, organization_id, website_id)
     disconnect_github(db, website)
+    db.commit()
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/connections/sanity",
+    response_model=WebsiteConnectionResponse,
+)
+def connect_sanity_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: SanityConnectRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteConnectionResponse:
+    website = get_website_or_404(db, organization_id, website_id)
+    try:
+        connection = connect_sanity(db, website, payload.project_id, payload.dataset, payload.token)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="connector.sanity.connect",
+            resource_type="website_connection",
+            resource_id=str(connection.id),
+            metadata_json={},
+        )
+    )
+    db.commit()
+    return WebsiteConnectionResponse.model_validate(connection)
+
+
+@router.delete(
+    "/organizations/{organization_id}/websites/{website_id}/connections/sanity",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def disconnect_sanity_connector(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> None:
+    website = get_website_or_404(db, organization_id, website_id)
+    disconnect_sanity(db, website)
     db.commit()
 
 

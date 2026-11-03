@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.connectors import github_pr, shopify, webflow
+from app.connectors import github_pr, sanity, shopify, webflow
 from app.connectors.errors import ConnectorError
 from app.connectors.github_pr import GitHubCredentials
+from app.connectors.sanity import SanityCredentials
 from app.connectors.shopify import ShopifyCredentials
 from app.connectors.webflow import WebflowCredentials
 from app.connectors.wordpress import WordPressConnectorError, WordPressCredentials, verify_credentials
@@ -26,6 +27,7 @@ CONTENT_CONNECTOR_PRIORITY = (
     ConnectorType.wordpress,
     ConnectorType.shopify,
     ConnectorType.webflow,
+    ConnectorType.sanity,
     ConnectorType.github,
 )
 
@@ -262,6 +264,37 @@ def disconnect_github(db: Session, website: Website) -> None:
     _disconnect(db, website, ConnectorType.github)
 
 
+def connect_sanity(
+    db: Session, website: Website, project_id: str, dataset: str, token: str
+) -> WebsiteConnection:
+    candidate = SanityCredentials(project_id=project_id, dataset=dataset, token=token)
+    try:
+        sanity.verify_credentials(candidate)
+    except ConnectorError as exc:
+        raise ValueError(f"Could not verify Sanity credentials: {exc}") from exc
+
+    encrypted = encrypt_text(json.dumps({"token": token}))
+    return _upsert_connection(
+        db,
+        website,
+        ConnectorType.sanity,
+        encrypted_secret=encrypted,
+        config={"project_id": project_id, "dataset": dataset},
+        granted_scopes=["read", "write"],
+    )
+
+
+def get_sanity_credentials(db: Session, website: Website) -> SanityCredentials:
+    connection = _get_connection_or_raise(db, website, ConnectorType.sanity)
+    stored = json.loads(decrypt_text(connection.encrypted_secret_reference))
+    config = connection.config_json
+    return SanityCredentials(project_id=config["project_id"], dataset=config["dataset"], token=stored["token"])
+
+
+def disconnect_sanity(db: Session, website: Website) -> None:
+    _disconnect(db, website, ConnectorType.sanity)
+
+
 def get_connected_content_connector(db: Session, website: Website) -> ConnectorType | None:
     """Which connector type is currently connected for this website, if
     any, preferring `CONTENT_CONNECTOR_PRIORITY` order if somehow more
@@ -288,4 +321,6 @@ def get_connector_credentials(db: Session, website: Website, connector_type: Con
         return get_webflow_credentials(db, website)
     if connector_type == ConnectorType.github:
         return get_github_credentials(db, website)
+    if connector_type == ConnectorType.sanity:
+        return get_sanity_credentials(db, website)
     raise LookupError(f"Unknown connector type: {connector_type}")

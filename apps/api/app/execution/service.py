@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import OpportunityProposal
-from app.connectors import github_pr, shopify, webflow
+from app.connectors import github_pr, sanity, shopify, webflow
 from app.connectors import wordpress as wordpress_connector
 from app.connectors.errors import ConnectorError
 from app.crawler.fetch import FetchError, safe_fetch
@@ -56,6 +56,7 @@ GENERIC_CONNECTOR_MODULES = {
     ConnectorType.shopify: shopify,
     ConnectorType.webflow: webflow,
     ConnectorType.github: github_pr,
+    ConnectorType.sanity: sanity,
 }
 
 # Declared capability registry (CW-001, custom-website-write addendum §4.3):
@@ -68,6 +69,7 @@ CONNECTOR_CAPABILITIES: dict[ConnectorType, frozenset[str]] = {
     ConnectorType.shopify: shopify.SUPPORTED_OPERATIONS,
     ConnectorType.webflow: webflow.SUPPORTED_OPERATIONS,
     ConnectorType.github: github_pr.SUPPORTED_OPERATIONS,
+    ConnectorType.sanity: sanity.SUPPORTED_OPERATIONS,
 }
 
 

@@ -17,6 +17,7 @@ class ConnectorType(str, enum.Enum):
     shopify = "shopify"
     webflow = "webflow"
     github = "github"
+    sanity = "sanity"
 
 
 class WebsiteConnectionStatus(str, enum.Enum):
