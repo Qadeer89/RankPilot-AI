@@ -141,6 +141,45 @@ export default function WebsiteDetailClient() {
   const [githubBranch, setGithubBranch] = useState("main");
   const [githubToken, setGithubToken] = useState("");
 
+  // Pre-fill the non-secret fields of a reconnect form from the most
+  // recent connection of that type (connected or disconnected) -- the
+  // backend never returns the encrypted credential itself (project ID
+  // and dataset were right there, only the token has to be re-entered),
+  // so there's no reason to make someone retype everything after a
+  // disconnect just to reconnect the same site.
+  useEffect(() => {
+    const latestByType = new Map<string, WebsiteConnection>();
+    for (const c of connections) {
+      const existing = latestByType.get(c.connector_type);
+      if (!existing || new Date(c.last_verified_at ?? 0) >= new Date(existing.last_verified_at ?? 0)) {
+        latestByType.set(c.connector_type, c);
+      }
+    }
+
+    const shopify = latestByType.get("shopify");
+    if (shopify && !shopifyDomain) setShopifyDomain(String(shopify.config_json.shop_domain ?? ""));
+
+    const webflow = latestByType.get("webflow");
+    if (webflow && !webflowSiteId) setWebflowSiteId(String(webflow.config_json.site_id ?? ""));
+
+    const sanity = latestByType.get("sanity");
+    if (sanity && !sanityProjectId && !sanityDataset) {
+      setSanityProjectId(String(sanity.config_json.project_id ?? ""));
+      setSanityDataset(String(sanity.config_json.dataset ?? ""));
+    }
+
+    const github = latestByType.get("github");
+    if (github && !githubOwner && !githubRepo) {
+      setGithubOwner(String(github.config_json.owner ?? ""));
+      setGithubRepo(String(github.config_json.repo ?? ""));
+      setGithubBranch(String(github.config_json.base_branch ?? "main"));
+    }
+    // Only react to the connections list changing -- the emptiness
+    // checks above are deliberately read, not depended on, so this
+    // doesn't re-run (and fight the user's typing) on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections]);
+
   const [ga4Properties, setGa4Properties] = useState<Ga4Property[]>([]);
   const [ga4PropertyInput, setGa4PropertyInput] = useState("");
   const [ga4Metrics, setGa4Metrics] = useState<Ga4Metrics | null>(null);
