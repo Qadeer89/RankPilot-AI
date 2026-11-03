@@ -23,6 +23,7 @@ import {
   WebsiteConnection,
   approveTask,
   connectGitHub,
+  connectSanity,
   connectShopify,
   connectWebflow,
   connectWordPress,
@@ -30,6 +31,7 @@ import {
   createTasks,
   disconnectGa4,
   disconnectGitHub,
+  disconnectSanity,
   disconnectShopify,
   disconnectWebflow,
   disconnectWordPress,
@@ -131,6 +133,9 @@ export default function WebsiteDetailClient() {
   const [shopifyToken, setShopifyToken] = useState("");
   const [webflowSiteId, setWebflowSiteId] = useState("");
   const [webflowToken, setWebflowToken] = useState("");
+  const [sanityProjectId, setSanityProjectId] = useState("");
+  const [sanityDataset, setSanityDataset] = useState("");
+  const [sanityToken, setSanityToken] = useState("");
   const [githubOwner, setGithubOwner] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("main");
@@ -435,6 +440,35 @@ export default function WebsiteDetailClient() {
       setConnections(await listConnections(token, orgId, websiteId));
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Webflow.");
+    }
+  }
+
+  async function handleConnectSanity() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await connectSanity(token, orgId, websiteId, sanityProjectId, sanityDataset, sanityToken);
+      setSanityProjectId("");
+      setSanityDataset("");
+      setSanityToken("");
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to connect Sanity.");
+    }
+  }
+
+  async function handleDisconnectSanity() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await disconnectSanity(token, orgId, websiteId);
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Sanity.");
     }
   }
 
@@ -1084,6 +1118,63 @@ export default function WebsiteDetailClient() {
                       <div className={styles.actions}>
                         <span className={badgeClass(connection.status)}>{connection.status}</span>
                         <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectWebflow}>
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Sanity CMS connector</h2>
+              <p className={styles.rowMeta}>
+                Reads and patches mapped SEO fields (title/meta description) on this site's Sanity
+                documents. Only touches explicitly mapped fields, never slugs or publishing.
+              </p>
+              {connections.filter((c) => c.connector_type === "sanity").length === 0 ? (
+                <div className={styles.actions}>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="Sanity project ID"
+                    value={sanityProjectId}
+                    onChange={(e) => setSanityProjectId(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="Dataset (e.g. production)"
+                    value={sanityDataset}
+                    onChange={(e) => setSanityDataset(e.target.value)}
+                  />
+                  <input
+                    className={styles.input}
+                    type="password"
+                    placeholder="API token"
+                    value={sanityToken}
+                    onChange={(e) => setSanityToken(e.target.value)}
+                  />
+                  <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleConnectSanity}>
+                    Connect
+                  </button>
+                </div>
+              ) : (
+                connections
+                  .filter((c) => c.connector_type === "sanity")
+                  .map((connection) => (
+                    <div key={connection.id} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>Sanity</span>
+                        <span className={styles.rowMeta}>
+                          project {String(connection.config_json.project_id ?? "")} / dataset{" "}
+                          {String(connection.config_json.dataset ?? "")} · last verified{" "}
+                          {connection.last_verified_at ?? "never"}
+                        </span>
+                      </div>
+                      <div className={styles.actions}>
+                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectSanity}>
                           Disconnect
                         </button>
                       </div>

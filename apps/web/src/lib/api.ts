@@ -537,6 +537,33 @@ export function disconnectGitHub(token: string, organizationId: string, websiteI
   );
 }
 
+// --- Sanity CMS connector ---
+
+export function connectSanity(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  projectId: string,
+  dataset: string,
+  sanityToken: string
+) {
+  return request<WebsiteConnection>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/sanity`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ project_id: projectId, dataset, token: sanityToken }),
+    }
+  );
+}
+
+export function disconnectSanity(token: string, organizationId: string, websiteId: string) {
+  return request<void>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/sanity`,
+    { method: "DELETE", headers: authHeaders(token) }
+  );
+}
+
 // --- Google Search Console ---
 
 export function startGoogleConnect(token: string, organizationId: string) {
