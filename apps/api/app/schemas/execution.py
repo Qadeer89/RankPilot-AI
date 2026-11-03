@@ -68,6 +68,18 @@ class ChangeRecordResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DryRunResponse(BaseModel):
+    operation: str
+    target_url: str
+    before_value: str
+    proposed_value: str
+    changed: bool
+
+
+class WritesEnabledRequest(BaseModel):
+    writes_enabled: bool
+
+
 class RollbackRecordResponse(BaseModel):
     id: uuid.UUID
     change_record_id: uuid.UUID

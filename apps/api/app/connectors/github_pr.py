@@ -49,6 +49,9 @@ META_DESCRIPTION_RE = re.compile(
     r'(<meta[^>]+name=["\']description["\'][^>]+content=["\'])(.*?)(["\'])', re.IGNORECASE
 )
 
+# Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
+
 
 @dataclass(frozen=True)
 class GitHubCredentials:

@@ -28,6 +28,9 @@ REQUEST_TIMEOUT_SECONDS = 15.0
 RESOURCE_TYPES_TO_SEARCH = ("pages", "products")
 METAFIELD_KEY_BY_OPERATION = {"set_title": "title_tag", "set_meta_description": "description_tag"}
 
+# Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
+SUPPORTED_OPERATIONS = frozenset(METAFIELD_KEY_BY_OPERATION)
+
 
 @dataclass(frozen=True)
 class ShopifyCredentials:

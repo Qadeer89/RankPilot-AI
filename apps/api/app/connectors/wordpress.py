@@ -23,6 +23,12 @@ YOAST_META_DESCRIPTION_KEY = "_yoast_wpseo_metadesc"
 POST_TYPES_TO_SEARCH = ("pages", "posts")
 REQUEST_TIMEOUT_SECONDS = 15.0
 
+# Declared capability set (CW-001, addendum §4.3): the operations this
+# connector actually implements. execution/service.py rejects any other
+# operation before attempting it, instead of failing deep inside a write
+# call or a raw AttributeError.
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
+
 
 class WordPressConnectorError(ConnectorError):
     pass

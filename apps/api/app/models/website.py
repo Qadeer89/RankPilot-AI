@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import JSON, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +53,11 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[WebsiteStatus] = mapped_column(
         Enum(WebsiteStatus, name="website_status"), default=WebsiteStatus.active, nullable=False
     )
+    # Write-specific kill switch (CW-004, custom-website-write addendum §9):
+    # distinct from `status`/paused, which also stops crawling. This lets a
+    # site keep being monitored/crawled while new connector writes are
+    # blocked outright -- execute_task() checks it before every write.
+    writes_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     search_console_site_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ga4_property_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

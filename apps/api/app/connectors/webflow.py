@@ -23,6 +23,9 @@ from app.connectors.errors import ConnectorError, UnsupportedOperation, safe_req
 API_BASE = "https://api.webflow.com/v2"
 REQUEST_TIMEOUT_SECONDS = 15.0
 
+# Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
+
 
 @dataclass(frozen=True)
 class WebflowCredentials:

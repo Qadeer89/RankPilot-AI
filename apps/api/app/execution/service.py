@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.schemas import OpportunityProposal
 from app.connectors import github_pr, shopify, webflow
+from app.connectors import wordpress as wordpress_connector
 from app.connectors.errors import ConnectorError
 from app.connectors.wordpress import (
     UnsupportedOperation,
@@ -56,6 +57,25 @@ GENERIC_CONNECTOR_MODULES = {
     ConnectorType.github: github_pr,
 }
 
+# Declared capability registry (CW-001, custom-website-write addendum §4.3):
+# the operations each connector type actually implements. Both proposal
+# creation and execution consult this before touching a connector, so an
+# unsupported operation is rejected cleanly instead of failing deep inside
+# a write call or with a raw AttributeError/KeyError.
+CONNECTOR_CAPABILITIES: dict[ConnectorType, frozenset[str]] = {
+    ConnectorType.wordpress: wordpress_connector.SUPPORTED_OPERATIONS,
+    ConnectorType.shopify: shopify.SUPPORTED_OPERATIONS,
+    ConnectorType.webflow: webflow.SUPPORTED_OPERATIONS,
+    ConnectorType.github: github_pr.SUPPORTED_OPERATIONS,
+}
+
+
+def get_connector_capabilities(connector_type: ConnectorType) -> frozenset[str]:
+    """What a connector type can actually do — the source of truth the UI
+    and planner should consult so they never offer an operation the
+    connector doesn't support (addendum §4.3)."""
+    return CONNECTOR_CAPABILITIES[connector_type]
+
 
 def _idempotency_key(website_id: uuid.UUID, opportunity_id: uuid.UUID, operation: str, target_url: str) -> str:
     return hashlib.sha256(f"{website_id}:{opportunity_id}:{operation}:{target_url}".encode("utf-8")).hexdigest()
@@ -76,6 +96,20 @@ def create_tasks_from_proposal(
     if policy.is_risk_tier_blocked(proposal.risk_tier):
         raise ExecutionBlocked(f"Risk tier {proposal.risk_tier} is blocked; no task was created.")
 
+    # If a connector is already connected, reject an unsupported operation
+    # now rather than letting it reach execution (CW-001): the planner
+    # should never offer, and the backend should never queue, a change a
+    # connected connector can't actually perform.
+    connected_connector_type = get_connected_content_connector(db, website)
+    if connected_connector_type is not None:
+        capabilities = get_connector_capabilities(connected_connector_type)
+        for action in proposal.proposed_actions:
+            if action.operation not in capabilities:
+                raise ExecutionBlocked(
+                    f"Operation '{action.operation}' is not supported by the "
+                    f"{connected_connector_type.value} connector; no task was created."
+                )
+
     tasks: list[SEOTask] = []
     for action in proposal.proposed_actions:
         idempotency_key = _idempotency_key(website.id, opportunity.id, action.operation, action.target_url)
@@ -85,7 +119,7 @@ def create_tasks_from_proposal(
             tasks.append(existing)
             continue
 
-        approval_needed = policy.requires_approval(website, proposal.risk_tier)
+        approval_needed = policy.requires_approval(website, proposal.risk_tier, action.operation)
         task = SEOTask(
             website_id=website.id,
             opportunity_id=opportunity.id,
@@ -158,9 +192,75 @@ def reject_task(db: Session, task: SEOTask, *, decided_by: uuid.UUID, reason: st
     return task
 
 
+def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
+    """Read the connector's current value and compute the diff an
+    execution would make, without ever calling apply_change (CW-009,
+    addendum §6 Level 2 / §7 "Before execution": "Run dry-run and show a
+    human-readable diff").
+
+    Also records the live value it just read as `expected_before_value`
+    on the task, so a later `execute_task` call can detect whether the
+    target changed between this dry-run and execution (the stale-revision
+    check in `execute_task`) instead of silently overwriting a concurrent
+    edit (CW-008).
+    """
+    connector_type = get_connected_content_connector(db, website)
+    if connector_type is None:
+        raise ExecutionBlocked("No content connector is connected for this website.")
+
+    change = task.proposed_change_json
+    operation = change["operation"]
+    target_url = change["target_url"]
+    proposed_value = change["value"]
+
+    if operation not in CONNECTOR_CAPABILITIES[connector_type]:
+        raise ExecutionBlocked(f"Operation '{operation}' is not supported by the {connector_type.value} connector.")
+
+    if connector_type == ConnectorType.wordpress:
+        try:
+            credentials = get_wordpress_credentials(db, website)
+        except LookupError as exc:
+            raise ExecutionBlocked(str(exc)) from exc
+        try:
+            post_type, post_id = find_post_by_url(credentials, target_url)
+            resource = get_resource(credentials, post_type, post_id)
+            current_value = current_title(resource) if operation == "set_title" else current_meta_description(resource)
+        except (WordPressConnectorError, UnsupportedOperation) as exc:
+            raise ExecutionBlocked(str(exc)) from exc
+    else:
+        module = GENERIC_CONNECTOR_MODULES[connector_type]
+        try:
+            credentials = get_connector_credentials(db, website, connector_type)
+        except LookupError as exc:
+            raise ExecutionBlocked(str(exc)) from exc
+        try:
+            target_ref = module.find_target(credentials, target_url)
+            current_value = module.get_current_value(credentials, target_ref, operation)
+        except ConnectorError as exc:
+            raise ExecutionBlocked(str(exc)) from exc
+
+    change["expected_before_value"] = current_value
+    change["dry_run_at"] = datetime.now(timezone.utc).isoformat()
+    task.proposed_change_json = dict(change)  # reassign so SQLAlchemy detects the JSON mutation
+    db.flush()
+
+    return {
+        "operation": operation,
+        "target_url": target_url,
+        "before_value": current_value,
+        "proposed_value": proposed_value,
+        "changed": current_value != proposed_value,
+    }
+
+
 def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
     if website.status != WebsiteStatus.active:
         raise ExecutionBlocked("Automation is paused for this website.")
+    if not website.writes_enabled:
+        raise ExecutionBlocked(
+            "Writes are disabled for this website (kill switch). Crawling and analysis are unaffected; "
+            "re-enable writes to resume execution."
+        )
     if policy.is_risk_tier_blocked(task.risk_tier):
         raise ExecutionBlocked(f"Risk tier {task.risk_tier} is blocked.")
     if task.approval_status == ApprovalStatus.pending:
@@ -178,6 +278,12 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
     operation = change["operation"]
     target_url = change["target_url"]
     new_value = change["value"]
+    expected_before_value = change.get("expected_before_value")
+
+    if operation not in CONNECTOR_CAPABILITIES[connector_type]:
+        task.status = SEOTaskStatus.failed
+        db.flush()
+        raise ExecutionBlocked(f"Operation '{operation}' is not supported by the {connector_type.value} connector.")
 
     task.status = SEOTaskStatus.executing
     db.flush()
@@ -197,6 +303,14 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
                 before_value = current_meta_description(before)
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
+
+            if expected_before_value is not None and before_value != expected_before_value:
+                task.status = SEOTaskStatus.failed
+                db.flush()
+                raise ExecutionBlocked(
+                    "Stale revision: this value changed since the proposal was planned "
+                    f"(expected {expected_before_value!r}, found {before_value!r}). Re-plan before executing."
+                )
 
             if operation == "set_title":
                 update_title(credentials, post_type, post_id, new_value)
@@ -247,6 +361,15 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
     try:
         target_ref = module.find_target(credentials, target_url)
         before_value = module.get_current_value(credentials, target_ref, operation)
+
+        if expected_before_value is not None and before_value != expected_before_value:
+            task.status = SEOTaskStatus.failed
+            db.flush()
+            raise ExecutionBlocked(
+                "Stale revision: this value changed since the proposal was planned "
+                f"(expected {expected_before_value!r}, found {before_value!r}). Re-plan before executing."
+            )
+
         apply_result = module.apply_change(credentials, target_ref, operation, new_value)
         passed, validation_evidence = module.validate_change(credentials, target_ref, operation, new_value, apply_result)
 

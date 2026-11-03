@@ -17,7 +17,15 @@ from app.execution.connections import (
     disconnect_webflow,
     disconnect_wordpress,
 )
-from app.execution.service import ExecutionBlocked, approve_task, create_tasks_from_proposal, execute_task, reject_task, rollback_change
+from app.execution.service import (
+    ExecutionBlocked,
+    approve_task,
+    create_tasks_from_proposal,
+    dry_run_task,
+    execute_task,
+    reject_task,
+    rollback_change,
+)
 from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeRecord
 from app.models.membership import Membership, MembershipRole
@@ -28,6 +36,7 @@ from app.models.website_connection import WebsiteConnection
 from app.schemas.execution import (
     ApprovalDecisionRequest,
     ChangeRecordResponse,
+    DryRunResponse,
     GitHubConnectRequest,
     RollbackRecordResponse,
     SEOTaskResponse,
@@ -35,6 +44,7 @@ from app.schemas.execution import (
     WebflowConnectRequest,
     WebsiteConnectionResponse,
     WordPressConnectRequest,
+    WritesEnabledRequest,
 )
 
 router = APIRouter(tags=["execution"])
@@ -401,6 +411,75 @@ def execute(
     )
     db.commit()
     return ChangeRecordResponse.model_validate(change_record)
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/tasks/{task_id}/dry-run",
+    response_model=DryRunResponse,
+)
+def dry_run(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    task_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.editor)),
+) -> DryRunResponse:
+    """Preview what executing this task would change, without writing
+    anything (CW-009). Also records the live value it read so a later
+    `execute` call can detect whether the target changed in the meantime
+    (CW-008's stale-revision check in execution/service.py)."""
+    website = get_website_or_404(db, organization_id, website_id)
+    task = _get_task_or_404(db, website_id, task_id)
+
+    try:
+        diff = dry_run_task(db, website, task)
+    except ExecutionBlocked as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="seo_task.dry_run",
+            resource_type="seo_task",
+            resource_id=str(task.id),
+            metadata_json={"changed": diff["changed"]},
+        )
+    )
+    db.commit()
+    return DryRunResponse(**diff)
+
+
+@router.put(
+    "/organizations/{organization_id}/websites/{website_id}/writes-enabled",
+    response_model=WritesEnabledRequest,
+)
+def set_writes_enabled(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: WritesEnabledRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WritesEnabledRequest:
+    """The write-specific kill switch (CW-004): blocks new connector
+    writes immediately without pausing crawling/monitoring, which
+    `website.status = paused` would also do."""
+    website = get_website_or_404(db, organization_id, website_id)
+    website.writes_enabled = payload.writes_enabled
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="website.writes_enabled.set",
+            resource_type="website",
+            resource_id=str(website.id),
+            metadata_json={"writes_enabled": payload.writes_enabled},
+        )
+    )
+    db.commit()
+    return WritesEnabledRequest(writes_enabled=website.writes_enabled)
 
 
 @router.get(
