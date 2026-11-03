@@ -242,9 +242,17 @@ def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
         except ConnectorError as exc:
             raise ExecutionBlocked(str(exc)) from exc
 
-    change["expected_before_value"] = current_value
-    change["dry_run_at"] = datetime.now(timezone.utc).isoformat()
-    task.proposed_change_json = dict(change)  # reassign so SQLAlchemy detects the JSON mutation
+    # Build a genuinely new dict rather than mutating `change` in place
+    # and then reassigning it: `change` is the *same object* SQLAlchemy
+    # holds as its "old" value for dirty-comparison, so mutating it
+    # first silently corrupts that baseline, making old == new and
+    # skipping the UPDATE entirely -- found by a real-DB test that
+    # checked the raw row after flush(), not just the in-memory object.
+    task.proposed_change_json = {
+        **change,
+        "expected_before_value": current_value,
+        "dry_run_at": datetime.now(timezone.utc).isoformat(),
+    }
     db.flush()
 
     return {
@@ -257,6 +265,24 @@ def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
 
 
 def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
+    # CW-017: serialize concurrent execution attempts for the same task.
+    # Without this row lock, two simultaneous calls could both pass the
+    # status checks below before either flips status to "executing",
+    # producing two live writes for one approved task -- the same class
+    # of race the AI budget's advisory lock (app/ai/budget.py) closes for
+    # spend tracking. The second caller blocks here until the first
+    # commits or rolls back, then re-reads this row's post-lock state.
+    # populate_existing() is required here, not just with_for_update():
+    # without it, SQLAlchemy's identity map returns the *existing* Python
+    # object for this row (since the caller already loaded it) without
+    # overwriting its attributes from this fresh, lock-acquiring SELECT --
+    # so a second, blocked caller would still see the pre-lock `.status`
+    # in memory even though the row it just (re-)read is already
+    # "completed", defeating the lock's entire purpose.
+    task = (
+        db.query(SEOTask).filter(SEOTask.id == task.id).populate_existing().with_for_update().one()
+    )
+
     if website.status != WebsiteStatus.active:
         raise ExecutionBlocked("Automation is paused for this website.")
     if not website.writes_enabled:

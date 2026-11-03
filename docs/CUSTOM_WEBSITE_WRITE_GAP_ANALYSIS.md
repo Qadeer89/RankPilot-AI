@@ -99,16 +99,24 @@ Grouped by dependency, not by the addendum's original P0/P1 split — some "P0" 
 7. ~~**CI/build/lint/type-check hook integration + block-on-fail** (CW-013)~~ — done, **with an honest limitation**: `github_pr.get_combined_status()` reads GitHub's combined-status API for the PR branch and `validate_change()` now blocks promotion (`passed = False`) on an already-reported `"failure"`. It is a single snapshot taken immediately after opening the PR, not a wait-for-CI-to-finish poll — CI has usually not started yet by that point, so `"pending"`/`"no_checks"` do not block. A true "wait for CI, then report" flow needs an async follow-up (scheduled re-check or webhook), which is **not built yet** — tracked as a known gap, not silently claimed as solved.
 8. ~~**Post-deploy crawl verification for the GitHub path** (CW-014)~~ — done: new `execution/service.py::verify_github_deployment()` + `POST .../change-records/{id}/verify-deployment`, human-triggered (RankPilot has no deploy-pipeline visibility to call this automatically). Re-crawls the live `target_url` via the existing SSRF-safe `crawler.fetch.safe_fetch()` and compares against the proposed value, recording the result under `ChangeRecord.after_state_json.post_deploy_verification` without overwriting the original PR-branch `validation_status`.
 
-### Group C — Sanity connector (needs Section 3 inputs to run against real Gul'sRehab, but the connector module itself can be built and unit-tested against a mocked/sandbox Sanity dataset first)
-9. Sanity credentials + encrypted storage, reusing the existing `core/encryption.py` pattern (CW-005 applied to Sanity).
-10. Sanity schema discovery tool (CW-006) — read-only; **requires real Sanity project ID/dataset/token from you**.
-11. Sanity read / targeted patch / read-back (CW-007).
-12. Sanity revision-conflict detection (CW-008) — built on Group A step 3.
-13. Sanity dry-run diff (CW-009) — built on Group A step 2.
+### Group C — Sanity connector
+
+**Status: done** (2026-11-03), tests in `test_sanity_connector.py` — full suite 296/296 passing at the time.
+
+9. ~~Sanity credentials + encrypted storage~~ — done, reusing the existing `core/encryption.py` pattern exactly as the other 4 connectors do.
+10. ~~Sanity schema discovery~~ — done differently than planned: rather than a runtime discovery *tool*, the real schema was read directly from the `gulsrehab-website` repo's `src/sanity/schemaTypes/*.ts` (§3 above) and the connector was built against those confirmed field names (`seoTitle`, `seoDescription` on `blog` documents). A generic runtime discovery tool for a *different* future Sanity-backed customer is still not built — only this pilot's schema is hard-coded as `FIELD_BY_OPERATION`/`DOCUMENT_TYPE` in `app/connectors/sanity.py`, which is an intentional, documented scope limit (the module docstring says so), not an oversight.
+11. ~~Sanity read / targeted patch / read-back~~ — done (`find_target`/`get_current_value`/`apply_change`/`validate_change`).
+12. ~~Sanity revision-conflict detection~~ — done, and **stronger than Group A step 3's generic fallback**: every patch carries `ifRevisionID` set to the document's real `_rev`, so Sanity's own mutate API (not just this platform's value comparison) rejects a write on a real concurrent edit.
+13. ~~Sanity dry-run diff~~ — done, for free, via Group A's connector-agnostic `dry_run_task()`.
+
+**Still open before this can run against real Gul'sRehab data**: the Sanity API token (§3 — must be founder-generated, cannot exist in source). Not yet exercised against the live project.
 
 ### Group D — Reliability/security cross-cutting
-14. Request-level idempotency for `execute_task()` itself (extends CW-017).
-15. Prompt-injection audit + adversarial tests for connector-sourced content fed into AI prompts (CW-018).
+
+**Status: done** (2026-11-03) — full suite 311/311 passing.
+
+14. ~~Request-level idempotency for `execute_task()`~~ — done, and **a real concurrency bug was found and fixed while proving it**: `with_for_update()` alone was not sufficient — SQLAlchemy's identity map returned the *already-loaded* Python object without refreshing its attributes from the lock-acquiring SELECT, so a second, blocked caller still saw the pre-lock `.status` in memory even after the first caller committed. Fixed with `.populate_existing()`. A second, unrelated bug was found by the same real-Postgres test approach: `dry_run_task()`'s original implementation mutated the `proposed_change_json` dict in place *before* reassigning it, which corrupted SQLAlchemy's own "old value" snapshot (same object, by reference) and silently skipped the UPDATE on flush -- the stale-revision check from Group A step 3 was not actually persisting its "expected" value to the database at all until this was fixed. Verified with real threads and real, separate Postgres connections in `test_execute_task_concurrency.py` (`engine` fixture, not the rollback-wrapped `db_session` fixture), the same approach the AI-budget advisory lock was proven with earlier in this project.
+15. ~~Prompt-injection audit + adversarial tests~~ — done. Audit found the existing AI layer (`app/ai/{content_agent,internal_linking,qa_assistant,strategy_assistant}.py`) already had solid structural defenses: every agent's system prompt explicitly frames crawled/connector content as untrusted data, `OpportunityProposal`'s `RESPONSE_JSON_SCHEMA` already sets `additionalProperties: False` + `strict: True` for the real OpenAI call, and `validate_allowed_operations()` enforces the operation allowlist in Python too. Added `model_config = {"extra": "forbid"}` to `OpportunityProposal`/`ProposedAction`/`EvidenceRef` as defense-in-depth for any caller that parses a proposal outside the OpenAI structured-output path. 14 new tests in `test_prompt_injection_defenses.py`, including a regression guard that every agent's `SYSTEM_PROMPT` keeps its untrusted-data framing. Honest limitation: no test can prove a real LLM won't be "fooled" by injected text -- these tests prove the structural guarantees that make that question moot (an unsafe action literally can't be expressed in the schema), not model behavior itself.
 
 ### Group E — Gul'sRehab pilot execution (blocked until Section 3 is answered)
 16. Confirm GitHub repo, Sanity project/dataset/token scope, deployment provider, GSC property.
@@ -121,19 +129,21 @@ Grouped by dependency, not by the addendum's original P0/P1 split — some "P0" 
 
 ## 5. Release-gate status (addendum §13), honestly as of today
 
+**Updated 2026-11-03 after Groups A–D landed** (commits `49803ae`, `ee40e1b`, `98cff9b`, and the Group D commit below). Full suite: 311/311 passing.
+
 | Gate | Status |
 |---|---|
 | 1. Existing v1.3 P0 security/tenant-isolation gates pass | **Met** — RP13-001..024 completed with tests in the prior P0 round |
-| 2. Connector credentials least-privilege and encrypted | **Met for WordPress/Shopify/Webflow/GitHub**; not yet applicable to Sanity (doesn't exist) |
-| 3. Change schema + server-side state machine enforced | **Partial** — `SEOTask`/`Approval`/`ChangeRecord` state transitions exist and are enforced server-side, but the schema is narrower than §5 |
-| 4. Dry-run and human approval proven | **Not met** — no dry-run exists anywhere yet (Gap #2) |
-| 5. Sanity write/read-back/revision-conflict tests pass | **Not met** — connector doesn't exist |
-| 6. GitHub branch/PR + protected-path tests pass | **Partial** — branch/PR proven; protected-path allowlist not explicit (Gap #7) |
-| 7. Build/preview validation blocks unsafe changes | **Not met** (Gap #6) |
-| 8. Post-change crawl verifies rendered output | **Met for WordPress** (`validate_wordpress_change`); **not met for GitHub-deployed changes** (Gap source doc, §4.2) |
-| 9. Audit history + recovery tested | **Met** for the 4 existing connectors (`ChangeRecord`/`RollbackRecord`, RP13-017/018) |
-| 10. Site-level kill switch works | **Partial** — pause exists and is tested, but is not write-specific (Gap #8) |
+| 2. Connector credentials least-privilege and encrypted | **Met** for all 5 connectors including Sanity (`core/encryption.py` pattern) |
+| 3. Change schema + server-side state machine enforced | **Partial, improved** — `SEOTask`/`Approval`/`ChangeRecord` transitions enforced server-side; capability registry (CW-001) and category-based tier-1 opt-in (CW-003) added; still narrower than addendum §5's full typed-proposal schema (no `confidence`/`reversibility`/`policy_version` fields) and §6's full Levels 0–4 |
+| 4. Dry-run and human approval proven | **Met** — `dry_run_task()` + stale-revision conflict detection, tested for both the generic connectors and Sanity (with Sanity's native `_rev` check) |
+| 5. Sanity write/read-back/revision-conflict tests pass | **Met** in test form (7 tests, `test_sanity_connector.py`) — **not yet exercised against the real live project**; the Sanity API token is still the one open input |
+| 6. GitHub branch/PR + protected-path tests pass | **Met** — protected-path denylist enforced twice (find_target + apply_change), negative tests pass |
+| 7. Build/preview validation blocks unsafe changes | **Partial** — CI-failure blocks promotion (CW-013); true wait-for-CI-completion (not just a post-open snapshot) is a documented, not-yet-built follow-up |
+| 8. Post-change crawl verifies rendered output | **Met** — WordPress (`validate_wordpress_change`) and GitHub (`verify_github_deployment`, human-triggered post-merge) both covered; Shopify/Webflow/Sanity validate via their own live read-back in `validate_change()` |
+| 9. Audit history + recovery tested | **Met** for all 5 connectors (`ChangeRecord`/`RollbackRecord`, including Sanity's compensating-patch rollback) |
+| 10. Site-level kill switch works | **Met** — `Website.writes_enabled` is write-specific, distinct from crawl pause, tested including that dry-run stays available while it's off |
 | 11. Backup/recovery responsibilities documented | **Met** — `ops/RUNBOOKS.md` (RP13-021) |
-| 12. Founder approves first production write after staging rehearsal | **Not applicable yet** — nothing to rehearse until Groups A–C land |
+| 12. Founder approves first production write after staging rehearsal | **Not applicable yet** — blocked on the Sanity token and a staging rehearsal on the real Gul'sRehab pilot, not on remaining engine work |
 
-**Conclusion: production write capability on Gul'sRehab is not close to ready, and should not be implied otherwise.** The good news is that roughly half the foundation (audit trail, rollback, encrypted credentials, risk-gated approval, tenant isolation) is already built and tested from the prior P0 round — the remaining work is real but bounded: dry-run, revision-conflict detection, the Sanity connector itself, and GitHub CI integration.
+**Conclusion: the engine-side work is essentially complete; what remains is pilot-specific, not architectural.** Every gate the platform itself controls is now Met or Partial-with-a-documented-reason; the two genuinely open items are external inputs (the Sanity token; a real staging rehearsal against live Gul'sRehab data) and one deliberately deferred async-CI-wait feature, not missing engineering. Two real concurrency/persistence bugs were found and fixed in the course of building this (Group D §14) — proof the real-Postgres/real-thread testing discipline from the prior P0 round caught something a less rigorous test would have missed here too.

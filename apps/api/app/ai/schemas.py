@@ -12,17 +12,32 @@ ALLOWED_OPERATIONS = {"set_title", "set_meta_description"}
 
 
 class EvidenceRef(BaseModel):
+    model_config = {"extra": "forbid"}
+
     page_url: str
     finding_code: str
 
 
 class ProposedAction(BaseModel):
+    # CW-018 (custom-website-write addendum §5): "The LLM cannot provide
+    # connector IDs, permissions, credentials, arbitrary paths or
+    # executable commands." OpenAI's own strict JSON schema
+    # (RESPONSE_JSON_SCHEMA below, additionalProperties: False) already
+    # keeps a real API response from smuggling an extra field like
+    # "connector_id" or "file_path" through -- extra="forbid" here makes
+    # the same guarantee hold for any other caller that constructs or
+    # parses a ProposedAction directly (tests, a future code path), not
+    # just the OpenAI structured-output call.
+    model_config = {"extra": "forbid"}
+
     operation: str = Field(description="One of: " + ", ".join(sorted(ALLOWED_OPERATIONS)))
     target_url: str
     value: str
 
 
 class OpportunityProposal(BaseModel):
+    model_config = {"extra": "forbid"}
+
     opportunity_id: str
     summary: str
     evidence: list[EvidenceRef]
