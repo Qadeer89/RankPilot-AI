@@ -80,6 +80,15 @@ class WritesEnabledRequest(BaseModel):
     writes_enabled: bool
 
 
+class DeploymentVerificationResponse(BaseModel):
+    verified: bool
+    checked_at: str
+    expected: str | None = None
+    actual: str | None = None
+    fetched_url: str | None = None
+    error: str | None = None
+
+
 class RollbackRecordResponse(BaseModel):
     id: uuid.UUID
     change_record_id: uuid.UUID

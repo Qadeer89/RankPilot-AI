@@ -25,6 +25,7 @@ from app.execution.service import (
     execute_task,
     reject_task,
     rollback_change,
+    verify_github_deployment,
 )
 from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeRecord
@@ -36,6 +37,7 @@ from app.models.website_connection import WebsiteConnection
 from app.schemas.execution import (
     ApprovalDecisionRequest,
     ChangeRecordResponse,
+    DeploymentVerificationResponse,
     DryRunResponse,
     GitHubConnectRequest,
     RollbackRecordResponse,
@@ -480,6 +482,43 @@ def set_writes_enabled(
     )
     db.commit()
     return WritesEnabledRequest(writes_enabled=website.writes_enabled)
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/change-records/{change_id}/verify-deployment",
+    response_model=DeploymentVerificationResponse,
+)
+def verify_deployment(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    change_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.editor)),
+) -> DeploymentVerificationResponse:
+    """CW-014: re-crawl the live URL for a GitHub-connector change and
+    confirm it actually shipped. Call this once the PR has been reviewed,
+    merged, and the site redeployed -- RankPilot does not control or
+    observe that deploy pipeline, so it cannot trigger this automatically."""
+    website = get_website_or_404(db, organization_id, website_id)
+    change_record = _get_change_record_or_404(db, website_id, change_id)
+
+    try:
+        verification = verify_github_deployment(db, website, change_record)
+    except ExecutionBlocked as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="change_record.verify_deployment",
+            resource_type="change_record",
+            resource_id=str(change_record.id),
+            metadata_json={"verified": verification["verified"]},
+        )
+    )
+    db.commit()
+    return DeploymentVerificationResponse(**verification)
 
 
 @router.get(

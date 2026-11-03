@@ -52,6 +52,38 @@ META_DESCRIPTION_RE = re.compile(
 # Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
 SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
 
+# Protected-path denylist (CW-012, addendum §4.2/§9: "Strictly allowlist
+# writable fields, file paths and change types", "No secret, environment,
+# dependency, infrastructure, authentication or payment code changes as
+# SEO fixes"). `_candidate_paths()` only ever generates conventional
+# static-page paths today, so none of these would naturally collide --
+# this is defense in depth against a future change to that convention
+# list, or a repo whose directory layout happens to coincide with one of
+# these names, ever resolving to a write here.
+PROTECTED_PATH_PREFIXES = (
+    ".github/",
+    ".git/",
+    ".env",
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "requirements.txt",
+    "poetry.lock",
+    "Pipfile",
+    "Dockerfile",
+    "docker-compose",
+    ".npmrc",
+    "next.config",
+    "vercel.json",
+    "netlify.toml",
+)
+
+
+def _is_protected_path(file_path: str) -> bool:
+    normalized = file_path.lstrip("/")
+    return any(normalized == prefix or normalized.startswith(prefix) for prefix in PROTECTED_PATH_PREFIXES)
+
 
 @dataclass(frozen=True)
 class GitHubCredentials:
@@ -98,6 +130,8 @@ def find_target(credentials: GitHubCredentials, target_url: str) -> dict:
     real file, and return its path/sha/decoded content.
     """
     for candidate in _candidate_paths(target_url):
+        if _is_protected_path(candidate):
+            continue  # never even ask about a protected path, let alone write to it
         response = safe_request(
             httpx.get,
             f"{_repo_api_base(credentials)}/contents/{candidate}",
@@ -116,18 +150,21 @@ def find_target(credentials: GitHubCredentials, target_url: str) -> dict:
     )
 
 
-def _extract(operation: str, content: str) -> str:
+def extract_value(operation: str, html: str) -> str:
+    """Public so a post-deploy verification step (CW-014) can extract the
+    same way from freshly-crawled live HTML, not just this connector's
+    own file content."""
     if operation == "set_title":
-        match = TITLE_RE.search(content)
+        match = TITLE_RE.search(html)
         return match.group(2) if match else ""
     if operation == "set_meta_description":
-        match = META_DESCRIPTION_RE.search(content)
+        match = META_DESCRIPTION_RE.search(html)
         return match.group(2) if match else ""
     raise ValueError(f"Unsupported operation: {operation}")
 
 
 def get_current_value(credentials: GitHubCredentials, target_ref: dict, operation: str) -> str:
-    return _extract(operation, target_ref["content"])
+    return extract_value(operation, target_ref["content"])
 
 
 def _replace(operation: str, content: str, new_value: str) -> str:
@@ -212,6 +249,12 @@ def close_pull_request(credentials: GitHubCredentials, pr_number: int) -> dict:
 
 
 def apply_change(credentials: GitHubCredentials, target_ref: dict, operation: str, new_value: str) -> dict:
+    if _is_protected_path(target_ref["file_path"]):
+        # Should be unreachable -- find_target() already filters these out
+        # -- but this is the actual write call, so it gets its own,
+        # independent guard rather than trusting an earlier check.
+        raise UnsupportedOperation(f"Refusing to write to protected path: {target_ref['file_path']}")
+
     new_content = _replace(operation, target_ref["content"], new_value)
 
     branch_name = f"rankpilot/{operation}-{uuid.uuid4().hex[:8]}"
@@ -239,6 +282,35 @@ def apply_change(credentials: GitHubCredentials, target_ref: dict, operation: st
     return {"pr_number": pull_request["number"], "pr_url": pull_request["html_url"], "branch": branch_name}
 
 
+def get_combined_status(credentials: GitHubCredentials, ref: str) -> str:
+    """The repo's configured CI/build/lint/type-check result for `ref`
+    (CW-013, addendum §4.2 "Read CI status"): `"success"`, `"failure"`,
+    `"pending"`, or `"no_checks"` if nothing reports status yet -- either
+    the repo has no CI configured, or checks haven't started running yet.
+
+    This is a single snapshot, not a wait-for-completion poll: CI
+    typically hasn't finished (often hasn't started) by the moment this
+    connector opens the PR and calls validate_change() right after, so
+    `"pending"`/`"no_checks"` do not by themselves fail validation here --
+    only an already-reported `"failure"` does. Waiting for CI to actually
+    finish before reporting final validation needs an async follow-up
+    (e.g. a scheduled re-check), which is not implemented yet; treat a
+    `"pending"`/`"no_checks"` result as "not yet proven safe", not as "safe".
+    """
+    response = safe_request(
+        httpx.get,
+        f"{_repo_api_base(credentials)}/commits/{ref}/status",
+        headers=credentials.headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if response.status_code != 200:
+        return "no_checks"
+    body = response.json()
+    if body.get("total_count", 0) == 0:
+        return "no_checks"
+    return body.get("state", "pending")
+
+
 def validate_change(
     credentials: GitHubCredentials, target_ref: dict, operation: str, expected_value: str, apply_result: dict
 ) -> tuple[bool, dict]:
@@ -254,7 +326,7 @@ def validate_change(
         return False, {"error": f"Could not re-fetch {target_ref['file_path']} on branch {branch}"}
 
     content = base64.b64decode(response.json()["content"]).decode("utf-8")
-    actual = _extract(operation, content)
+    actual = extract_value(operation, content)
 
     pr_response = safe_request(
         httpx.get,
@@ -263,14 +335,20 @@ def validate_change(
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
     pr_state = pr_response.json().get("state") if pr_response.status_code == 200 else "unknown"
+    ci_status = get_combined_status(credentials, branch)
 
-    passed = actual == expected_value and pr_state == "open"
+    # A reported failure blocks promotion outright (CW-013: "Failed check
+    # blocks promotion"). Pending/no-checks don't block here -- see
+    # get_combined_status()'s docstring on why this is a snapshot, not a
+    # guarantee CI has actually passed.
+    passed = actual == expected_value and pr_state == "open" and ci_status != "failure"
     return passed, {
         "expected": expected_value,
         "actual": actual,
         "pr_number": apply_result["pr_number"],
         "pr_url": apply_result["pr_url"],
         "pr_state": pr_state,
+        "ci_status": ci_status,
     }
 
 

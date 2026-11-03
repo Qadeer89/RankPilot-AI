@@ -17,6 +17,7 @@ from app.ai.schemas import OpportunityProposal
 from app.connectors import github_pr, shopify, webflow
 from app.connectors import wordpress as wordpress_connector
 from app.connectors.errors import ConnectorError
+from app.crawler.fetch import FetchError, safe_fetch
 from app.connectors.wordpress import (
     UnsupportedOperation,
     WordPressConnectorError,
@@ -456,3 +457,51 @@ def rollback_change(
         db.flush()
 
     return rollback
+
+
+def verify_github_deployment(db: Session, website: Website, change_record: ChangeRecord) -> dict:
+    """Post-deploy verification for the GitHub connector (CW-014,
+    addendum §4.2/§7: "After deployment, crawl the live URL again").
+
+    `github_pr.validate_change()` can only check the open PR's branch --
+    it has no way to know when, or whether, a human has merged it and the
+    site has actually redeployed, since this platform doesn't control or
+    observe the deploy pipeline (same limitation github_pr.py's own
+    module docstring documents for its "validation" generally). This is
+    a separate step a human calls once they've confirmed the PR merged
+    and the site redeployed, re-crawling the now-live URL to confirm the
+    change actually shipped -- an API success response from the PR/merge
+    step is never, by itself, proof of that.
+    """
+    if change_record.connector_type != ConnectorType.github:
+        raise ExecutionBlocked("Post-deploy verification only applies to the GitHub connector.")
+
+    task = (
+        db.query(SEOTask).filter(SEOTask.id == change_record.seo_task_id).one_or_none()
+        if change_record.seo_task_id
+        else None
+    )
+    if task is None:
+        raise ExecutionBlocked("Could not find the task this change record came from.")
+
+    operation = task.proposed_change_json["operation"]
+    target_url = task.proposed_change_json["target_url"]
+    expected_value = task.proposed_change_json["value"]
+
+    try:
+        fetch_result = safe_fetch(target_url)
+    except FetchError as exc:
+        verification = {"verified": False, "error": str(exc)}
+    else:
+        actual_value = github_pr.extract_value(operation, fetch_result.body)
+        verification = {
+            "verified": actual_value == expected_value,
+            "expected": expected_value,
+            "actual": actual_value,
+            "fetched_url": fetch_result.final_url,
+        }
+
+    verification["checked_at"] = datetime.now(timezone.utc).isoformat()
+    change_record.after_state_json = {**change_record.after_state_json, "post_deploy_verification": verification}
+    db.flush()
+    return verification
