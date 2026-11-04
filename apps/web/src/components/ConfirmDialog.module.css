@@ -1,0 +1,75 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--rp-surface);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-raised);
+  max-width: 420px;
+  width: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.message {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--rp-ink);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cancelButton,
+.confirmButton {
+  border-radius: var(--rp-radius-control);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--rp-border);
+}
+
+.cancelButton {
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+}
+
+.cancelButton:hover {
+  background: var(--rp-bg);
+}
+
+.confirmButton {
+  background: var(--rp-primary);
+  border-color: var(--rp-primary);
+  color: #ffffff;
+}
+
+.confirmButton:hover {
+  background: var(--rp-primary-hover);
+  border-color: var(--rp-primary-hover);
+}
+
+.confirmButtonDanger {
+  background: var(--rp-danger);
+  border-color: var(--rp-danger);
+}
+
+.confirmButtonDanger:hover {
+  background: #b93333;
+  border-color: #b93333;
+}

@@ -258,6 +258,19 @@
   font-size: 14px;
 }
 
+.reportBlock {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rp-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reportBlock:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
 .jsonBlock {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 12px;

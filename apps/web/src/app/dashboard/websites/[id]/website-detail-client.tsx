@@ -67,8 +67,9 @@ import {
   updateWebsiteSettings,
 } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/EmptyState";
-import { MetricGrid } from "@/components/MetricCard";
+import { MetricGrid, type Metric as MetricCardMetric } from "@/components/MetricCard";
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./detail.module.css";
 
@@ -124,6 +125,11 @@ export default function WebsiteDetailClient() {
   const [showSearchPerformance, setShowSearchPerformance] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [changeRecords, setChangeRecords] = useState<Record<string, ChangeRecord>>({});
+  const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  function requestConfirm(message: string, onConfirm: () => void) {
+    setConfirmState({ message, onConfirm });
+  }
 
   const [wpUsername, setWpUsername] = useState("");
   const [wpPassword, setWpPassword] = useState("");
@@ -282,19 +288,17 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (
-      !window.confirm(
-        "Pause automation for this site? This immediately stops all automated writes and also stops crawling (scheduled and in-progress) until you resume."
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    try {
-      setWebsite(await pauseWebsite(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to pause website.");
-    }
+    requestConfirm(
+      "Pause automation for this site? This immediately stops all automated writes and also stops crawling (scheduled and in-progress) until you resume.",
+      async () => {
+        setError(null);
+        try {
+          setWebsite(await pauseWebsite(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to pause website.");
+        }
+      }
+    );
   }
 
   async function handleToggleAutoExecute() {
@@ -348,21 +352,24 @@ export default function WebsiteDetailClient() {
       execute:
         "Execute this task now? This makes a real, bounded write to the connected site/CMS, validated right after.",
     };
-    const confirmMessage = confirmMessages[action];
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
-    setError(null);
-    try {
-      if (action === "approve") await approveTask(token, orgId, websiteId, taskId);
-      else if (action === "reject") await rejectTask(token, orgId, websiteId, taskId);
-      else if (action === "cancel") await cancelTask(token, orgId, websiteId, taskId);
-      else {
-        const changeRecord = await executeTask(token, orgId, websiteId, taskId);
-        setChangeRecords((prev) => ({ ...prev, [taskId]: changeRecord }));
+    const run = async () => {
+      setError(null);
+      try {
+        if (action === "approve") await approveTask(token, orgId, websiteId, taskId);
+        else if (action === "reject") await rejectTask(token, orgId, websiteId, taskId);
+        else if (action === "cancel") await cancelTask(token, orgId, websiteId, taskId);
+        else {
+          const changeRecord = await executeTask(token, orgId, websiteId, taskId);
+          setChangeRecords((prev) => ({ ...prev, [taskId]: changeRecord }));
+        }
+        setTasks(await listTasks(token, orgId, websiteId));
+      } catch (err) {
+        setError(err instanceof ApiError ? `${err.status}: ${err.message}` : `Failed to ${action} task.`);
       }
-      setTasks(await listTasks(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : `Failed to ${action} task.`);
-    }
+    };
+    const confirmMessage = confirmMessages[action];
+    if (confirmMessage) requestConfirm(confirmMessage, run);
+    else await run();
   }
 
   async function handleRollback(taskId: string) {
@@ -370,16 +377,18 @@ export default function WebsiteDetailClient() {
     const orgId = orgIdRef.current;
     const changeRecord = changeRecords[taskId];
     if (!token || !orgId || !changeRecord) return;
-    if (!window.confirm("Roll back this change? This writes the previous value back to the connected site/CMS.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await rollbackChange(token, orgId, websiteId, changeRecord.id);
-      setTasks(await listTasks(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to roll back.");
-    }
+    requestConfirm(
+      "Roll back this change? This writes the previous value back to the connected site/CMS.",
+      async () => {
+        setError(null);
+        try {
+          await rollbackChange(token, orgId, websiteId, changeRecord.id);
+          setTasks(await listTasks(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to roll back.");
+        }
+      }
+    );
   }
 
   async function handleConnectWordPress() {
@@ -401,16 +410,18 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect WordPress? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectWordPress(token, orgId, websiteId);
-      setConnections(await listConnections(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect WordPress.");
-    }
+    requestConfirm(
+      "Disconnect WordPress? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectWordPress(token, orgId, websiteId);
+          setConnections(await listConnections(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect WordPress.");
+        }
+      }
+    );
   }
 
   async function handleConnectGoogle() {
@@ -484,16 +495,18 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect Shopify? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectShopify(token, orgId, websiteId);
-      setConnections(await listConnections(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Shopify.");
-    }
+    requestConfirm(
+      "Disconnect Shopify? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectShopify(token, orgId, websiteId);
+          setConnections(await listConnections(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Shopify.");
+        }
+      }
+    );
   }
 
   async function handleConnectWebflow() {
@@ -515,16 +528,18 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect Webflow? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectWebflow(token, orgId, websiteId);
-      setConnections(await listConnections(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Webflow.");
-    }
+    requestConfirm(
+      "Disconnect Webflow? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectWebflow(token, orgId, websiteId);
+          setConnections(await listConnections(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Webflow.");
+        }
+      }
+    );
   }
 
   async function handleConnectSanity() {
@@ -547,16 +562,18 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect Sanity? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectSanity(token, orgId, websiteId);
-      setConnections(await listConnections(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Sanity.");
-    }
+    requestConfirm(
+      "Disconnect Sanity? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectSanity(token, orgId, websiteId);
+          setConnections(await listConnections(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect Sanity.");
+        }
+      }
+    );
   }
 
   async function handleConnectGitHub() {
@@ -579,16 +596,18 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect GitHub? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectGitHub(token, orgId, websiteId);
-      setConnections(await listConnections(token, orgId, websiteId));
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GitHub.");
-    }
+    requestConfirm(
+      "Disconnect GitHub? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectGitHub(token, orgId, websiteId);
+          setConnections(await listConnections(token, orgId, websiteId));
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GitHub.");
+        }
+      }
+    );
   }
 
   async function handleConnectGa4() {
@@ -608,17 +627,19 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    if (!window.confirm("Disconnect Google Analytics (GA4)? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
-      return;
-    }
-    setError(null);
-    try {
-      await disconnectGa4(token, orgId);
-      setGa4Properties([]);
-      setGa4Metrics(null);
-    } catch (err) {
-      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GA4.");
-    }
+    requestConfirm(
+      "Disconnect Google Analytics (GA4)? RankPilot will no longer be able to apply approved changes to this site until you reconnect.",
+      async () => {
+        setError(null);
+        try {
+          await disconnectGa4(token, orgId);
+          setGa4Properties([]);
+          setGa4Metrics(null);
+        } catch (err) {
+          setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to disconnect GA4.");
+        }
+      }
+    );
   }
 
   async function handleLoadGa4Properties() {
@@ -1635,17 +1656,77 @@ export default function WebsiteDetailClient() {
             {reports.length === 0 && (
               <EmptyState title="No reports generated yet" description="Weekly reports are generated automatically once this site has crawl and task history." />
             )}
-            {reports.map((report) => (
-              <div key={report.id}>
-                <p className={styles.rowMeta}>
-                  {report.period_start} → {report.period_end}
-                </p>
-                <pre className={styles.jsonBlock}>{JSON.stringify(report.content_json, null, 2)}</pre>
-              </div>
-            ))}
+            {reports.map((report) => {
+              const content = report.content_json as {
+                crawls?: { count: number; pages_fetched_total: number };
+                findings?: { opened_this_period: number; open_now: number };
+                opportunities?: { open_now: number };
+                changes?: { executed: number; passed_validation: number; failed_validation: number };
+                search_performance?: { clicks: number; impressions: number } | null;
+                ga4?: { sessions: number; total_users: number; conversions: number } | null;
+                disclaimer?: string;
+              };
+              const metrics: MetricCardMetric[] = [];
+              if (content.crawls) {
+                metrics.push({ label: "Crawls run", value: content.crawls.count });
+                metrics.push({ label: "Pages fetched", value: content.crawls.pages_fetched_total });
+              }
+              if (content.findings) {
+                metrics.push({ label: "Findings opened", value: content.findings.opened_this_period });
+                metrics.push({
+                  label: "Findings open now",
+                  value: content.findings.open_now,
+                  attention: content.findings.open_now > 0,
+                });
+              }
+              if (content.opportunities) {
+                metrics.push({ label: "Opportunities open", value: content.opportunities.open_now });
+              }
+              if (content.changes) {
+                metrics.push({ label: "Changes executed", value: content.changes.executed });
+                metrics.push({ label: "Validation passed", value: content.changes.passed_validation });
+                if (content.changes.failed_validation > 0) {
+                  metrics.push({
+                    label: "Validation failed",
+                    value: content.changes.failed_validation,
+                    attention: true,
+                  });
+                }
+              }
+              if (content.search_performance) {
+                metrics.push({ label: "Search clicks", value: content.search_performance.clicks });
+                metrics.push({ label: "Search impressions", value: content.search_performance.impressions });
+              }
+              if (content.ga4) {
+                metrics.push({ label: "GA4 sessions", value: content.ga4.sessions });
+                metrics.push({ label: "GA4 users", value: content.ga4.total_users });
+                metrics.push({ label: "GA4 conversions", value: content.ga4.conversions });
+              }
+              return (
+                <div key={report.id} className={styles.reportBlock}>
+                  <p className={styles.rowMeta}>
+                    {report.period_start} → {report.period_end}
+                  </p>
+                  {metrics.length > 0 && <MetricGrid metrics={metrics} />}
+                  {content.disclaimer && <p className={styles.rowMeta}>{content.disclaimer}</p>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {confirmState && (
+        <ConfirmDialog
+          message={confirmState.message}
+          onConfirm={() => {
+            const { onConfirm } = confirmState;
+            setConfirmState(null);
+            onConfirm();
+          }}
+          onCancel={() => setConfirmState(null)}
+        />
+      )}
     </div>
   );
 }

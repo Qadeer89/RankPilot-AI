@@ -7,26 +7,24 @@ import {
   ApiError,
   MeResponse,
   Website,
+  WebsiteOverviewRow,
   confirmVerification,
   getMe,
+  getOrganizationOverview,
   listWebsites,
   registerWebsite,
   startVerification,
 } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
+import StatusBadge from "@/components/StatusBadge";
 import styles from "./dashboard.module.css";
-
-function statusClassName(status: string): string {
-  if (status === "verified") return `${styles.statusBadge} ${styles.statusVerified}`;
-  if (status === "failed") return `${styles.statusBadge} ${styles.statusFailed}`;
-  return styles.statusBadge;
-}
 
 export default function DashboardPage() {
   const router = useRouter();
   const tokenRef = useRef<string | null>(null);
   const [me, setMe] = useState<MeResponse | null>(null);
   const [websites, setWebsites] = useState<Website[]>([]);
+  const [overview, setOverview] = useState<Record<string, WebsiteOverviewRow>>({});
   const [error, setError] = useState<string | null>(null);
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
@@ -37,8 +35,12 @@ export default function DashboardPage() {
 
   const refreshWebsites = useCallback(
     async (activeToken: string, organizationId: string) => {
-      const sites = await listWebsites(activeToken, organizationId);
+      const [sites, overviewRows] = await Promise.all([
+        listWebsites(activeToken, organizationId),
+        getOrganizationOverview(activeToken, organizationId),
+      ]);
       setWebsites(sites);
+      setOverview(Object.fromEntries(overviewRows.map((row) => [row.website_id, row])));
     },
     []
   );
@@ -156,17 +158,24 @@ export default function DashboardPage() {
         <div className={styles.card}>
           <h2>Websites</h2>
           {websites.length === 0 && <p>No websites yet.</p>}
-          {websites.map((site) => (
+          {websites.map((site) => {
+            const row = overview[site.id];
+            return (
             <div key={site.id} className={styles.websiteRow}>
               <div className={styles.websiteRowHeader}>
                 <Link href={`/dashboard/websites/${site.id}`}>
                   <strong>{site.display_name}</strong>
                 </Link>
-                <span className={statusClassName(site.verification_status)}>
-                  {site.verification_status}
-                </span>
+                <StatusBadge value={site.verification_status} />
+                {row && <StatusBadge value={row.status} />}
               </div>
               <span>{site.canonical_url}</span>
+              {row && (
+                <span className={styles.subtitle}>
+                  {row.open_findings_count} findings · {row.open_opportunities_count} opportunities ·{" "}
+                  {row.pending_tasks_count} pending tasks · last crawl: {row.last_crawl_status ?? "never"}
+                </span>
+              )}
 
               {site.verification_status !== "verified" && (
                 <div className={styles.verifyActions}>
@@ -192,7 +201,8 @@ export default function DashboardPage() {
                 <p className={styles.instructions}>{pendingInstructions[site.id]}</p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
