@@ -1071,7 +1071,7 @@ export default function WebsiteDetailClient() {
                   >
                     {ga4Properties.map((p) => (
                       <option key={p.property_id} value={p.property_id}>
-                        {p.display_name || p.property_id}
+                        {p.display_name ? `${p.display_name} (${p.property_id})` : p.property_id}
                       </option>
                     ))}
                   </select>
