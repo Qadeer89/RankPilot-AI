@@ -211,6 +211,8 @@ export default function WebsiteDetailClient() {
         listReports(token, orgId, websiteId),
       ]);
     setWebsite(site);
+    if (site.search_console_site_url) setSitePropertyInput(site.search_console_site_url);
+    if (site.ga4_property_id) setGa4PropertyInput(site.ga4_property_id);
     setCrawls(crawlList);
     setPages(pageList);
     setFindings(findingList);
@@ -224,6 +226,13 @@ export default function WebsiteDetailClient() {
         setSearchPerformance(await getSearchPerformance(token, orgId, websiteId));
       } catch {
         // Search Console may not actually be connected yet; ignore.
+      }
+    }
+    if (site.ga4_property_id) {
+      try {
+        setGa4Metrics(await getGa4Metrics(token, orgId, websiteId));
+      } catch {
+        // GA4 may not actually be connected yet; ignore.
       }
     }
   }, [websiteId]);
