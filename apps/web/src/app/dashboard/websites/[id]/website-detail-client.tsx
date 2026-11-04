@@ -93,9 +93,9 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 function badgeClass(value: string): string {
-  const good = ["verified", "passed", "completed", "resolved", "indexable", "sent", "approved", "connected"];
+  const good = ["verified", "passed", "completed", "resolved", "indexable", "sent", "approved", "connected", "active"];
   const bad = ["failed", "unverified", "rejected", "error", "disconnected"];
-  const warn = ["pending", "executing", "running", "skipped_not_configured", "noindex"];
+  const warn = ["pending", "executing", "running", "skipped_not_configured", "noindex", "paused"];
   if (good.includes(value)) return `${styles.badge} ${styles.badgeGood}`;
   if (bad.includes(value)) return `${styles.badge} ${styles.badgeBad}`;
   if (warn.includes(value)) return `${styles.badge} ${styles.badgeWarn}`;
@@ -160,7 +160,12 @@ export default function WebsiteDetailClient() {
       }
     }
 
+    // One-time sync from a freshly (re)fetched connections list into local
+    // form state, each guarded so it only fires while that field is still
+    // empty -- not the "external system" pattern the set-state-in-effect
+    // rule assumes, so it's deliberately opted out below.
     const shopify = latestByType.get("shopify");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (shopify && !shopifyDomain) setShopifyDomain(String(shopify.config_json.shop_domain ?? ""));
 
     const webflow = latestByType.get("webflow");
@@ -701,10 +706,25 @@ export default function WebsiteDetailClient() {
         </Link>
 
         <div className={styles.header}>
-          <h1>{website.display_name}</h1>
-          <span className={badgeClass(website.verification_status)}>{website.verification_status}</span>
+          <div>
+            <h1>{website.display_name}</h1>
+            <div className={styles.headerMeta}>
+              <span>{website.canonical_url}</span>
+              <span className={badgeClass(website.verification_status)}>{website.verification_status}</span>
+              <span className={badgeClass(website.status)}>{website.status}</span>
+              <span>
+                {(() => {
+                  const lastCrawl = [...crawls].sort(
+                    (a, b) => new Date(b.started_at ?? 0).getTime() - new Date(a.started_at ?? 0).getTime()
+                  )[0];
+                  if (!lastCrawl) return "No crawls yet";
+                  if (!lastCrawl.completed_at) return `Last crawl: ${lastCrawl.status}`;
+                  return `Last crawl: ${new Date(lastCrawl.completed_at).toLocaleString()}`;
+                })()}
+              </span>
+            </div>
+          </div>
         </div>
-        <span>{website.canonical_url}</span>
 
         {error && <p className={styles.error}>{error}</p>}
 
@@ -1245,7 +1265,7 @@ export default function WebsiteDetailClient() {
             <div className={styles.card}>
               <h2>Sanity CMS connector</h2>
               <p className={styles.rowMeta}>
-                Reads and patches mapped SEO fields (title/meta description) on this site's Sanity
+                Reads and patches mapped SEO fields (title/meta description) on this site&apos;s Sanity
                 documents. Only touches explicitly mapped fields, never slugs or publishing.
               </p>
               {connections.filter((c) => c.connector_type === "sanity" && c.status === "connected").length === 0 ? (

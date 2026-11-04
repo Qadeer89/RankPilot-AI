@@ -1,72 +1,89 @@
 .page {
-  min-height: 100vh;
-  background-color: #fafafa;
-  padding: 48px 24px;
+  padding: 32px 32px 64px;
 }
 
 .container {
-  max-width: 720px;
+  max-width: 880px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 28px;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .header h1 {
   font-size: 28px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rp-ink);
 }
 
-.logout {
-  background: none;
-  border: none;
-  color: #666;
-  cursor: pointer;
+.subtitle {
   font-size: 14px;
+  color: var(--rp-muted);
+  margin-top: 4px;
 }
 
 .card {
-  background-color: #fff;
-  border-radius: 12px;
-  padding: 24px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-card);
+  padding: 22px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
 .card h2 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
+  color: var(--rp-ink);
 }
 
 .addForm {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .addForm input {
   flex: 1;
-  min-width: 160px;
-  padding: 8px 12px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
+  min-width: 180px;
+  padding: 9px 12px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+  font-size: 14px;
+}
+
+.addForm input:focus-visible {
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 3px var(--rp-primary-soft);
 }
 
 .addForm button {
-  padding: 8px 16px;
+  padding: 9px 18px;
   border: none;
-  border-radius: 128px;
-  background: #000;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-primary);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.addForm button:hover {
+  background: var(--rp-primary-hover);
 }
 
 .websiteRow {
@@ -74,34 +91,47 @@
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border: 1px solid #ebebeb;
-  border-radius: 8px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  transition: border-color 0.15s ease;
+}
+
+.websiteRow:hover {
+  border-color: var(--rp-primary);
 }
 
 .websiteRowHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.websiteRowHeader strong {
+  font-size: 15px;
+  color: var(--rp-ink);
 }
 
 .statusBadge {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 128px;
-  background: #f2f2f2;
-  color: #666;
+  padding: 3px 10px;
+  border-radius: var(--rp-radius-pill);
+  background: var(--rp-bg);
+  color: var(--rp-muted);
   text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .statusVerified {
-  background: #e6f4ea;
-  color: #1e7e34;
+  background: var(--rp-success-soft);
+  color: var(--rp-success);
 }
 
 .statusFailed {
-  background: #fdecea;
-  color: #c0392b;
+  background: var(--rp-danger-soft);
+  color: var(--rp-danger);
 }
 
 .verifyActions {
@@ -112,58 +142,53 @@
 }
 
 .verifyActions button {
-  padding: 6px 12px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
-  background: #fff;
+  padding: 7px 14px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-surface);
   cursor: pointer;
   font-size: 13px;
+  font-weight: 500;
+  color: var(--rp-ink);
+}
+
+.verifyActions button:hover {
+  border-color: var(--rp-primary);
+  color: var(--rp-primary);
 }
 
 .verifyActions input {
-  padding: 6px 10px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
   font-size: 13px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
 }
 
 .instructions {
   font-size: 13px;
-  color: #666;
-  background: #f7f7f7;
-  padding: 8px 12px;
-  border-radius: 6px;
+  color: var(--rp-muted);
+  background: var(--rp-bg);
+  padding: 10px 12px;
+  border-radius: var(--rp-radius-control);
   word-break: break-all;
 }
 
 .error {
-  color: #c0392b;
+  color: var(--rp-danger);
   font-size: 14px;
+  background: var(--rp-danger-soft);
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
 }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 640px) {
   .page {
-    background-color: #000;
+    padding: 20px 16px 48px;
   }
-  .card,
-  .websiteRow {
-    background-color: #0a0a0a;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .addForm input,
-  .verifyActions input,
-  .verifyActions button {
-    background-color: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .submit,
-  .addForm button {
-    background: #ededed;
-    color: #000;
-  }
-  .instructions {
-    background: #111;
+
+  .header h1 {
+    font-size: 24px;
   }
 }

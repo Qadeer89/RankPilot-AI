@@ -1,11 +1,9 @@
 .page {
-  min-height: 100vh;
-  background-color: #fafafa;
-  padding: 32px 24px 64px;
+  padding: 32px 32px 64px;
 }
 
 .container {
-  max-width: 960px;
+  max-width: 920px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -22,17 +20,26 @@
 
 .header h1 {
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rp-ink);
 }
 
 .backLink {
   font-size: 13px;
-  color: #666;
+  color: var(--rp-muted);
+  font-weight: 500;
+}
+
+.backLink:hover {
+  color: var(--rp-primary);
 }
 
 .card {
-  background-color: #fff;
-  border-radius: 12px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-card);
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
@@ -42,6 +49,7 @@
 .card h2 {
   font-size: 16px;
   font-weight: 600;
+  color: var(--rp-ink);
 }
 
 .row {
@@ -50,8 +58,8 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 0;
-  border-bottom: 1px solid #f2f2f2;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rp-border);
 }
 
 .row:last-child {
@@ -63,33 +71,48 @@
   flex-direction: column;
   gap: 2px;
   font-size: 14px;
+  color: var(--rp-ink);
 }
 
 .rowMeta {
   font-size: 12px;
-  color: #666;
+  color: var(--rp-muted);
 }
 
 .actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
 }
 
 .button {
-  padding: 6px 14px;
-  border-radius: 128px;
-  border: 1px solid #ebebeb;
-  background: #fff;
+  padding: 7px 14px;
+  border-radius: var(--rp-radius-control);
+  border: 1px solid var(--rp-border);
+  background: var(--rp-surface);
+  color: var(--rp-ink);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--rp-primary);
+  color: var(--rp-primary);
 }
 
 .buttonPrimary {
-  background: #000;
+  background: var(--rp-primary);
   color: #fff;
-  border-color: #000;
+  border-color: var(--rp-primary);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: var(--rp-primary-hover);
+  border-color: var(--rp-primary-hover);
+  color: #fff;
 }
 
 .button:disabled {
@@ -100,80 +123,73 @@
 .badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 128px;
-  background: #f2f2f2;
-  color: #666;
+  padding: 3px 10px;
+  border-radius: var(--rp-radius-pill);
+  background: var(--rp-bg);
+  color: var(--rp-muted);
   text-transform: uppercase;
+  letter-spacing: 0.03em;
   white-space: nowrap;
 }
 
 .badgeGood {
-  background: #e6f4ea;
-  color: #1e7e34;
+  background: var(--rp-success-soft);
+  color: var(--rp-success);
 }
 
 .badgeBad {
-  background: #fdecea;
-  color: #c0392b;
+  background: var(--rp-danger-soft);
+  color: var(--rp-danger);
 }
 
 .badgeWarn {
-  background: #fff4e5;
-  color: #9a6700;
+  background: var(--rp-warning-soft);
+  color: var(--rp-warning);
 }
 
 .input {
-  padding: 7px 10px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
   font-size: 13px;
   min-width: 260px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+}
+
+.input:focus-visible {
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 3px var(--rp-primary-soft);
 }
 
 .error {
-  color: #c0392b;
+  color: var(--rp-danger);
   font-size: 14px;
+  background: var(--rp-danger-soft);
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
 }
 
 .success {
-  color: #1e7e34;
+  color: var(--rp-success);
   font-size: 14px;
+  background: var(--rp-success-soft);
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
 }
 
 .empty {
-  color: #666;
+  color: var(--rp-muted);
   font-size: 14px;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 640px) {
   .page {
-    background-color: #000;
+    padding: 20px 16px 48px;
   }
-  .card {
-    background-color: #0a0a0a;
-    color: #ededed;
-  }
-  .row {
-    border-color: #1a1a1a;
-  }
-  .button {
-    background: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .buttonPrimary {
-    background: #ededed;
-    color: #000;
-    border-color: #ededed;
-  }
+
   .input {
-    background: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .badge {
-    background: #1a1a1a;
-    color: #999;
+    min-width: 0;
+    width: 100%;
   }
 }

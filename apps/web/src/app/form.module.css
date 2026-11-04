@@ -3,7 +3,8 @@
   min-height: 100vh;
   align-items: center;
   justify-content: center;
-  background-color: #fafafa;
+  background: var(--rp-bg);
+  padding: 24px;
 }
 
 .card {
@@ -12,14 +13,18 @@
   max-width: 400px;
   flex-direction: column;
   gap: 16px;
-  background-color: #fff;
-  padding: 48px;
-  border-radius: 12px;
+  background: var(--rp-surface);
+  padding: 40px;
+  border-radius: var(--rp-radius-card);
+  border: 1px solid var(--rp-border);
+  box-shadow: var(--rp-shadow-card);
 }
 
 .card h1 {
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rp-ink);
 }
 
 .field {
@@ -27,56 +32,61 @@
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
+  font-weight: 500;
+  color: var(--rp-ink);
 }
 
 .field input {
   padding: 10px 12px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
   font-size: 14px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field input:focus-visible {
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 3px var(--rp-primary-soft);
 }
 
 .submit {
   margin-top: 8px;
-  padding: 10px 16px;
+  padding: 11px 16px;
   border: none;
-  border-radius: 128px;
-  background: #000;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-primary);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--rp-primary-hover);
 }
 
 .submit:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: default;
 }
 
 .error {
-  color: #c0392b;
-  font-size: 14px;
+  color: var(--rp-danger);
+  font-size: 13px;
+  background: var(--rp-danger-soft);
+  border-radius: var(--rp-radius-control);
+  padding: 8px 12px;
 }
 
 .footerLink {
-  font-size: 14px;
-  color: #666;
+  font-size: 13px;
+  color: var(--rp-muted);
 }
 
-@media (prefers-color-scheme: dark) {
-  .page {
-    background-color: #000;
-  }
-  .card {
-    background-color: #0a0a0a;
-    color: #ededed;
-  }
-  .field input {
-    background-color: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .submit {
-    background: #ededed;
-    color: #000;
-  }
+.footerLink a {
+  color: var(--rp-primary);
+  font-weight: 500;
 }

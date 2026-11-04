@@ -108,11 +108,6 @@ export default function DashboardPage() {
     }
   }
 
-  function handleLogout() {
-    clearToken();
-    router.push("/login");
-  }
-
   if (!me) {
     return (
       <div className={styles.page}>
@@ -127,14 +122,9 @@ export default function DashboardPage() {
     <div className={styles.page}>
       <div className={styles.container}>
         <div className={styles.header}>
-          <h1>{organization?.name ?? "Dashboard"}</h1>
           <div>
-            <Link href="/dashboard/organization" style={{ marginRight: 16, fontSize: 14 }}>
-              Agency overview &amp; settings
-            </Link>
-            <button className={styles.logout} onClick={handleLogout}>
-              Log out ({me.user.email})
-            </button>
+            <h1>Websites</h1>
+            <p className={styles.subtitle}>{organization?.name ?? "Your workspace"}</p>
           </div>
         </div>
 

@@ -1,61 +1,85 @@
 .page {
-  min-height: 100vh;
-  background-color: #fafafa;
-  padding: 32px 24px 64px;
+  padding: 28px 32px 64px;
 }
 
 .container {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
+}
+
+.backLink {
+  font-size: 13px;
+  color: var(--rp-muted);
+  font-weight: 500;
+}
+
+.backLink:hover {
+  color: var(--rp-primary);
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .header h1 {
   font-size: 26px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--rp-ink);
 }
 
-.backLink {
+.headerMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
   font-size: 13px;
-  color: #666;
+  color: var(--rp-muted);
 }
 
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid #ebebeb;
-  flex-wrap: wrap;
+  border-bottom: 1px solid var(--rp-border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab {
   padding: 10px 16px;
   font-size: 14px;
   font-weight: 500;
-  color: #666;
+  color: var(--rp-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--rp-ink);
 }
 
 .tabActive {
-  color: #000;
-  border-bottom-color: #000;
+  color: var(--rp-primary);
+  border-bottom-color: var(--rp-primary);
 }
 
 .card {
-  background-color: #fff;
-  border-radius: 12px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-card);
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
@@ -65,6 +89,7 @@
 .card h2 {
   font-size: 16px;
   font-weight: 600;
+  color: var(--rp-ink);
 }
 
 .row {
@@ -73,8 +98,8 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 10px 0;
-  border-bottom: 1px solid #f2f2f2;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rp-border);
 }
 
 .row:last-child {
@@ -86,38 +111,64 @@
   flex-direction: column;
   gap: 2px;
   font-size: 14px;
+  color: var(--rp-ink);
 }
 
 .rowMeta {
   font-size: 12px;
-  color: #666;
+  color: var(--rp-muted);
 }
 
 .actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
   align-items: center;
 }
 
+/* A button placed directly in a .card (not inside .actions/.row) would
+   otherwise stretch to the card's full width, since .card is a flex
+   column with the default stretch alignment. */
+.card > button {
+  align-self: flex-start;
+}
+
 .button {
-  padding: 6px 14px;
-  border-radius: 128px;
-  border: 1px solid #ebebeb;
-  background: #fff;
+  padding: 7px 14px;
+  border-radius: var(--rp-radius-control);
+  border: 1px solid var(--rp-border);
+  background: var(--rp-surface);
+  color: var(--rp-ink);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--rp-primary);
+  color: var(--rp-primary);
 }
 
 .buttonPrimary {
-  background: #000;
+  background: var(--rp-primary);
   color: #fff;
-  border-color: #000;
+  border-color: var(--rp-primary);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: var(--rp-primary-hover);
+  border-color: var(--rp-primary-hover);
+  color: #fff;
 }
 
 .buttonDanger {
-  border-color: #c0392b;
-  color: #c0392b;
+  border-color: var(--rp-danger);
+  color: var(--rp-danger);
+}
+
+.buttonDanger:hover:not(:disabled) {
+  background: var(--rp-danger-soft);
 }
 
 .button:disabled {
@@ -128,34 +179,42 @@
 .badge {
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 128px;
-  background: #f2f2f2;
-  color: #666;
+  padding: 3px 10px;
+  border-radius: var(--rp-radius-pill);
+  background: var(--rp-bg);
+  color: var(--rp-muted);
   text-transform: uppercase;
+  letter-spacing: 0.03em;
   white-space: nowrap;
 }
 
 .badgeGood {
-  background: #e6f4ea;
-  color: #1e7e34;
+  background: var(--rp-success-soft);
+  color: var(--rp-success);
 }
 
 .badgeBad {
-  background: #fdecea;
-  color: #c0392b;
+  background: var(--rp-danger-soft);
+  color: var(--rp-danger);
 }
 
 .badgeWarn {
-  background: #fff4e5;
-  color: #9a6700;
+  background: var(--rp-warning-soft);
+  color: var(--rp-warning);
 }
 
 .input {
-  padding: 7px 10px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
   font-size: 13px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+}
+
+.input:focus-visible {
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 3px var(--rp-primary-soft);
 }
 
 .checkboxRow {
@@ -163,91 +222,67 @@
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  color: var(--rp-ink);
 }
 
 .proposalBox {
-  background: #f7f7f7;
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 14px 16px;
   font-size: 13px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .proposalActionLine {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 12px;
-  background: #ededed;
-  padding: 4px 8px;
-  border-radius: 4px;
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  padding: 6px 10px;
+  border-radius: 6px;
 }
 
 .error {
-  color: #c0392b;
+  color: var(--rp-danger);
   font-size: 14px;
+  background: var(--rp-danger-soft);
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
 }
 
 .empty {
-  color: #666;
+  color: var(--rp-muted);
   font-size: 14px;
 }
 
 .jsonBlock {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 12px;
-  background: #f7f7f7;
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 14px 16px;
   white-space: pre-wrap;
   overflow-x: auto;
 }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 640px) {
   .page {
-    background-color: #000;
+    padding: 20px 16px 48px;
   }
-  .card {
-    background-color: #0a0a0a;
-    color: #ededed;
+
+  .header h1 {
+    font-size: 22px;
   }
+
   .row {
-    border-color: #1a1a1a;
+    align-items: flex-start;
   }
-  .tabs {
-    border-color: #1a1a1a;
-  }
-  .tab {
-    color: #999;
-  }
-  .tabActive {
-    color: #ededed;
-    border-bottom-color: #ededed;
-  }
-  .button {
-    background: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .buttonPrimary {
-    background: #ededed;
-    color: #000;
-    border-color: #ededed;
-  }
-  .input {
-    background: #111;
-    border-color: #1a1a1a;
-    color: #ededed;
-  }
-  .proposalBox,
-  .jsonBlock {
-    background: #111;
-  }
-  .proposalActionLine {
-    background: #1a1a1a;
-  }
-  .badge {
-    background: #1a1a1a;
-    color: #999;
+
+  .actions {
+    width: 100%;
   }
 }

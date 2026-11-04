@@ -1,18 +1,11 @@
 .page {
-  --background: #fafafa;
-  --foreground: #fff;
-  --text-primary: #000;
-  --text-secondary: #666;
-  --button-primary-hover: #383838;
-  --button-secondary-hover: #f2f2f2;
-  --button-secondary-border: #ebebeb;
-
   display: flex;
   min-height: 100vh;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: var(--background);
+  background: linear-gradient(180deg, var(--rp-navy) 0%, var(--rp-navy-soft) 100%);
+  padding: 24px;
 }
 
 .main {
@@ -22,60 +15,59 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 24px;
-  background-color: var(--foreground);
-  padding: 80px 60px;
-  border-radius: 12px;
+  background: var(--rp-surface);
+  padding: 64px 56px;
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-raised);
 }
 
 .main h1 {
-  font-size: 36px;
-  font-weight: 600;
-  letter-spacing: -1.5px;
-  color: var(--text-primary);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--rp-ink);
 }
 
 .main p {
-  font-size: 18px;
-  line-height: 28px;
-  color: var(--text-secondary);
+  font-size: 17px;
+  line-height: 26px;
+  color: var(--rp-muted);
 }
 
 .ctas {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   font-size: 14px;
+  flex-wrap: wrap;
 }
 
 .ctas a {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 40px;
-  padding: 0 20px;
-  border-radius: 128px;
+  height: 42px;
+  padding: 0 22px;
+  border-radius: var(--rp-radius-control);
   border: 1px solid transparent;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 a.primary {
-  background: var(--text-primary);
-  color: var(--background);
+  background: var(--rp-primary);
+  color: #fff;
+}
+
+a.primary:hover {
+  background: var(--rp-primary-hover);
 }
 
 a.secondary {
-  border-color: var(--button-secondary-border);
-  color: var(--text-primary);
+  border-color: var(--rp-border);
+  color: var(--rp-ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  .page {
-    --background: #000;
-    --foreground: #0a0a0a;
-    --text-primary: #ededed;
-    --text-secondary: #999;
-    --button-primary-hover: #ccc;
-    --button-secondary-hover: #1a1a1a;
-    --button-secondary-border: #1a1a1a;
-  }
+a.secondary:hover {
+  background: var(--rp-bg);
 }
