@@ -129,6 +129,7 @@ export default function WebsiteDetailClient() {
   const [wpUsername, setWpUsername] = useState("");
   const [wpPassword, setWpPassword] = useState("");
   const [sitePropertyInput, setSitePropertyInput] = useState("");
+  const [searchProperties, setSearchProperties] = useState<string[]>([]);
 
   const [shopifyDomain, setShopifyDomain] = useState("");
   const [shopifyToken, setShopifyToken] = useState("");
@@ -396,6 +397,7 @@ export default function WebsiteDetailClient() {
     setError(null);
     try {
       const { site_urls } = await getSearchProperties(token, orgId, websiteId);
+      setSearchProperties(site_urls);
       if (site_urls.length > 0) setSitePropertyInput(site_urls[0]);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to load properties.");
@@ -946,13 +948,27 @@ export default function WebsiteDetailClient() {
                 </div>
               </div>
               <div className={styles.actions}>
-                <input
-                  className={styles.input}
-                  type="text"
-                  placeholder="https://example.com/ or sc-domain:example.com"
-                  value={sitePropertyInput}
-                  onChange={(e) => setSitePropertyInput(e.target.value)}
-                />
+                {searchProperties.length > 0 ? (
+                  <select
+                    className={styles.input}
+                    value={sitePropertyInput}
+                    onChange={(e) => setSitePropertyInput(e.target.value)}
+                  >
+                    {searchProperties.map((url) => (
+                      <option key={url} value={url}>
+                        {url}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="https://example.com/ or sc-domain:example.com"
+                    value={sitePropertyInput}
+                    onChange={(e) => setSitePropertyInput(e.target.value)}
+                  />
+                )}
                 <button className={styles.button} onClick={handleSelectProperty}>
                   Select property
                 </button>
