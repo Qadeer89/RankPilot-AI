@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urldefrag, urlsplit, urlunsplit
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.crawler.extract import extract_page
@@ -114,6 +115,34 @@ def _upsert_page(db: Session, website: Website, normalized_url: str, canonical_u
     return page
 
 
+# Non-crawlable system paths a link-extraction rule now excludes, but which
+# an earlier crawl (before that rule existed) may already have persisted as
+# a CrawlFrontier row. Without this cleanup, such a row survives the
+# per-website frontier reset forever and keeps getting re-fetched, and its
+# backing Page's findings/opportunities never resolve since the page is
+# never in a crawl's snapshot scope again (app/seo_rules/engine.py).
+NON_CRAWLABLE_URL_SUBSTRINGS = ("/cdn-cgi/",)
+
+
+def _purge_non_crawlable_frontier_entries(db: Session, website: Website) -> None:
+    stale_filters = [CrawlFrontier.url.like(f"%{substring}%") for substring in NON_CRAWLABLE_URL_SUBSTRINGS]
+    stale_urls = {
+        row[0]
+        for row in db.query(CrawlFrontier.url)
+        .filter(CrawlFrontier.website_id == website.id, or_(*stale_filters))
+        .all()
+    }
+    if not stale_urls:
+        return
+    db.query(Page).filter(Page.website_id == website.id, Page.normalized_url.in_(stale_urls)).delete(
+        synchronize_session=False
+    )
+    db.query(CrawlFrontier).filter(
+        CrawlFrontier.website_id == website.id, CrawlFrontier.url.in_(stale_urls)
+    ).delete(synchronize_session=False)
+    db.flush()
+
+
 def create_crawl_job(db: Session, website: Website, *, trigger: CrawlTrigger = CrawlTrigger.manual) -> CrawlJob:
     """Create a pending CrawlJob row. Split from `run_crawl` so an API
     endpoint can hand the caller a job id immediately and let a worker
@@ -140,6 +169,8 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
     db.flush()
 
     try:
+        _purge_non_crawlable_frontier_entries(db, website)
+
         # The frontier is a long-lived, per-website structure (one row per
         # URL ever seen), not per-crawl: without this, a URL already fetched
         # by an earlier crawl would never be considered "pending" again, and

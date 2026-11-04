@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.crawler import orchestrator as orchestrator_module
 from app.crawler.orchestrator import run_crawl
 from app.crawler.robots import RobotsPolicy
@@ -143,6 +145,48 @@ def test_frontier_selection_rotates_coverage_when_budget_is_smaller_than_the_sit
     assert second_urls - first_urls, "second crawl re-fetched only the first crawl's URLs; coverage did not rotate"
     assert first.pages_requested == 2
     assert second.pages_requested == 2
+
+
+def test_crawl_purges_pre_existing_cdn_cgi_frontier_pollution(db_session, monkeypatch):
+    """Simulates a site that already had a /cdn-cgi/l/email-protection
+    frontier row + Page persisted before the link-exclusion rule existed
+    (extract.py). Without the purge, that row survives the per-crawl
+    reset forever, keeps getting re-fetched (and erroring, since it's not
+    a real fetchable page), and its findings never resolve because the
+    page is never in a crawl's snapshot scope again.
+    """
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+
+    stale_url = "https://example.com/cdn-cgi/l/email-protection"
+    db_session.add(
+        CrawlFrontier(website_id=website.id, url=stale_url, priority=10, state=FrontierState.fetched)
+    )
+    db_session.add(
+        Page(
+            website_id=website.id,
+            canonical_url=stale_url,
+            normalized_url=stale_url,
+            first_seen_at=datetime.now(timezone.utc),
+            last_seen_at=datetime.now(timezone.utc),
+        )
+    )
+    db_session.flush()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    db_session.flush()
+
+    assert crawl_job.status == CrawlStatus.completed
+    assert crawl_job.error_summary is None or "cdn-cgi" not in crawl_job.error_summary
+
+    remaining_frontier = (
+        db_session.query(CrawlFrontier).filter(CrawlFrontier.website_id == website.id, CrawlFrontier.url == stale_url).first()
+    )
+    remaining_page = (
+        db_session.query(Page).filter(Page.website_id == website.id, Page.normalized_url == stale_url).first()
+    )
+    assert remaining_frontier is None
+    assert remaining_page is None
 
 
 def test_throttle_sleeps_for_the_minimum_delay_by_default(monkeypatch):
