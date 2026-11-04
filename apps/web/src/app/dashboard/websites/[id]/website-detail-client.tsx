@@ -55,6 +55,7 @@ import {
   listTasks,
   pauseWebsite,
   rejectTask,
+  cancelTask,
   rollbackChange,
   selectGa4Property,
   selectSearchProperty,
@@ -328,7 +329,7 @@ export default function WebsiteDetailClient() {
     }
   }
 
-  async function handleTaskAction(taskId: string, action: "approve" | "reject" | "execute") {
+  async function handleTaskAction(taskId: string, action: "approve" | "reject" | "cancel" | "execute") {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
@@ -336,6 +337,7 @@ export default function WebsiteDetailClient() {
     try {
       if (action === "approve") await approveTask(token, orgId, websiteId, taskId);
       else if (action === "reject") await rejectTask(token, orgId, websiteId, taskId);
+      else if (action === "cancel") await cancelTask(token, orgId, websiteId, taskId);
       else {
         const changeRecord = await executeTask(token, orgId, websiteId, taskId);
         setChangeRecords((prev) => ({ ...prev, [taskId]: changeRecord }));
@@ -895,12 +897,20 @@ export default function WebsiteDetailClient() {
                   )}
                   {(task.approval_status === "approved" || task.approval_status === "not_required") &&
                     task.status === "pending" && (
-                      <button
-                        className={`${styles.button} ${styles.buttonPrimary}`}
-                        onClick={() => handleTaskAction(task.id, "execute")}
-                      >
-                        Execute
-                      </button>
+                      <>
+                        <button
+                          className={`${styles.button} ${styles.buttonPrimary}`}
+                          onClick={() => handleTaskAction(task.id, "execute")}
+                        >
+                          Execute
+                        </button>
+                        <button
+                          className={`${styles.button} ${styles.buttonDanger}`}
+                          onClick={() => handleTaskAction(task.id, "cancel")}
+                        >
+                          Cancel
+                        </button>
+                      </>
                     )}
                   {changeRecords[task.id]?.validation_status === "failed" && (
                     <button

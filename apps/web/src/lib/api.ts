@@ -393,6 +393,19 @@ export function rejectTask(
   );
 }
 
+export function cancelTask(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  taskId: string,
+  reason?: string
+) {
+  return request<SEOTask>(
+    `/organizations/${organizationId}/websites/${websiteId}/tasks/${taskId}/cancel`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify({ reason: reason ?? null }) }
+  );
+}
+
 export function executeTask(token: string, organizationId: string, websiteId: string, taskId: string) {
   return request<ChangeRecord>(
     `/organizations/${organizationId}/websites/${websiteId}/tasks/${taskId}/execute`,

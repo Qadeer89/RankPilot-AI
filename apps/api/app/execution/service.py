@@ -195,6 +195,38 @@ def reject_task(db: Session, task: SEOTask, *, decided_by: uuid.UUID, reason: st
     return task
 
 
+def cancel_task(db: Session, task: SEOTask, *, decided_by: uuid.UUID, reason: str | None = None) -> SEOTask:
+    """Discard a task that will never be safely executable -- e.g. the AI
+    proposal that created it had no real target_url (app/ai/content_agent.py
+    now refuses to guess one, but an already-approved task from before
+    that fix can still be stuck this way). Unlike reject_task, this works
+    regardless of the task's current approval_status: approve/reject only
+    gate a task *before* execution is attempted, so a task that's already
+    approved has no other way to be discarded. Blocked only once a task
+    is actually running or already done, since cancelling either of those
+    would be meaningless or misleading.
+    """
+    if task.status in (SEOTaskStatus.completed, SEOTaskStatus.executing):
+        raise ExecutionBlocked(f"Task cannot be cancelled (current status: {task.status.value}).")
+
+    approval = (
+        db.query(Approval)
+        .filter(Approval.seo_task_id == task.id, Approval.decision == ApprovalDecision.pending)
+        .order_by(Approval.created_at.desc())
+        .first()
+    )
+    if approval is not None:
+        approval.decision = ApprovalDecision.rejected
+        approval.decided_by = decided_by
+        approval.reason = reason
+        approval.decided_at = datetime.now(timezone.utc)
+
+    task.approval_status = ApprovalStatus.rejected
+    task.status = SEOTaskStatus.rejected
+    db.flush()
+    return task
+
+
 def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
     """Read the connector's current value and compute the diff an
     execution would make, without ever calling apply_change (CW-009,

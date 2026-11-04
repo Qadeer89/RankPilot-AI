@@ -22,6 +22,7 @@ from app.execution.connections import (
 from app.execution.service import (
     ExecutionBlocked,
     approve_task,
+    cancel_task,
     create_tasks_from_proposal,
     dry_run_task,
     execute_task,
@@ -421,6 +422,39 @@ def reject(
             organization_id=organization_id,
             actor_user_id=membership.user_id,
             action="seo_task.reject",
+            resource_type="seo_task",
+            resource_id=str(task.id),
+            metadata_json={"reason": payload.reason},
+        )
+    )
+    db.commit()
+    return SEOTaskResponse.model_validate(task)
+
+
+@router.post(
+    "/organizations/{organization_id}/websites/{website_id}/tasks/{task_id}/cancel",
+    response_model=SEOTaskResponse,
+)
+def cancel(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    task_id: uuid.UUID,
+    payload: ApprovalDecisionRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> SEOTaskResponse:
+    get_website_or_404(db, organization_id, website_id)
+    task = _get_task_or_404(db, website_id, task_id)
+    try:
+        cancel_task(db, task, decided_by=membership.user_id, reason=payload.reason)
+    except ExecutionBlocked as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="seo_task.cancel",
             resource_type="seo_task",
             resource_id=str(task.id),
             metadata_json={"reason": payload.reason},

@@ -100,6 +100,63 @@ def test_create_tasks_auto_executes_when_policy_enabled(db_session):
     assert tasks[0].approval_status == ApprovalStatus.not_required
 
 
+def test_approve_task_moves_it_out_of_pending_approval(db_session):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    admin = _make_user(db_session)
+
+    execution_service.approve_task(db_session, task, decided_by=admin.id)
+
+    assert task.approval_status == ApprovalStatus.approved
+
+
+def test_reject_task_requires_pending_approval(db_session):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    admin = _make_user(db_session)
+    execution_service.approve_task(db_session, task, decided_by=admin.id)
+
+    with pytest.raises(execution_service.ExecutionBlocked):
+        execution_service.reject_task(db_session, task, decided_by=admin.id)
+
+
+def test_cancel_task_works_even_after_approval(db_session):
+    """Unlike reject_task, cancel_task is the escape hatch for a task
+    that's already approved -- e.g. one stuck forever because the
+    proposal that created it had an unusable target_url
+    (app/ai/content_agent.py now refuses to guess one, but an
+    already-approved task from before that fix can still be stuck)."""
+    website, opportunity = _make_website_and_opportunity(db_session)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    admin = _make_user(db_session)
+    execution_service.approve_task(db_session, task, decided_by=admin.id)
+
+    execution_service.cancel_task(db_session, task, decided_by=admin.id, reason="stuck with a bad target_url")
+
+    assert task.status == SEOTaskStatus.rejected
+    assert task.approval_status == ApprovalStatus.rejected
+
+
+def test_cancel_task_refuses_an_already_completed_task(db_session):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    admin = _make_user(db_session)
+    execution_service.approve_task(db_session, task, decided_by=admin.id)
+    task.status = SEOTaskStatus.completed
+    db_session.flush()
+
+    with pytest.raises(execution_service.ExecutionBlocked):
+        execution_service.cancel_task(db_session, task, decided_by=admin.id)
+
+
 def test_create_tasks_blocks_risk_tier_3(db_session):
     website, opportunity = _make_website_and_opportunity(db_session)
     with pytest.raises(execution_service.ExecutionBlocked):
