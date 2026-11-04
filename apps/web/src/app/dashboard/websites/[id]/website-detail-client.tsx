@@ -123,6 +123,7 @@ export default function WebsiteDetailClient() {
   const [tasks, setTasks] = useState<SEOTask[]>([]);
   const [connections, setConnections] = useState<WebsiteConnection[]>([]);
   const [searchPerformance, setSearchPerformance] = useState<SearchPerformance | null>(null);
+  const [showSearchPerformance, setShowSearchPerformance] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [changeRecords, setChangeRecords] = useState<Record<string, ChangeRecord>>({});
 
@@ -185,6 +186,7 @@ export default function WebsiteDetailClient() {
   const [ga4Properties, setGa4Properties] = useState<Ga4Property[]>([]);
   const [ga4PropertyInput, setGa4PropertyInput] = useState("");
   const [ga4Metrics, setGa4Metrics] = useState<Ga4Metrics | null>(null);
+  const [showGa4Metrics, setShowGa4Metrics] = useState(false);
 
   const [strategySummary, setStrategySummary] = useState<StrategySummary | null>(null);
   const [orphanPages, setOrphanPages] = useState<Page[]>([]);
@@ -978,18 +980,30 @@ export default function WebsiteDetailClient() {
               </div>
               {searchPerformance && (
                 <>
-                  <p className={styles.rowMeta}>{searchPerformance.freshness_note}</p>
-                  {searchPerformance.rows.slice(0, 10).map((row, i) => (
-                    <div key={i} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <span>{row.query}</span>
-                        <span className={styles.rowMeta}>{row.date}</span>
-                      </div>
-                      <span className={styles.rowMeta}>
-                        {row.clicks} clicks · {row.impressions} impressions · pos {row.average_position.toFixed(1)}
-                      </span>
-                    </div>
-                  ))}
+                  <button
+                    className={styles.button}
+                    onClick={() => setShowSearchPerformance((v) => !v)}
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    {showSearchPerformance ? "Hide" : "Show"} synced data ({searchPerformance.rows.length} rows)
+                  </button>
+                  {showSearchPerformance && (
+                    <>
+                      <p className={styles.rowMeta}>{searchPerformance.freshness_note}</p>
+                      {searchPerformance.rows.slice(0, 10).map((row, i) => (
+                        <div key={i} className={styles.row}>
+                          <div className={styles.rowMain}>
+                            <span>{row.query}</span>
+                            <span className={styles.rowMeta}>{row.date}</span>
+                          </div>
+                          <span className={styles.rowMeta}>
+                            {row.clicks} clicks · {row.impressions} impressions · pos{" "}
+                            {row.average_position.toFixed(1)}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -1093,17 +1107,28 @@ export default function WebsiteDetailClient() {
               </div>
               {ga4Metrics && (
                 <>
-                  <p className={styles.rowMeta}>{ga4Metrics.freshness_note}</p>
-                  {ga4Metrics.rows.slice(0, 10).map((row, i) => (
-                    <div key={i} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <span>{row.date}</span>
-                      </div>
-                      <span className={styles.rowMeta}>
-                        {row.sessions} sessions · {row.total_users} users · {row.conversions} conversions
-                      </span>
-                    </div>
-                  ))}
+                  <button
+                    className={styles.button}
+                    onClick={() => setShowGa4Metrics((v) => !v)}
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    {showGa4Metrics ? "Hide" : "Show"} synced data ({ga4Metrics.rows.length} rows)
+                  </button>
+                  {showGa4Metrics && (
+                    <>
+                      <p className={styles.rowMeta}>{ga4Metrics.freshness_note}</p>
+                      {ga4Metrics.rows.slice(0, 10).map((row, i) => (
+                        <div key={i} className={styles.row}>
+                          <div className={styles.rowMain}>
+                            <span>{row.date}</span>
+                          </div>
+                          <span className={styles.rowMeta}>
+                            {row.sessions} sessions · {row.total_users} users · {row.conversions} conversions
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </>
               )}
             </div>
