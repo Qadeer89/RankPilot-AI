@@ -92,7 +92,7 @@ const TAB_LABELS: Record<Tab, string> = {
 };
 
 function badgeClass(value: string): string {
-  const good = ["verified", "passed", "completed", "indexable", "sent", "approved", "connected"];
+  const good = ["verified", "passed", "completed", "resolved", "indexable", "sent", "approved", "connected"];
   const bad = ["failed", "unverified", "rejected", "error", "disconnected"];
   const warn = ["pending", "executing", "running", "skipped_not_configured", "noindex"];
   if (good.includes(value)) return `${styles.badge} ${styles.badgeGood}`;

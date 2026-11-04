@@ -181,7 +181,7 @@ def refresh_opportunities_for_website(db: Session, website: Website) -> list[SEO
         else:
             existing.confidence = finding.confidence
             existing.evidence_json = {"rule_code": finding.rule_code, "finding_evidence": finding.evidence_json}
-            if existing.status == OpportunityStatus.completed:
+            if existing.status in (OpportunityStatus.resolved, OpportunityStatus.completed):
                 existing.status = OpportunityStatus.open
             opportunity = existing
         persisted.append(opportunity)
@@ -190,7 +190,12 @@ def refresh_opportunities_for_website(db: Session, website: Website) -> list[SEO
 
     for (page_id, title), opportunity in existing_opportunities.items():
         if (page_id, title) not in touched_keys and opportunity.status == OpportunityStatus.open:
-            opportunity.status = OpportunityStatus.completed
+            # The finding stopped recurring on its own -- RankPilot didn't
+            # execute a fix for it, so this is "resolved" (e.g. a false
+            # positive corrected, external change), not "completed".
+            # app/execution/service.py is the only place that sets
+            # `completed`, once a real task's write is applied and verified.
+            opportunity.status = OpportunityStatus.resolved
 
     # See app/seo_rules/engine.py's matching comment: flush so an immediate
     # subsequent read in the same transaction isn't stale under

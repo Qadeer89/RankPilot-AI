@@ -38,7 +38,7 @@ from app.execution.validation import validate_wordpress_change
 from app.models.approval import Approval, ApprovalDecision
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
 from app.models.rollback_record import RollbackRecord, RollbackStatus
-from app.models.seo_opportunity import SEOOpportunity
+from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import ApprovalStatus, SEOTask, SEOTaskStatus
 from app.models.website import Website, WebsiteStatus
 from app.models.website_connection import ConnectorType
@@ -368,6 +368,8 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
 
             if passed:
                 task.status = SEOTaskStatus.completed
+                if task.opportunity is not None:
+                    task.opportunity.status = OpportunityStatus.completed
             else:
                 task.status = SEOTaskStatus.failed
                 rollback_change(db, change_record, initiated_by=None, website=website)
@@ -418,6 +420,8 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
 
         if passed:
             task.status = SEOTaskStatus.completed
+            if task.opportunity is not None:
+                task.opportunity.status = OpportunityStatus.completed
         else:
             task.status = SEOTaskStatus.failed
             rollback_change(db, change_record, initiated_by=None, website=website)

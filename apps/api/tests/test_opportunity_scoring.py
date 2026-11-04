@@ -88,4 +88,7 @@ def test_opportunity_completes_when_underlying_finding_resolves(db_session, monk
         PAGES["https://example.com/about"] = original_about
 
     db_session.refresh(opp_before)
-    assert opp_before.status == OpportunityStatus.completed
+    # The finding stopped recurring on its own (nobody executed a task for
+    # it) -- "resolved", not "completed", which is reserved for a task
+    # RankPilot actually executed (app/execution/service.py).
+    assert opp_before.status == OpportunityStatus.resolved

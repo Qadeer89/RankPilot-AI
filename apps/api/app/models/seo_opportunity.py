@@ -14,6 +14,13 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class OpportunityStatus(str, enum.Enum):
     open = "open"
     dismissed = "dismissed"
+    # The backing finding stopped recurring on its own (a false positive
+    # was fixed, the page changed externally, re-crawl logic improved) --
+    # RankPilot did not execute anything for it. Distinct from `completed`
+    # so the UI never implies RankPilot fixed something it didn't touch.
+    resolved = "resolved"
+    # A task for this opportunity was executed through RankPilot and its
+    # post-write validation passed (app/execution/service.py).
     completed = "completed"
 
 

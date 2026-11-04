@@ -14,7 +14,7 @@ from app.execution import service as execution_service
 from app.models.change_record import ValidationStatus
 from app.models.organization import Organization
 from app.models.rollback_record import RollbackStatus
-from app.models.seo_opportunity import SEOOpportunity
+from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import SEOTaskStatus
 from app.models.user import User
 from app.models.website import Website
@@ -128,6 +128,12 @@ def test_execute_task_happy_path_via_shopify(db_session, monkeypatch):
     assert change_record.connector_type == ConnectorType.shopify
     assert change_record.validation_status == ValidationStatus.passed
     assert task.status == SEOTaskStatus.completed
+    # A task RankPilot actually executed and verified marks its opportunity
+    # "completed" -- distinct from "resolved" (a finding that stopped
+    # recurring on its own, see app/opportunities/scoring.py), so the UI
+    # never implies RankPilot fixed something it didn't touch.
+    db_session.refresh(opportunity)
+    assert opportunity.status == OpportunityStatus.completed
 
 
 def test_execute_task_rolls_back_on_failed_validation_via_webflow(db_session, monkeypatch):
