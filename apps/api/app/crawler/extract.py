@@ -47,6 +47,12 @@ def _normalize_link(href: str, base_url: str, site_hostname: str) -> str | None:
         return None
     if parts.hostname != site_hostname:
         return None
+    # Cloudflare rewrites a mailto: href server-side into /cdn-cgi/l/email-
+    # protection#<hash> (JS-only, decoded client-side), so the mailto:
+    # check above never sees it -- it looks like a same-site page and gets
+    # crawled, where it has no real content to fetch and reliably errors.
+    if parts.path.startswith("/cdn-cgi/"):
+        return None
     return absolute
 
 
