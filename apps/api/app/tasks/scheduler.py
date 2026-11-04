@@ -12,7 +12,10 @@ import logging
 from app.celery_app import celery_app
 from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
 from app.db.session import SessionLocal
+from app.integrations.ga4_sync import sync_ga4_metrics
+from app.integrations.search_console_sync import sync_search_performance
 from app.models.website import VerificationStatus, Website, WebsiteStatus
+from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.reporting.weekly_report import generate_weekly_report
 from app.tasks.retention import cleanup_old_data
 from app.usage.metering import record_daily_usage
@@ -48,6 +51,40 @@ def daily_crawl_all_active_websites() -> int:
             run_site_crawl.delay(str(website.id), str(crawl_job.id))
             enqueued += 1
         return enqueued
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scheduler.daily_sync_search_signals_for_all_websites")
+def daily_sync_search_signals_for_all_websites() -> int:
+    """Pull fresh Search Console / GA4 data for every connected website
+    and re-derive CTR opportunities from it (app/opportunities/
+    search_console_signals.py), so "well-ranked but nobody clicks"
+    queries surface on their own instead of only after someone manually
+    hits Sync now.
+    """
+    db = SessionLocal()
+    synced = 0
+    try:
+        websites = db.query(Website).filter(Website.status != WebsiteStatus.deleted).all()
+        for website in websites:
+            if website.search_console_site_url:
+                try:
+                    sync_search_performance(db, website)
+                    refresh_ctr_opportunities(db, website)
+                    db.commit()
+                    synced += 1
+                except Exception:
+                    logger.exception("Failed to sync Search Console data for website %s", website.id)
+                    db.rollback()
+            if website.ga4_property_id:
+                try:
+                    sync_ga4_metrics(db, website)
+                    db.commit()
+                except Exception:
+                    logger.exception("Failed to sync GA4 data for website %s", website.id)
+                    db.rollback()
+        return synced
     finally:
         db.close()
 

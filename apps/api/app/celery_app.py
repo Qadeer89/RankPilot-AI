@@ -32,6 +32,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.daily_crawl_all_active_websites",
         "schedule": crontab(hour=2, minute=0),
     },
+    "daily-sync-search-signals": {
+        "task": "app.tasks.scheduler.daily_sync_search_signals_for_all_websites",
+        "schedule": crontab(hour=1, minute=30),
+    },
     "daily-usage-metering": {
         "task": "app.tasks.scheduler.record_daily_usage_for_all_websites",
         "schedule": crontab(hour=4, minute=0),

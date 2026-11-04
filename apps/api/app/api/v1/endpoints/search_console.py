@@ -8,6 +8,7 @@ from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
 from app.db.session import get_db
 from app.integrations import search_console_sync, token_store
+from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.integrations.google_search_console import (
     GoogleApiError,
     GoogleIntegrationNotConfigured,
@@ -134,6 +135,7 @@ def sync_search_console(
     website = get_website_or_404(db, organization_id, website_id)
     try:
         rows_synced = search_console_sync.sync_search_performance(db, website)
+        refresh_ctr_opportunities(db, website)
         db.commit()
         return SyncResultResponse(rows_synced=rows_synced)
     except LookupError as exc:
