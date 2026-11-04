@@ -45,7 +45,16 @@ def _throttle(robots_policy: RobotsPolicy, user_agent: str) -> None:
 def normalize_frontier_url(url: str) -> str:
     url, _fragment = urldefrag(url)
     parts = urlsplit(url)
-    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path or "/", parts.query, ""))
+    path = parts.path or "/"
+    # A trailing slash on anything but the root is not a distinct URL in
+    # practice (both resolve to the same page), but without stripping it
+    # here two equally-valid spellings of the same page (one from the
+    # crawler, one from an external source like Google Search Console's
+    # "page" dimension -- app/integrations/search_console_sync.py) fail
+    # to match and are silently treated as different pages.
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, parts.query, ""))
 
 
 def _resolve_indexability(status_code: int, meta_robots: list[str]) -> IndexabilityState:

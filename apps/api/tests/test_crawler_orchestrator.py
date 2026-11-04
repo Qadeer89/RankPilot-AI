@@ -106,6 +106,23 @@ def test_recrawling_the_same_website_refetches_everything(db_session, monkeypatc
     assert second.pages_requested == 6
 
 
+def test_normalize_frontier_url_treats_trailing_slash_as_the_same_page():
+    """A page URL with and without a trailing slash is the same page in
+    practice (e.g. a URL the crawler stored without one, vs. the same
+    page reported with one by an external source like Google Search
+    Console's "page" dimension -- app/integrations/search_console_sync.py).
+    Without this, the two spellings silently fail to match.
+    """
+    assert orchestrator_module.normalize_frontier_url(
+        "https://example.com/services/physiotherapy/"
+    ) == orchestrator_module.normalize_frontier_url("https://example.com/services/physiotherapy")
+
+
+def test_normalize_frontier_url_leaves_the_root_path_alone():
+    assert orchestrator_module.normalize_frontier_url("https://example.com") == "https://example.com/"
+    assert orchestrator_module.normalize_frontier_url("https://example.com/") == "https://example.com/"
+
+
 def test_frontier_selection_rotates_coverage_when_budget_is_smaller_than_the_site(db_session, monkeypatch):
     """Regression test for the "same N pages crawled forever" gap: with a
     budget smaller than total discovered URLs, a second crawl must reach
