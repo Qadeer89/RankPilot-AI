@@ -104,6 +104,47 @@ def test_recrawling_the_same_website_refetches_everything(db_session, monkeypatc
     assert second.pages_requested == 6
 
 
+def test_frontier_selection_rotates_coverage_when_budget_is_smaller_than_the_site(db_session, monkeypatch):
+    """Regression test for the "same N pages crawled forever" gap: with a
+    budget smaller than total discovered URLs, a second crawl must reach
+    URLs the first crawl never got to, not re-fetch the same top-priority
+    ones. Selection should prefer never-fetched URLs, then the
+    least-recently-fetched ones (next_fetch_at), over a fixed priority
+    order that would otherwise starve lower-priority URLs forever.
+    """
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session, crawl_budget=2)
+
+    first = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    db_session.flush()
+    first_urls = {
+        row[0]
+        for row in db_session.query(CrawlFrontier.url)
+        .filter(CrawlFrontier.website_id == website.id, CrawlFrontier.state == FrontierState.fetched)
+        .all()
+    }
+    assert len(first_urls) == 2
+
+    second = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    db_session.flush()
+    second_urls = {
+        row[0]
+        for row in db_session.query(CrawlFrontier.url)
+        .filter(
+            CrawlFrontier.website_id == website.id,
+            CrawlFrontier.state.in_([FrontierState.fetched, FrontierState.skipped, FrontierState.error]),
+        )
+        .all()
+    }
+
+    # The second crawl must have touched URLs outside the first crawl's
+    # set -- proving coverage rotates instead of the same top-priority
+    # pair being re-selected every time.
+    assert second_urls - first_urls, "second crawl re-fetched only the first crawl's URLs; coverage did not rotate"
+    assert first.pages_requested == 2
+    assert second.pages_requested == 2
+
+
 def test_throttle_sleeps_for_the_minimum_delay_by_default(monkeypatch):
     slept = {}
     monkeypatch.setattr(orchestrator_module.time, "sleep", lambda seconds: slept.setdefault("seconds", seconds))

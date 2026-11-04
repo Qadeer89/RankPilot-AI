@@ -175,13 +175,26 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                 cancelled_reason = "Website automation was paused during the crawl."
                 break
 
+            # Coverage rotation: when a site has more URLs than crawl_budget,
+            # ordering purely by priority would re-select the same top-N
+            # URLs forever and never reach the rest. URLs never fetched
+            # (next_fetch_at IS NULL) always go first so a brand-new site
+            # gets full first-pass coverage; once everything has been seen
+            # at least once, the least-recently-fetched URL goes first
+            # (next_fetch_at ASC) so coverage rotates across crawls instead
+            # of a fixed priority tier starving everything below it.
             frontier_entry = (
                 db.query(CrawlFrontier)
                 .filter(
                     CrawlFrontier.website_id == website.id,
                     CrawlFrontier.state == FrontierState.pending,
                 )
-                .order_by(CrawlFrontier.priority.desc(), CrawlFrontier.created_at.asc())
+                .order_by(
+                    CrawlFrontier.next_fetch_at.is_(None).desc(),
+                    CrawlFrontier.next_fetch_at.asc(),
+                    CrawlFrontier.priority.desc(),
+                    CrawlFrontier.created_at.asc(),
+                )
                 .first()
             )
             if frontier_entry is None:
@@ -191,6 +204,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
 
             if not robots_policy.can_fetch(frontier_entry.url, USER_AGENT):
                 frontier_entry.state = FrontierState.skipped
+                frontier_entry.next_fetch_at = datetime.now(timezone.utc)
                 db.flush()
                 continue
 
@@ -198,12 +212,14 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                 result = safe_fetch(frontier_entry.url, user_agent=USER_AGENT)
             except FetchError as exc:
                 frontier_entry.state = FrontierState.error
+                frontier_entry.next_fetch_at = datetime.now(timezone.utc)
                 errors.append(f"{frontier_entry.url}: {exc}")
                 db.flush()
                 _throttle(robots_policy, USER_AGENT)
                 continue
 
             frontier_entry.state = FrontierState.fetched
+            frontier_entry.next_fetch_at = datetime.now(timezone.utc)
             normalized = normalize_frontier_url(result.final_url)
             page = _upsert_page(db, website, normalized, result.final_url)
 
