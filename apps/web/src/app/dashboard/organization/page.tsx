@@ -99,7 +99,7 @@ export default function OrganizationSettingsPage() {
     return (
       <div className={styles.page}>
         <div className={styles.container}>
-          {error ? <p className={styles.error}>{error}</p> : <p>Loading...</p>}
+          {error ? <p className={styles.error} role="alert">{error}</p> : <p>Loading...</p>}
         </div>
       </div>
     );
@@ -116,7 +116,7 @@ export default function OrganizationSettingsPage() {
           <h1>{organization?.name ?? "Organization"}</h1>
         </div>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
         {notice && <p className={styles.success}>{notice}</p>}
 
         <div className={styles.card}>
@@ -158,6 +158,7 @@ export default function OrganizationSettingsPage() {
               className={styles.input}
               type="url"
               placeholder="https://hooks.slack.com/services/..."
+              aria-label="https://hooks.slack.com/services/..."
               value={slackWebhookUrl}
               onChange={(e) => setSlackWebhookUrl(e.target.value)}
             />

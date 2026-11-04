@@ -112,7 +112,7 @@ export default function DashboardPage() {
     return (
       <div className={styles.page}>
         <div className={styles.container}>
-          {error ? <p className={styles.error}>{error}</p> : <p>Loading...</p>}
+          {error ? <p className={styles.error} role="alert">{error}</p> : <p>Loading...</p>}
         </div>
       </div>
     );
@@ -128,7 +128,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
 
         <div className={styles.card}>
           <h2>Add a website</h2>
@@ -136,6 +136,7 @@ export default function DashboardPage() {
             <input
               type="url"
               placeholder="https://example.com"
+              aria-label="https://example.com"
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               required
@@ -143,6 +144,7 @@ export default function DashboardPage() {
             <input
               type="text"
               placeholder="Display name"
+              aria-label="Display name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               required
@@ -174,6 +176,7 @@ export default function DashboardPage() {
                   <input
                     type="text"
                     placeholder="Paste token to confirm"
+                    aria-label="Paste token to confirm"
                     value={confirmTokens[site.id] ?? ""}
                     onChange={(e) =>
                       setConfirmTokens((prev) => ({ ...prev, [site.id]: e.target.value }))

@@ -62,7 +62,7 @@ export default function RegisterPage() {
             required
           />
         </label>
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
         <button className={styles.submit} type="submit" disabled={submitting}>
           {submitting ? "Creating account..." : "Create account"}
         </button>

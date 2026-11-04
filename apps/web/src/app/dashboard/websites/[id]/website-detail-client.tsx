@@ -67,6 +67,9 @@ import {
   updateWebsiteSettings,
 } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
+import EmptyState from "@/components/EmptyState";
+import { MetricGrid } from "@/components/MetricCard";
+import StatusBadge from "@/components/StatusBadge";
 import styles from "./detail.module.css";
 
 const TABS = [
@@ -92,15 +95,6 @@ const TAB_LABELS: Record<Tab, string> = {
   reports: "Reports",
 };
 
-function badgeClass(value: string): string {
-  const good = ["verified", "passed", "completed", "resolved", "indexable", "sent", "approved", "connected", "active"];
-  const bad = ["failed", "unverified", "rejected", "error", "disconnected"];
-  const warn = ["pending", "executing", "running", "skipped_not_configured", "noindex", "paused"];
-  if (good.includes(value)) return `${styles.badge} ${styles.badgeGood}`;
-  if (bad.includes(value)) return `${styles.badge} ${styles.badgeBad}`;
-  if (warn.includes(value)) return `${styles.badge} ${styles.badgeWarn}`;
-  return styles.badge;
-}
 
 export default function WebsiteDetailClient() {
   const router = useRouter();
@@ -118,6 +112,9 @@ export default function WebsiteDetailClient() {
   const [crawls, setCrawls] = useState<CrawlJob[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [findings, setFindings] = useState<SEOFinding[]>([]);
+  const [findingsSearch, setFindingsSearch] = useState("");
+  const [findingsSeverityFilter, setFindingsSeverityFilter] = useState("all");
+  const [findingsStatusFilter, setFindingsStatusFilter] = useState("open");
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [showCompletedOpportunities, setShowCompletedOpportunities] = useState(false);
   const [proposals, setProposals] = useState<Record<string, OpportunityProposal>>({});
@@ -285,6 +282,13 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (
+      !window.confirm(
+        "Pause automation for this site? This immediately stops all automated writes and also stops crawling (scheduled and in-progress) until you resume."
+      )
+    ) {
+      return;
+    }
     setError(null);
     try {
       setWebsite(await pauseWebsite(token, orgId, websiteId));
@@ -338,6 +342,14 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    const confirmMessages: Partial<Record<"approve" | "reject" | "cancel" | "execute", string>> = {
+      reject: "Reject this task? It will not be executed.",
+      cancel: "Cancel this task? It will be discarded and cannot be executed afterward.",
+      execute:
+        "Execute this task now? This makes a real, bounded write to the connected site/CMS, validated right after.",
+    };
+    const confirmMessage = confirmMessages[action];
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
     setError(null);
     try {
       if (action === "approve") await approveTask(token, orgId, websiteId, taskId);
@@ -358,6 +370,9 @@ export default function WebsiteDetailClient() {
     const orgId = orgIdRef.current;
     const changeRecord = changeRecords[taskId];
     if (!token || !orgId || !changeRecord) return;
+    if (!window.confirm("Roll back this change? This writes the previous value back to the connected site/CMS.")) {
+      return;
+    }
     setError(null);
     try {
       await rollbackChange(token, orgId, websiteId, changeRecord.id);
@@ -386,6 +401,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect WordPress? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectWordPress(token, orgId, websiteId);
@@ -466,6 +484,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect Shopify? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectShopify(token, orgId, websiteId);
@@ -494,6 +515,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect Webflow? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectWebflow(token, orgId, websiteId);
@@ -523,6 +547,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect Sanity? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectSanity(token, orgId, websiteId);
@@ -552,6 +579,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect GitHub? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectGitHub(token, orgId, websiteId);
@@ -578,6 +608,9 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    if (!window.confirm("Disconnect Google Analytics (GA4)? RankPilot will no longer be able to apply approved changes to this site until you reconnect.")) {
+      return;
+    }
     setError(null);
     try {
       await disconnectGa4(token, orgId);
@@ -692,7 +725,7 @@ export default function WebsiteDetailClient() {
     return (
       <div className={styles.page}>
         <div className={styles.container}>
-          {error ? <p className={styles.error}>{error}</p> : <p>Website not found.</p>}
+          {error ? <p className={styles.error} role="alert">{error}</p> : <p>Website not found.</p>}
         </div>
       </div>
     );
@@ -710,8 +743,8 @@ export default function WebsiteDetailClient() {
             <h1>{website.display_name}</h1>
             <div className={styles.headerMeta}>
               <span>{website.canonical_url}</span>
-              <span className={badgeClass(website.verification_status)}>{website.verification_status}</span>
-              <span className={badgeClass(website.status)}>{website.status}</span>
+              <StatusBadge value={website.verification_status} />
+              <StatusBadge value={website.status} />
               <span>
                 {(() => {
                   const lastCrawl = [...crawls].sort(
@@ -726,7 +759,7 @@ export default function WebsiteDetailClient() {
           </div>
         </div>
 
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error} role="alert">{error}</p>}
 
         <div className={styles.tabs}>
           {TABS.map((tab) => (
@@ -741,15 +774,74 @@ export default function WebsiteDetailClient() {
         </div>
 
         {activeTab === "overview" && (
-          <div className={styles.card}>
-            <h2>Settings</h2>
+          <>
+            <div className={styles.card}>
+              <h2>Site health</h2>
+              <MetricGrid
+                metrics={[
+                  { label: "Pages crawled", value: pages.length },
+                  {
+                    label: "Open findings",
+                    value: findings.filter((f) => f.status === "open").length,
+                    attention: findings.some((f) => f.status === "open" && f.severity === "critical"),
+                  },
+                  { label: "Open opportunities", value: opportunities.filter((o) => o.status === "open").length },
+                  { label: "Completed tasks", value: tasks.filter((t) => t.status === "completed").length },
+                ]}
+              />
+              {(() => {
+                const criticalOpen = findings.filter((f) => f.status === "open" && f.severity === "critical").length;
+                const openFindings = findings.filter((f) => f.status === "open").length;
+                const openOpportunities = opportunities.filter((o) => o.status === "open").length;
+                const pendingTasks = tasks.filter(
+                  (t) => t.status === "pending" && t.approval_status === "pending"
+                ).length;
+                let message = "This site is caught up — nothing needs attention right now.";
+                let actionTab: Tab | null = null;
+                if (crawls.length === 0) {
+                  message = "No crawl has run yet. Run one to start finding issues.";
+                  actionTab = "crawls";
+                } else if (criticalOpen > 0) {
+                  message = `${criticalOpen} critical finding${criticalOpen === 1 ? "" : "s"} need${criticalOpen === 1 ? "s" : ""} review.`;
+                  actionTab = "findings";
+                } else if (openFindings > 0) {
+                  message = `${openFindings} open finding${openFindings === 1 ? "" : "s"} to review.`;
+                  actionTab = "findings";
+                } else if (openOpportunities > 0) {
+                  message = `${openOpportunities} open opportunit${openOpportunities === 1 ? "y" : "ies"} to review.`;
+                  actionTab = "opportunities";
+                } else if (pendingTasks > 0) {
+                  message = `${pendingTasks} task${pendingTasks === 1 ? "" : "s"} awaiting approval.`;
+                  actionTab = "tasks";
+                }
+                return (
+                  <div className={styles.row}>
+                    <div className={styles.rowMain}>
+                      <span>Recommended next action</span>
+                      <span className={styles.rowMeta}>{message}</span>
+                    </div>
+                    {actionTab && (
+                      <button className={styles.button} onClick={() => setActiveTab(actionTab as Tab)}>
+                        Go
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Settings</h2>
             <div className={styles.row}>
               <div className={styles.rowMain}>
                 <span>Website status</span>
-                <span className={styles.rowMeta}>Pausing blocks all automated writes immediately.</span>
+                <span className={styles.rowMeta}>
+                  Pausing immediately stops all automated writes and also stops crawling (scheduled and
+                  in-progress) until you resume.
+                </span>
               </div>
               <div className={styles.actions}>
-                <span className={badgeClass(website.status)}>{website.status}</span>
+                <StatusBadge value={website.status} />
                 {website.status === "active" && (
                   <button className={styles.button} onClick={handlePause}>
                     Pause automation
@@ -777,6 +869,7 @@ export default function WebsiteDetailClient() {
               </div>
             </div>
           </div>
+          </>
         )}
 
         {activeTab === "crawls" && (
@@ -785,7 +878,9 @@ export default function WebsiteDetailClient() {
             <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleTriggerCrawl}>
               Run a crawl now
             </button>
-            {crawls.length === 0 && <p className={styles.empty}>No crawls yet.</p>}
+            {crawls.length === 0 && (
+              <EmptyState title="No crawls yet" description="Run the first crawl to start discovering pages and issues." />
+            )}
             {crawls.map((crawl) => (
               <div key={crawl.id} className={styles.row}>
                 <div className={styles.rowMain}>
@@ -795,7 +890,7 @@ export default function WebsiteDetailClient() {
                     {crawl.error_summary ? ` — ${crawl.error_summary}` : ""}
                   </span>
                 </div>
-                <span className={badgeClass(crawl.status)}>{crawl.status}</span>
+                <StatusBadge value={crawl.status} />
               </div>
             ))}
           </div>
@@ -804,21 +899,70 @@ export default function WebsiteDetailClient() {
         {activeTab === "findings" && (
           <div className={styles.card}>
             <h2>Findings</h2>
-            {findings.length === 0 && <p className={styles.empty}>No findings yet — run a crawl first.</p>}
-            {findings.map((finding) => (
-              <div key={finding.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span>{finding.rule_code}</span>
-                  <span className={styles.rowMeta}>
-                    {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
-                  </span>
-                </div>
+            {findings.length === 0 ? (
+              <EmptyState title="No findings yet" description="Run a crawl first — findings appear once pages have been fetched and checked." />
+            ) : (
+              <>
                 <div className={styles.actions}>
-                  <span className={badgeClass(finding.severity)}>{finding.severity}</span>
-                  <span className={badgeClass(finding.status)}>{finding.status}</span>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    placeholder="Search by URL or rule code"
+                    aria-label="Search by URL or rule code"
+                    value={findingsSearch}
+                    onChange={(e) => setFindingsSearch(e.target.value)}
+                  />
+                  <select
+                    className={styles.input}
+                    aria-label="Filter by severity"
+                    value={findingsSeverityFilter}
+                    onChange={(e) => setFindingsSeverityFilter(e.target.value)}
+                  >
+                    <option value="all">All severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                  </select>
+                  <select
+                    className={styles.input}
+                    aria-label="Filter by status"
+                    value={findingsStatusFilter}
+                    onChange={(e) => setFindingsStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="open">Open</option>
+                    <option value="resolved">Resolved</option>
+                  </select>
                 </div>
-              </div>
-            ))}
+                {(() => {
+                  const q = findingsSearch.trim().toLowerCase();
+                  const filtered = findings.filter((f) => {
+                    if (findingsSeverityFilter !== "all" && f.severity !== findingsSeverityFilter) return false;
+                    if (findingsStatusFilter !== "all" && f.status !== findingsStatusFilter) return false;
+                    if (!q) return true;
+                    const url = f.page_id ? pageUrlById[f.page_id] ?? f.page_id : "site-wide";
+                    return f.rule_code.toLowerCase().includes(q) || url.toLowerCase().includes(q);
+                  });
+                  if (filtered.length === 0) {
+                    return <EmptyState title="No findings match these filters" description="Try a different search term or widen the severity/status filters." />;
+                  }
+                  return filtered.map((finding) => (
+                    <div key={finding.id} className={styles.row}>
+                      <div className={styles.rowMain}>
+                        <span>{finding.rule_code}</span>
+                        <span className={styles.rowMeta}>
+                          {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
+                        </span>
+                      </div>
+                      <div className={styles.actions}>
+                        <StatusBadge value={finding.severity} />
+                        <StatusBadge value={finding.status} />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </>
+            )}
           </div>
         )}
 
@@ -836,11 +980,11 @@ export default function WebsiteDetailClient() {
               </label>
             )}
             {opportunities.length === 0 && (
-              <p className={styles.empty}>No opportunities yet — run a crawl first.</p>
+              <EmptyState title="No opportunities yet" description="Run a crawl first — opportunities are derived from open findings and connected search data." />
             )}
             {opportunities.length > 0 &&
               opportunities.filter((o) => showCompletedOpportunities || o.status === "open").length === 0 && (
-                <p className={styles.empty}>No open opportunities right now — nice work.</p>
+                <EmptyState title="No open opportunities right now" description="Nice work — everything currently detected has been resolved or completed." />
               )}
             {opportunities
               .filter((opportunity) => showCompletedOpportunities || opportunity.status === "open")
@@ -850,12 +994,18 @@ export default function WebsiteDetailClient() {
                   <div className={styles.rowMain}>
                     <span>{opportunity.title}</span>
                     <span className={styles.rowMeta}>
-                      score {opportunity.score.toFixed(2)} · risk tier {opportunity.risk_tier} ·{" "}
-                      {opportunity.rationale}
+                      {opportunity.page_id ? pageUrlById[opportunity.page_id] ?? opportunity.page_id : "Site-wide"}
                     </span>
+                    <span className={styles.rowMeta}>
+                      impact {opportunity.impact_estimate.toFixed(2)} · confidence{" "}
+                      {opportunity.confidence.toFixed(2)} · effort {opportunity.effort_estimate.toFixed(2)} · risk
+                      tier {opportunity.risk_tier} · score {opportunity.score.toFixed(2)}
+                    </span>
+                    <span className={styles.rowMeta}>{opportunity.rationale}</span>
                   </div>
                   <div className={styles.actions}>
-                    <span className={badgeClass(opportunity.status)}>{opportunity.status}</span>
+                    <StatusBadge value={opportunity.category} tone="info" />
+                    <StatusBadge value={opportunity.status} />
                     {opportunity.status === "open" && !proposals[opportunity.id] && (
                       <button className={styles.button} onClick={() => handleGetProposal(opportunity.id)}>
                         Get AI proposal
@@ -891,17 +1041,18 @@ export default function WebsiteDetailClient() {
         {activeTab === "tasks" && (
           <div className={styles.card}>
             <h2>Tasks</h2>
-            {tasks.length === 0 && <p className={styles.empty}>No tasks yet.</p>}
+            {tasks.length === 0 && (
+              <EmptyState title="No tasks yet" description="A task is created once you accept an AI proposal for an opportunity." />
+            )}
             {tasks.map((task) => (
               <div key={task.id} className={styles.row}>
                 <div className={styles.rowMain}>
                   <span>{task.task_type}</span>
-                  <span className={styles.rowMeta}>
-                    risk tier {task.risk_tier} · approval: {task.approval_status}
-                  </span>
+                  <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
                 </div>
                 <div className={styles.actions}>
-                  <span className={badgeClass(task.status)}>{task.status}</span>
+                  <StatusBadge value={task.approval_status} label={`approval: ${task.approval_status}`} />
+                  <StatusBadge value={task.status} />
                   {task.approval_status === "pending" && (
                     <>
                       <button className={styles.button} onClick={() => handleTaskAction(task.id, "approve")}>
@@ -992,6 +1143,7 @@ export default function WebsiteDetailClient() {
                 {searchProperties.length > 0 ? (
                   <select
                     className={styles.input}
+                    aria-label="Search Console property"
                     value={sitePropertyInput}
                     onChange={(e) => setSitePropertyInput(e.target.value)}
                   >
@@ -1006,6 +1158,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="https://example.com/ or sc-domain:example.com"
+                    aria-label="https://example.com/ or sc-domain:example.com"
                     value={sitePropertyInput}
                     onChange={(e) => setSitePropertyInput(e.target.value)}
                   />
@@ -1055,6 +1208,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="Application username"
+                    aria-label="Application username"
                     value={wpUsername}
                     onChange={(e) => setWpUsername(e.target.value)}
                   />
@@ -1062,6 +1216,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="password"
                     placeholder="Application password"
+                    aria-label="Application password"
                     value={wpPassword}
                     onChange={(e) => setWpPassword(e.target.value)}
                   />
@@ -1081,7 +1236,7 @@ export default function WebsiteDetailClient() {
                         </span>
                       </div>
                       <div className={styles.actions}>
-                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <StatusBadge value={connection.status} />
                         <button
                           className={`${styles.button} ${styles.buttonDanger}`}
                           onClick={handleDisconnectWordPress}
@@ -1119,6 +1274,7 @@ export default function WebsiteDetailClient() {
                 {ga4Properties.length > 0 ? (
                   <select
                     className={styles.input}
+                    aria-label="GA4 property"
                     value={ga4PropertyInput}
                     onChange={(e) => setGa4PropertyInput(e.target.value)}
                   >
@@ -1133,6 +1289,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="properties/123456789"
+                    aria-label="properties/123456789"
                     value={ga4PropertyInput}
                     onChange={(e) => setGa4PropertyInput(e.target.value)}
                   />
@@ -1180,6 +1337,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="shop.myshopify.com"
+                    aria-label="shop.myshopify.com"
                     value={shopifyDomain}
                     onChange={(e) => setShopifyDomain(e.target.value)}
                   />
@@ -1187,6 +1345,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="password"
                     placeholder="Admin API access token"
+                    aria-label="Admin API access token"
                     value={shopifyToken}
                     onChange={(e) => setShopifyToken(e.target.value)}
                   />
@@ -1207,7 +1366,7 @@ export default function WebsiteDetailClient() {
                         </span>
                       </div>
                       <div className={styles.actions}>
-                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <StatusBadge value={connection.status} />
                         <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectShopify}>
                           Disconnect
                         </button>
@@ -1225,6 +1384,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="Webflow site ID"
+                    aria-label="Webflow site ID"
                     value={webflowSiteId}
                     onChange={(e) => setWebflowSiteId(e.target.value)}
                   />
@@ -1232,6 +1392,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="password"
                     placeholder="Site API token"
+                    aria-label="Site API token"
                     value={webflowToken}
                     onChange={(e) => setWebflowToken(e.target.value)}
                   />
@@ -1252,7 +1413,7 @@ export default function WebsiteDetailClient() {
                         </span>
                       </div>
                       <div className={styles.actions}>
-                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <StatusBadge value={connection.status} />
                         <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectWebflow}>
                           Disconnect
                         </button>
@@ -1274,6 +1435,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="Sanity project ID"
+                    aria-label="Sanity project ID"
                     value={sanityProjectId}
                     onChange={(e) => setSanityProjectId(e.target.value)}
                   />
@@ -1281,6 +1443,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="Dataset (e.g. production)"
+                    aria-label="Dataset (e.g. production)"
                     value={sanityDataset}
                     onChange={(e) => setSanityDataset(e.target.value)}
                   />
@@ -1288,6 +1451,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="password"
                     placeholder="API token"
+                    aria-label="API token"
                     value={sanityToken}
                     onChange={(e) => setSanityToken(e.target.value)}
                   />
@@ -1309,7 +1473,7 @@ export default function WebsiteDetailClient() {
                         </span>
                       </div>
                       <div className={styles.actions}>
-                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <StatusBadge value={connection.status} />
                         <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectSanity}>
                           Disconnect
                         </button>
@@ -1331,6 +1495,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="owner"
+                    aria-label="owner"
                     value={githubOwner}
                     onChange={(e) => setGithubOwner(e.target.value)}
                   />
@@ -1338,6 +1503,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="repo"
+                    aria-label="repo"
                     value={githubRepo}
                     onChange={(e) => setGithubRepo(e.target.value)}
                   />
@@ -1345,6 +1511,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="text"
                     placeholder="base branch"
+                    aria-label="base branch"
                     value={githubBranch}
                     onChange={(e) => setGithubBranch(e.target.value)}
                   />
@@ -1352,6 +1519,7 @@ export default function WebsiteDetailClient() {
                     className={styles.input}
                     type="password"
                     placeholder="Personal access token"
+                    aria-label="Personal access token"
                     value={githubToken}
                     onChange={(e) => setGithubToken(e.target.value)}
                   />
@@ -1373,7 +1541,7 @@ export default function WebsiteDetailClient() {
                         </span>
                       </div>
                       <div className={styles.actions}>
-                        <span className={badgeClass(connection.status)}>{connection.status}</span>
+                        <StatusBadge value={connection.status} />
                         <button className={`${styles.button} ${styles.buttonDanger}`} onClick={handleDisconnectGitHub}>
                           Disconnect
                         </button>
@@ -1388,9 +1556,13 @@ export default function WebsiteDetailClient() {
         {activeTab === "ai-agents" && (
           <>
             <div className={styles.card}>
-              <h2>SEO Strategy Assistant</h2>
+              <div className={styles.row} style={{ border: "none", padding: 0 }}>
+                <h2>SEO Strategy Assistant</h2>
+                <StatusBadge value="drafts_only" tone="info" label="Drafts only — human approval required" />
+              </div>
               <p className={styles.rowMeta}>
-                A short weekly narrative and focus areas generated from this site&apos;s open opportunities.
+                Data source: this site&apos;s open opportunities (deterministic, rule-derived). A short
+                weekly narrative and focus areas, never a ranking/traffic guarantee.
               </p>
               <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleGetWeeklyStrategy}>
                 Generate this week&apos;s strategy
@@ -1408,16 +1580,24 @@ export default function WebsiteDetailClient() {
             </div>
 
             <div className={styles.card}>
-              <h2>Internal Linking Analyst</h2>
+              <div className={styles.row} style={{ border: "none", padding: 0 }}>
+                <h2>Internal Linking Analyst</h2>
+                <StatusBadge value="advisory" tone="info" label="Advisory only" />
+              </div>
               <p className={styles.rowMeta}>
-                Finds orphan pages (no internal links pointing to them) and suggests which existing pages
-                could link to them. Advisory only — there&apos;s no connector operation to add a link
-                automatically.
+                Data source: crawled pages and their internal links. Finds orphan pages (no internal links
+                pointing to them) and suggests which existing pages could link to them — there&apos;s no
+                connector operation to add a link automatically, so nothing here is ever applied for you.
               </p>
               <button className={styles.button} onClick={handleLoadOrphanPages}>
                 Find orphan pages
               </button>
-              {orphanPages.length === 0 && <p className={styles.empty}>No orphan pages loaded yet.</p>}
+              {orphanPages.length === 0 && (
+                <EmptyState
+                  title="No orphan pages loaded yet"
+                  description={'Click "Find orphan pages" to check for pages nothing else links to.'}
+                />
+              )}
               {orphanPages.map((page) => (
                 <div key={page.id} className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
                   <div className={styles.row} style={{ border: "none", padding: 0 }}>
@@ -1452,7 +1632,9 @@ export default function WebsiteDetailClient() {
         {activeTab === "reports" && (
           <div className={styles.card}>
             <h2>Weekly reports</h2>
-            {reports.length === 0 && <p className={styles.empty}>No reports generated yet.</p>}
+            {reports.length === 0 && (
+              <EmptyState title="No reports generated yet" description="Weekly reports are generated automatically once this site has crawl and task history." />
+            )}
             {reports.map((report) => (
               <div key={report.id}>
                 <p className={styles.rowMeta}>
