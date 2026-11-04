@@ -118,6 +118,7 @@ export default function WebsiteDetailClient() {
   const [pages, setPages] = useState<Page[]>([]);
   const [findings, setFindings] = useState<SEOFinding[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [showCompletedOpportunities, setShowCompletedOpportunities] = useState(false);
   const [proposals, setProposals] = useState<Record<string, OpportunityProposal>>({});
   const [tasks, setTasks] = useState<SEOTask[]>([]);
   const [connections, setConnections] = useState<WebsiteConnection[]>([]);
@@ -789,10 +790,26 @@ export default function WebsiteDetailClient() {
         {activeTab === "opportunities" && (
           <div className={styles.card}>
             <h2>Opportunities</h2>
+            {opportunities.length > 0 && (
+              <label className={styles.rowMeta} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                <input
+                  type="checkbox"
+                  checked={showCompletedOpportunities}
+                  onChange={(e) => setShowCompletedOpportunities(e.target.checked)}
+                />
+                Show completed/resolved ({opportunities.filter((o) => o.status !== "open").length})
+              </label>
+            )}
             {opportunities.length === 0 && (
               <p className={styles.empty}>No opportunities yet — run a crawl first.</p>
             )}
-            {opportunities.map((opportunity) => (
+            {opportunities.length > 0 &&
+              opportunities.filter((o) => showCompletedOpportunities || o.status === "open").length === 0 && (
+                <p className={styles.empty}>No open opportunities right now — nice work.</p>
+              )}
+            {opportunities
+              .filter((opportunity) => showCompletedOpportunities || opportunity.status === "open")
+              .map((opportunity) => (
               <div key={opportunity.id} className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
                 <div className={styles.row} style={{ border: "none", padding: 0 }}>
                   <div className={styles.rowMain}>
