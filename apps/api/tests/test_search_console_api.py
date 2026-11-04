@@ -80,7 +80,15 @@ def test_select_property_then_sync_and_read_performance(client, monkeypatch, db_
     def fake_query_search_analytics(access_token, site_url, **kwargs):
         assert access_token == "access-1"
         assert site_url == "https://example.com/"
-        return [{"keys": ["rankpilot seo", "2026-10-01"], "clicks": 10, "impressions": 200, "ctr": 0.05, "position": 6.4}]
+        return [
+            {
+                "keys": ["rankpilot seo", "https://example.com/", "2026-10-01"],
+                "clicks": 10,
+                "impressions": 200,
+                "ctr": 0.05,
+                "position": 6.4,
+            }
+        ]
 
     monkeypatch.setattr(
         search_console_endpoint.search_console_sync,

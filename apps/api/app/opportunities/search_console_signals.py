@@ -9,6 +9,7 @@ afterwards, never decides whether something is an opportunity).
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 
 from sqlalchemy import func
@@ -41,9 +42,11 @@ def _rationale_for(query: str, avg_position: float, impressions: int, clicks: in
 def refresh_ctr_opportunities(db: Session, website: Website) -> list[SEOOpportunity]:
     """Re-derive "good position, no clicks" opportunities from recently
     synced Search Console data (KeywordObservation rows, populated by
-    search_console_sync.py). Always site-wide (page_id=None): Google's
-    query+date report has no page dimension, so there's no page to
-    attribute a query to.
+    search_console_sync.py, which attributes each query to the page it
+    actually landed on). page_id is None only when that landing page
+    hasn't been crawled yet, in which case the opportunity is still
+    created but the AI content agent later gets no page evidence to draft
+    a fix from (app/api/v1/endpoints/opportunities.py).
     """
     if not website.search_console_site_url:
         return []
@@ -52,27 +55,26 @@ def refresh_ctr_opportunities(db: Session, website: Website) -> list[SEOOpportun
     rows = (
         db.query(
             KeywordObservation.query,
+            KeywordObservation.page_id,
             func.sum(KeywordObservation.clicks),
             func.sum(KeywordObservation.impressions),
             func.avg(KeywordObservation.average_position),
         )
         .filter(KeywordObservation.website_id == website.id, KeywordObservation.date >= window_start)
-        .group_by(KeywordObservation.query)
+        .group_by(KeywordObservation.query, KeywordObservation.page_id)
         .all()
     )
 
     existing_opportunities = {
-        o.title: o
-        for o in db.query(SEOOpportunity)
-        .filter(SEOOpportunity.website_id == website.id, SEOOpportunity.page_id.is_(None))
-        .all()
+        (o.page_id, o.title): o
+        for o in db.query(SEOOpportunity).filter(SEOOpportunity.website_id == website.id).all()
         if o.title.startswith(_TITLE_PREFIX)
     }
 
-    touched_titles: set[str] = set()
+    touched_keys: set[tuple[uuid.UUID | None, str]] = set()
     persisted: list[SEOOpportunity] = []
 
-    for query, total_clicks, total_impressions, avg_position in rows:
+    for query, page_id, total_clicks, total_impressions, avg_position in rows:
         total_clicks = int(total_clicks or 0)
         total_impressions = int(total_impressions or 0)
         avg_position = float(avg_position or 0.0)
@@ -86,7 +88,8 @@ def refresh_ctr_opportunities(db: Session, website: Website) -> list[SEOOpportun
             continue
 
         title = _title_for(query)
-        touched_titles.add(title)
+        key = (page_id, title)
+        touched_keys.add(key)
         rationale = _rationale_for(query, avg_position, total_impressions, total_clicks)
         evidence = {
             "query": query,
@@ -96,11 +99,11 @@ def refresh_ctr_opportunities(db: Session, website: Website) -> list[SEOOpportun
             "window_days": LOOKBACK_DAYS,
         }
 
-        existing = existing_opportunities.get(title)
+        existing = existing_opportunities.get(key)
         if existing is None:
             opportunity = SEOOpportunity(
                 website_id=website.id,
-                page_id=None,
+                page_id=page_id,
                 category="content",
                 title=title,
                 rationale=rationale,
@@ -122,8 +125,8 @@ def refresh_ctr_opportunities(db: Session, website: Website) -> list[SEOOpportun
 
     db.flush()
 
-    for title, opportunity in existing_opportunities.items():
-        if title not in touched_titles and opportunity.status == OpportunityStatus.open:
+    for key, opportunity in existing_opportunities.items():
+        if key not in touched_keys and opportunity.status == OpportunityStatus.open:
             # The query no longer qualifies (clicks picked up, position
             # dropped, or it fell out of the lookback window) -- nobody
             # executed a fix for it here, so "resolved", not "completed"
