@@ -73,6 +73,23 @@ import { MetricGrid, type Metric as MetricCardMetric } from "@/components/Metric
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./detail.module.css";
 
+function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escapeCell = (value: string | number) => {
+    const str = String(value);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(escapeCell).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 const TABS = [
   "overview",
   "crawls",
@@ -964,23 +981,47 @@ export default function WebsiteDetailClient() {
                     const url = f.page_id ? pageUrlById[f.page_id] ?? f.page_id : "site-wide";
                     return f.rule_code.toLowerCase().includes(q) || url.toLowerCase().includes(q);
                   });
-                  if (filtered.length === 0) {
-                    return <EmptyState title="No findings match these filters" description="Try a different search term or widen the severity/status filters." />;
-                  }
-                  return filtered.map((finding) => (
-                    <div key={finding.id} className={styles.row}>
-                      <div className={styles.rowMain}>
-                        <span>{finding.rule_code}</span>
-                        <span className={styles.rowMeta}>
-                          {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
-                        </span>
-                      </div>
+                  return (
+                    <>
                       <div className={styles.actions}>
-                        <StatusBadge value={finding.severity} />
-                        <StatusBadge value={finding.status} />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadCsv(
+                              `${website?.hostname ?? "website"}-findings.csv`,
+                              ["rule_code", "url", "severity", "status"],
+                              filtered.map((f) => [
+                                f.rule_code,
+                                f.page_id ? pageUrlById[f.page_id] ?? f.page_id : "site-wide",
+                                f.severity,
+                                f.status,
+                              ])
+                            )
+                          }
+                        >
+                          Download CSV ({filtered.length})
+                        </button>
                       </div>
-                    </div>
-                  ));
+                      {filtered.length === 0 ? (
+                        <EmptyState title="No findings match these filters" description="Try a different search term or widen the severity/status filters." />
+                      ) : (
+                        filtered.map((finding) => (
+                          <div key={finding.id} className={styles.row}>
+                            <div className={styles.rowMain}>
+                              <span>{finding.rule_code}</span>
+                              <span className={styles.rowMeta}>
+                                {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
+                              </span>
+                            </div>
+                            <div className={styles.actions}>
+                              <StatusBadge value={finding.severity} />
+                              <StatusBadge value={finding.status} />
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </>
+                  );
                 })()}
               </>
             )}
@@ -991,14 +1032,40 @@ export default function WebsiteDetailClient() {
           <div className={styles.card}>
             <h2>Opportunities</h2>
             {opportunities.length > 0 && (
-              <label className={styles.rowMeta} style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                <input
-                  type="checkbox"
-                  checked={showCompletedOpportunities}
-                  onChange={(e) => setShowCompletedOpportunities(e.target.checked)}
-                />
-                Show completed/resolved ({opportunities.filter((o) => o.status !== "open").length})
-              </label>
+              <div className={styles.actions} style={{ alignItems: "center" }}>
+                <label className={styles.rowMeta} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={showCompletedOpportunities}
+                    onChange={(e) => setShowCompletedOpportunities(e.target.checked)}
+                  />
+                  Show completed/resolved ({opportunities.filter((o) => o.status !== "open").length})
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const visible = opportunities.filter((o) => showCompletedOpportunities || o.status === "open");
+                    downloadCsv(
+                      `${website?.hostname ?? "website"}-opportunities.csv`,
+                      ["title", "category", "url", "status", "impact", "confidence", "effort", "risk_tier", "score", "rationale"],
+                      visible.map((o) => [
+                        o.title,
+                        o.category,
+                        o.page_id ? pageUrlById[o.page_id] ?? o.page_id : "site-wide",
+                        o.status,
+                        o.impact_estimate,
+                        o.confidence,
+                        o.effort_estimate,
+                        o.risk_tier,
+                        o.score,
+                        o.rationale,
+                      ])
+                    );
+                  }}
+                >
+                  Download CSV
+                </button>
+              </div>
             )}
             {opportunities.length === 0 && (
               <EmptyState title="No opportunities yet" description="Run a crawl first — opportunities are derived from open findings and connected search data." />
@@ -1062,6 +1129,22 @@ export default function WebsiteDetailClient() {
         {activeTab === "tasks" && (
           <div className={styles.card}>
             <h2>Tasks</h2>
+            {tasks.length > 0 && (
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCsv(
+                      `${website?.hostname ?? "website"}-tasks.csv`,
+                      ["task_type", "risk_tier", "approval_status", "status"],
+                      tasks.map((t) => [t.task_type, t.risk_tier, t.approval_status, t.status])
+                    )
+                  }
+                >
+                  Download CSV ({tasks.length})
+                </button>
+              </div>
+            )}
             {tasks.length === 0 && (
               <EmptyState title="No tasks yet" description="A task is created once you accept an AI proposal for an opportunity." />
             )}
