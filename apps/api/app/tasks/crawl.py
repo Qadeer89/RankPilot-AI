@@ -12,6 +12,7 @@ from app.crawler.orchestrator import run_crawl
 from app.db.session import SessionLocal
 from app.models.crawl_job import CrawlJob
 from app.models.website import Website
+from app.opportunities.auto_pipeline import auto_generate_and_execute_tasks
 from app.opportunities.scoring import refresh_opportunities_for_website
 from app.seo_rules.engine import run_rules_for_crawl
 
@@ -44,6 +45,13 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         # separate "opportunity_refresh" job (SYSTEM_ARCHITECTURE.md #5):
         # it's cheap, deterministic, and always needs to follow a rule run.
         refresh_opportunities_for_website(db, website)
+        db.commit()
+
+        # Best-effort: turns open opportunities into AI-proposed tasks and
+        # auto-executes whichever don't need human approval, so a verified
+        # site keeps improving without someone clicking through every
+        # opportunity by hand (app/opportunities/auto_pipeline.py).
+        auto_generate_and_execute_tasks(db, website)
         db.commit()
         return crawl_job.status.value
     except Exception:

@@ -90,11 +90,16 @@ def create_tasks_from_proposal(
     opportunity: SEOOpportunity,
     proposal: OpportunityProposal,
     *,
-    requested_by: uuid.UUID,
+    requested_by: uuid.UUID | None,
 ) -> list[SEOTask]:
     """One SEOTask per proposed action, idempotent per (website,
     opportunity, operation, target_url) so retried requests don't create
     duplicate tasks (RP-0701).
+
+    `requested_by` is None for tasks the crawl pipeline creates on its own
+    (app/opportunities/auto_pipeline.py) rather than a specific human
+    clicking "create task" -- Approval.requested_by is nullable for
+    exactly this case.
     """
     if policy.is_risk_tier_blocked(proposal.risk_tier):
         raise ExecutionBlocked(f"Risk tier {proposal.risk_tier} is blocked; no task was created.")
