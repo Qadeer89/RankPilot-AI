@@ -25,6 +25,7 @@ from app.seo_rules.rules import (
     content,
     duplicates,
     external_links,
+    headings,
     http_status,
     images,
     indexability,
@@ -110,6 +111,7 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "EXTERNAL_LINK_REDIRECT",
     "PAGINATION_CANONICAL_CONFLICT",
     "PAGINATION_LINK_BROKEN",
+    "HEADING_HIERARCHY_SKIP",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -217,6 +219,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(content.check_thin_content(page_id, snapshot))
         candidates.extend(external_links.check(page_id, page_external_links_by_page_id.get(page_id, [])))
         candidates.extend(pagination.check(page_id, page.canonical_url, snapshot))
+        candidates.extend(headings.check_hierarchy(page_id, snapshot))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))

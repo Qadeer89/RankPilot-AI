@@ -166,6 +166,24 @@ def test_pagination_links_default_to_none_when_absent():
     assert extraction.rel_prev_url is None
 
 
+def test_heading_sequence_captures_document_order_across_levels():
+    html = """
+    <html><head><title>Page</title></head><body>
+    <h1>Title</h1>
+    <h3>Skipped straight to h3</h3>
+    <h2>Back to h2</h2>
+    </body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.heading_sequence == [1, 3, 2]
+
+
+def test_heading_sequence_is_empty_when_no_headings_present():
+    html = "<html><head><title>Page</title></head><body><p>No headings here</p></body></html>"
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.heading_sequence == []
+
+
 def test_content_fingerprint_matches_for_identical_body_text_despite_different_scripts():
     html_a = """
     <html><head><title>A</title></head><body>

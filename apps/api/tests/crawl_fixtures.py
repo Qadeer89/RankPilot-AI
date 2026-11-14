@@ -43,6 +43,7 @@ ABOUT_HTML = """
 <link rel="next" href="/missing-page">
 </head><body>
 <a href="/">Home</a>
+<h3>Our team (no h1 or h2 before this)</h3>
 <img src="/team.jpg">
 <img src="" alt="this one has no src at all">
 <img src="/decorative.png" alt="">

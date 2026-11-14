@@ -40,6 +40,7 @@ class PageSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     word_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     rel_next_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     rel_prev_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    heading_sequence_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     page: Mapped["Page"] = relationship(back_populates="snapshots")
     crawl_job: Mapped["CrawlJob"] = relationship()

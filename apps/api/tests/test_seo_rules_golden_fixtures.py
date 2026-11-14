@@ -23,6 +23,7 @@ from app.seo_rules.rules import (
     content,
     duplicates,
     external_links,
+    headings,
     http_status,
     images,
     indexability,
@@ -50,6 +51,7 @@ def _snapshot(**overrides) -> PageSnapshot:
         internal_links_json=[],
         content_fingerprint=None,
         word_count=250,
+        heading_sequence_json=[],
     )
     defaults.update(overrides)
     return PageSnapshot(**defaults)
@@ -655,3 +657,41 @@ def test_pagination_link_broken_negative_when_no_pagination_declared():
         pages_by_normalized_url={}, snapshots_by_page_id={page_id: snapshot}
     )
     assert candidates == []
+
+
+def test_heading_hierarchy_skip_positive_h1_straight_to_h3():
+    snapshot = _snapshot(heading_sequence_json=[1, 3])
+    candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"HEADING_HIERARCHY_SKIP"}
+
+
+def test_heading_hierarchy_skip_negative_on_a_well_formed_sequence():
+    snapshot = _snapshot(heading_sequence_json=[1, 2, 3, 2, 3])
+    candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def test_heading_hierarchy_skip_negative_when_decreasing_then_increasing_by_one():
+    """Dropping back down (h3 -> h2) and later returning to h3 is normal
+    document structure, not a skip -- only ever jumping *up* past the
+    highest level already reached is the heuristic this flags."""
+    snapshot = _snapshot(heading_sequence_json=[1, 2, 3, 2, 3, 2])
+    candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def test_heading_hierarchy_skip_negative_on_empty_sequence():
+    snapshot = _snapshot(heading_sequence_json=[])
+    candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def test_heading_hierarchy_skip_positive_when_the_page_starts_below_h1():
+    """Starting at h2 with no h1 at all is also a hierarchy skip (from
+    the implicit top level) -- a separate, existing signal
+    (HEADING_H1_MISSING, metadata.py) already flags the missing-H1 part
+    specifically; the two checks deliberately overlap rather than one
+    silently covering for the other."""
+    snapshot = _snapshot(heading_sequence_json=[2, 3])
+    candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"HEADING_HIERARCHY_SKIP"}

@@ -48,6 +48,7 @@ class PageExtraction:
     canonical_url: str | None
     meta_robots_directives: list[str]
     headings: dict[str, list[str]] = field(default_factory=dict)
+    heading_sequence: list[int] = field(default_factory=list)
     structured_data: list[StructuredDataBlock] = field(default_factory=list)
     internal_links: list[str] = field(default_factory=list)
     external_links: list[ExternalLinkExtraction] = field(default_factory=list)
@@ -126,6 +127,14 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         texts = [h.get_text(strip=True) for h in soup.find_all(tag_name)]
         if texts:
             headings[tag_name] = texts
+
+    # Document order across all levels, not grouped by level like
+    # `headings` above -- needed to detect a skipped hierarchy level
+    # (e.g. H1 straight to H3) which per-level counts alone can't show
+    # (app/seo_rules/rules/headings.py).
+    heading_sequence = [
+        int(tag.name[1]) for tag in soup.find_all(("h1", "h2", "h3", "h4", "h5", "h6"))
+    ]
 
     structured_data: list[StructuredDataBlock] = []
     for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
@@ -210,6 +219,7 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         canonical_url=canonical_url,
         meta_robots_directives=meta_robots_directives,
         headings=headings,
+        heading_sequence=heading_sequence,
         structured_data=structured_data,
         internal_links=internal_links,
         external_links=external_links,

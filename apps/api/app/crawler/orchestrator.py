@@ -380,6 +380,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                     canonical_url=extraction.canonical_url,
                     robots_directives=extraction.meta_robots_directives,
                     headings_json=extraction.headings,
+                    heading_sequence_json=extraction.heading_sequence,
                     schema_json=[
                         {"raw": b.raw, "parsed": b.parsed, "parse_error": b.parse_error}
                         for b in extraction.structured_data
