@@ -605,6 +605,30 @@ def verify_deployment(
 
 
 @router.get(
+    "/organizations/{organization_id}/websites/{website_id}/change-records",
+    response_model=list[ChangeRecordResponse],
+)
+def list_change_records(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    page_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
+) -> list[ChangeRecordResponse]:
+    """Fix history (RankPilot AI Phase 6 "Advanced SEO Reporting"):
+    browse before/after evidence for every executed write on this
+    website, optionally scoped to one page -- without already knowing
+    a change_record id, which get_change_record below still requires.
+    """
+    get_website_or_404(db, organization_id, website_id)
+    query = db.query(ChangeRecord).filter(ChangeRecord.website_id == website_id)
+    if page_id is not None:
+        query = query.filter(ChangeRecord.page_id == page_id)
+    records = query.order_by(ChangeRecord.executed_at.desc()).limit(200).all()
+    return [ChangeRecordResponse.model_validate(r) for r in records]
+
+
+@router.get(
     "/organizations/{organization_id}/websites/{website_id}/change-records/{change_id}",
     response_model=ChangeRecordResponse,
 )

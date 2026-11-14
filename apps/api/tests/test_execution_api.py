@@ -149,3 +149,80 @@ def test_execution_endpoints_are_tenant_scoped(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 403
+
+
+def test_list_change_records_returns_fix_history_for_the_website(client, monkeypatch, db_session):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "exec-list@example.com", "Execution List Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+    client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/connections/wordpress",
+        json={"username": "rankpilot", "application_password": "app-pass-123"},
+        headers=headers,
+    )
+
+    from app.models.seo_opportunity import SEOOpportunity
+    from app.models.website import Website
+
+    website = db_session.get(Website, website_id)
+    opportunity = SEOOpportunity(
+        website_id=website.id,
+        page_id=None,
+        category="metadata",
+        title="Add a missing page title",
+        rationale="This page has no <title>.",
+        impact_estimate=0.8,
+        confidence=1.0,
+        effort_estimate=0.2,
+        risk_tier=1,
+    )
+    db_session.add(opportunity)
+    db_session.commit()
+
+    tasks_response = client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/opportunities/{opportunity.id}/tasks",
+        json=_proposal_payload(str(opportunity.id)),
+        headers=headers,
+    )
+    task = tasks_response.json()[0]
+    client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/tasks/{task['id']}/approve",
+        json={"reason": "Looks safe."},
+        headers=headers,
+    )
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        if "/pages" in url and params:
+            return _FakeResponse(200, [{"id": 7}])
+        return _FakeResponse(200, {"id": 7, "title": {"rendered": "New Title"}})
+
+    def fake_post(url, auth=None, json=None, timeout=None):
+        return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    client.post(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/tasks/{task['id']}/execute", headers=headers
+    )
+
+    list_response = client.get(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/change-records", headers=headers
+    )
+    assert list_response.status_code == 200
+    records = list_response.json()
+    assert len(records) == 1
+    assert records[0]["validation_status"] == "passed"
+
+
+def test_list_change_records_is_tenant_scoped(client):
+    token_a, org_a = _register_with_org(client, "exec-list-tenant-a@example.com", "Exec List Tenant A")
+    _token_b, org_b = _register_with_org(client, "exec-list-tenant-b@example.com", "Exec List Tenant B")
+
+    response = client.get(
+        f"/api/v1/organizations/{org_b}/websites/00000000-0000-0000-0000-000000000000/change-records",
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert response.status_code == 403

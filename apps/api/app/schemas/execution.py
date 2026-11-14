@@ -63,6 +63,7 @@ class ApprovalDecisionRequest(BaseModel):
 class ChangeRecordResponse(BaseModel):
     id: uuid.UUID
     website_id: uuid.UUID
+    page_id: uuid.UUID | None
     seo_task_id: uuid.UUID
     connector_type: str
     before_state_json: dict
