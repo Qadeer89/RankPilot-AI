@@ -29,13 +29,25 @@ README.
 
 A Next.js page's title/meta-description/canonical aren't raw HTML tags
 to regex-replace -- they're declared in an `export const metadata`
-object. Two shapes are supported there: a plain string/template literal
-(edited directly), or a single `${identifier.field}` interpolation
-where `identifier` is bound via `const identifier = importedArray.find(x
-=> x.slug === "...")` -- common on sites whose page copy lives in a
-shared data file keyed by slug, resolved by following the import and
-editing the matching entry there instead. Anything else fails clearly
-rather than guessing which value to change.
+object, whose field value can take a few shapes:
+  - a plain string/template literal, edited directly;
+  - a single `${identifier.field}` interpolation (or bare
+    `identifier.field`, no quotes) where `identifier` is bound via
+    `const identifier = importedArray.find(x => x.slug === "...")` --
+    common on sites whose page copy lives in a shared data file keyed
+    by slug, resolved by following the import and editing the matching
+    entry there instead;
+  - a single `${identifier}` interpolation, a bare `identifier`, or an
+    ES6 shorthand property (`description,` meaning `description:
+    description`) where `identifier` is a plain `const identifier =
+    "literal"` declared earlier in the same file -- common when a page
+    computes its own title/description once and reuses them in
+    `openGraph`/`twitter` too -- resolved by editing that const
+    directly.
+A template can mix several interpolations (e.g. a per-page value next
+to a static site name); only the one bound one of the above ways counts
+as resolvable, and exactly one must be found. Anything else fails
+clearly rather than guessing which value to change.
 
 Authenticates with a GitHub personal access token scoped to the one
 repository (never a broad org-wide token).
@@ -76,11 +88,14 @@ TSX_METADATA_FIELD_KEYS = {
     "set_canonical": "canonical",
 }
 _METADATA_EXPORT_RE = re.compile(r"export\s+const\s+metadata\s*(?::\s*\w+\s*)?=\s*\{")
-_TEMPLATE_EXPR_RE = re.compile(r"\$\{\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\}")
+# Captures either `${identifier.field}` or a bare `${identifier}` --
+# group 2 (the field) is "" for the latter, normalized to None by callers.
+_TEMPLATE_EXPR_RE = re.compile(r"\$\{\s*([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?\s*\}")
 _FIND_BINDING_RE_TEMPLATE = (
     r'const\s+{identifier}\s*=\s*([A-Za-z_]\w*)\s*\.\s*find\(\s*\(?\s*\w+\s*\)?\s*=>\s*'
     r'\w+\.(\w+)\s*===?\s*["\']([^"\']+)["\']\s*\)'
 )
+_LOCAL_CONST_LITERAL_RE_TEMPLATE = r'const\s+{identifier}\s*=\s*(`[^`]*`|"[^"]*"|\'[^\']*\')\s*;'
 
 # Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
 # set_canonical and set_schema_json are reliable here, unlike the CMS
@@ -232,12 +247,23 @@ def _field_value_pattern(key: str) -> re.Pattern:
     )
 
 
+def _shorthand_property_pattern(key: str) -> re.Pattern:
+    # ES6 shorthand property (`description,` meaning `description:
+    # description`) -- requires the key to actually be in property
+    # position (preceded by `{` or `,`) so plain prose containing the
+    # word isn't mistaken for one.
+    return re.compile(rf"(?:\{{|,)\s*({re.escape(key)})\s*(?=[,}}])")
+
+
 def _find_field_in_block(content: str, block_span: tuple[int, int], key: str) -> tuple[int, int, str] | None:
     start, end = block_span
     match = _field_value_pattern(key).search(content, start, end)
-    if match is None:
-        return None
-    return match.start(1), match.end(1), match.group(1)
+    if match is not None:
+        return match.start(1), match.end(1), match.group(1)
+    shorthand = _shorthand_property_pattern(key).search(content, start, end)
+    if shorthand is not None:
+        return shorthand.start(1), shorthand.end(1), shorthand.group(1)
+    return None
 
 
 def _is_plain_literal(raw_value: str) -> bool:
@@ -251,6 +277,23 @@ def _is_plain_literal(raw_value: str) -> bool:
 def _bare_expression_ref(raw_value: str) -> tuple[str, str] | None:
     match = re.fullmatch(r"([A-Za-z_]\w*)\.([A-Za-z_]\w*)", raw_value)
     return match.groups() if match else None
+
+
+def _bare_identifier_ref(raw_value: str) -> str | None:
+    match = re.fullmatch(r"[A-Za-z_]\w*", raw_value)
+    return match.group(0) if match else None
+
+
+def _find_local_const_literal(content: str, identifier: str) -> tuple[int, int, str] | None:
+    """Finds `const <identifier> = <literal>;` at module scope in
+    `content` and returns its (start, end, raw_value) span -- only when
+    the value is a plain literal, never another expression this
+    connector would otherwise have to guess at."""
+    pattern = re.compile(_LOCAL_CONST_LITERAL_RE_TEMPLATE.format(identifier=re.escape(identifier)))
+    match = pattern.search(content)
+    if match is None or not _is_plain_literal(match.group(1)):
+        return None
+    return match.start(1), match.end(1), match.group(1)
 
 
 def _unquote(raw_value: str) -> str:
@@ -367,23 +410,32 @@ def _resolve_tsx_target(credentials: GitHubCredentials, target_ref: dict, operat
 
     # A template can have more than one `${...}` (e.g. `` `${service.metaTitle} |
     # ${siteConfig.name}` `` -- a per-entry value next to a static site name) --
-    # only the interpolation(s) actually bound via a `.find()` lookup are
-    # candidates to resolve; a reference to an unrelated constant like
-    # `siteConfig.name` is simply left alone (nothing here ever touches
-    # page.tsx itself in this mode, only the resolved data file). A bare
-    # `identifier.field` (no quotes/backticks at all, e.g.
-    # `description: service.metaDescription`) is the same idea with
+    # only the interpolation(s) actually resolvable (bound via a `.find()`
+    # lookup into an imported data file, or a local `const identifier =
+    # "literal"` in this same file) are candidates; a reference to an
+    # unrelated constant like `siteConfig.name` is simply left alone. A
+    # bare `identifier.field` or bare `identifier` (no quotes/backticks
+    # at all -- the latter also covers an ES6 shorthand property, whose
+    # raw_value is just the key name itself) is the same idea with
     # exactly one candidate.
     if raw_value.startswith("`"):
-        exprs = _TEMPLATE_EXPR_RE.findall(raw_value[1:-1])
+        exprs = [(ident, attr or None) for ident, attr in _TEMPLATE_EXPR_RE.findall(raw_value[1:-1])]
+    elif _bare_expression_ref(raw_value):
+        exprs = [_bare_expression_ref(raw_value)]
+    elif _bare_identifier_ref(raw_value):
+        exprs = [(_bare_identifier_ref(raw_value), None)]
     else:
-        bare = _bare_expression_ref(raw_value)
-        exprs = [bare] if bare else []
-    resolvable = [
-        (identifier, attr)
-        for identifier, attr in exprs
-        if re.search(_FIND_BINDING_RE_TEMPLATE.format(identifier=re.escape(identifier)), target_ref["content"])
-    ]
+        exprs = []
+
+    def _is_resolvable(identifier: str, attr: str | None) -> bool:
+        if attr is not None:
+            return (
+                re.search(_FIND_BINDING_RE_TEMPLATE.format(identifier=re.escape(identifier)), target_ref["content"])
+                is not None
+            )
+        return _find_local_const_literal(target_ref["content"], identifier) is not None
+
+    resolvable = [(identifier, attr) for identifier, attr in exprs if _is_resolvable(identifier, attr)]
     if len(resolvable) != 1:
         raise UnsupportedOperation(
             f"The `{field_key}` value in {target_ref['file_path']} is computed from a template with "
@@ -391,19 +443,31 @@ def _resolve_tsx_target(credentials: GitHubCredentials, target_ref: dict, operat
             "reference -- RankPilot AI only edits a plain literal or a single such reference."
         )
     identifier, attr = resolvable[0]
-    resolved = _resolve_data_entry_reference(credentials, target_ref["content"], identifier, attr)
-    resolved["_tsx_mode"] = "data_entry"
+    if attr is not None:
+        resolved = _resolve_data_entry_reference(credentials, target_ref["content"], identifier, attr)
+        resolved["_tsx_mode"] = "data_entry"
+    else:
+        resolved = dict(target_ref)
+        resolved["_tsx_mode"] = "local_const_literal"
+        resolved["_tsx_local_const_name"] = identifier
     target_ref["_tsx_resolved"] = resolved
     return resolved
 
 
-def _extract_tsx_value(resolved_ref: dict) -> str:
+def _locate_tsx_value(resolved_ref: dict) -> tuple[int, int, str] | None:
     content = resolved_ref["content"]
-    if resolved_ref["_tsx_mode"] == "metadata_literal":
+    mode = resolved_ref["_tsx_mode"]
+    if mode == "local_const_literal":
+        return _find_local_const_literal(content, resolved_ref["_tsx_local_const_name"])
+    if mode == "metadata_literal":
         block_span = _find_metadata_block(content)
     else:
         block_span = _find_entry_span(content, resolved_ref["_tsx_slug_field"], resolved_ref["_tsx_slug_value"])
-    found = _find_field_in_block(content, block_span, resolved_ref["_tsx_field_key"])
+    return _find_field_in_block(content, block_span, resolved_ref["_tsx_field_key"])
+
+
+def _extract_tsx_value(resolved_ref: dict) -> str:
+    found = _locate_tsx_value(resolved_ref)
     if found is None:
         return ""
     _, _, raw_value = found
@@ -411,16 +475,13 @@ def _extract_tsx_value(resolved_ref: dict) -> str:
 
 
 def _replace_tsx_value(resolved_ref: dict, new_value: str) -> str:
-    content = resolved_ref["content"]
-    if resolved_ref["_tsx_mode"] == "metadata_literal":
-        block_span = _find_metadata_block(content)
-    else:
-        block_span = _find_entry_span(content, resolved_ref["_tsx_slug_field"], resolved_ref["_tsx_slug_value"])
-    found = _find_field_in_block(content, block_span, resolved_ref["_tsx_field_key"])
+    found = _locate_tsx_value(resolved_ref)
     if found is None:
-        raise UnsupportedOperation(f"No `{resolved_ref['_tsx_field_key']}:` field found to update.")
+        field_key = resolved_ref.get("_tsx_local_const_name", resolved_ref.get("_tsx_field_key"))
+        raise UnsupportedOperation(f"No `{field_key}` value found to update.")
     start, end, raw_value = found
     new_raw = _requote(raw_value, new_value)
+    content = resolved_ref["content"]
     return content[:start] + new_raw + content[end:]
 
 

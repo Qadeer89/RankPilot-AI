@@ -48,6 +48,30 @@ export default function Page() {
 }
 """
 
+PAGE_TSX_LOCAL_CONST = """import type { Metadata } from "next";
+import { siteConfig } from "@/lib/site-config";
+
+const title = "GoHighLevel Case Study: Clinic Booking";
+const description =
+  "A real, live GoHighLevel system built for a physiotherapy clinic.";
+
+export const metadata: Metadata = {
+  title: `${title} | ${siteConfig.name}`,
+  description,
+  openGraph: {
+    title: `${title} | ${siteConfig.name}`,
+    description,
+  },
+  twitter: {
+    description,
+  },
+};
+
+export default function Page() {
+  return <div>{title}</div>;
+}
+"""
+
 DATA_FILE_TS = """export type ServiceData = {
   slug: string;
   metaTitle: string;
@@ -263,6 +287,57 @@ def test_validate_change_rechecks_the_data_file_after_commit(monkeypatch):
     )
     assert evidence["actual"] == "AI Agents That Close Deals"
     assert passed is True
+
+
+# --- values resolved from a local `const` in the same file (shorthand
+# property / bare template interpolation), not an imported data file ---
+
+
+def test_get_current_value_resolves_bare_template_title_from_local_const():
+    target_ref = {"file_path": "app/case-studies/x/page.tsx", "sha": "sha1", "content": PAGE_TSX_LOCAL_CONST}
+    assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_title") == (
+        "GoHighLevel Case Study: Clinic Booking"
+    )
+
+
+def test_get_current_value_resolves_shorthand_description_from_local_const():
+    target_ref = {"file_path": "app/case-studies/x/page.tsx", "sha": "sha1", "content": PAGE_TSX_LOCAL_CONST}
+    assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_meta_description") == (
+        "A real, live GoHighLevel system built for a physiotherapy clinic."
+    )
+
+
+def test_apply_change_edits_the_local_const_not_the_shorthand_site(monkeypatch):
+    monkeypatch.setattr(github_pr.httpx, "get", lambda *a, **k: _FakeResponse(200, {"object": {"sha": "base-sha"}}))
+    monkeypatch.setattr(
+        github_pr.httpx,
+        "post",
+        lambda url, json=None, headers=None, timeout=None: (
+            _FakeResponse(201, {"ref": json["ref"]})
+            if url.endswith("/git/refs")
+            else _FakeResponse(201, {"number": 9, "html_url": "https://github.com/acme/marketing-site/pull/9"})
+        ),
+    )
+    committed = {}
+
+    def fake_put(url, json=None, headers=None, timeout=None):
+        committed["content"] = base64.b64decode(json["content"]).decode("utf-8")
+        committed["path"] = url.rsplit("/contents/", 1)[1]
+        return _FakeResponse(200, {"commit": {"sha": "new-sha"}})
+
+    monkeypatch.setattr(github_pr.httpx, "put", fake_put)
+
+    target_ref = {"file_path": "app/case-studies/x/page.tsx", "sha": "page-sha", "content": PAGE_TSX_LOCAL_CONST}
+    result = github_pr.apply_change(CREDENTIALS, target_ref, "set_meta_description", "A brand new description.")
+
+    assert result["file_path"] == "app/case-studies/x/page.tsx"
+    assert committed["path"] == "app/case-studies/x/page.tsx"
+    assert 'const description =\n  "A brand new description.";' in committed["content"]
+    # The shorthand properties that reuse it (openGraph, twitter) are
+    # untouched source text -- they pick up the new value automatically
+    # at build time since they all reference the same const.
+    assert committed["content"].count("description,") == 3
+    assert "A real, live GoHighLevel" not in committed["content"]
 
 
 # --- unresolvable shapes fail clearly, never guessing ------------------
