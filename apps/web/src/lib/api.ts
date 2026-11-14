@@ -163,6 +163,7 @@ export interface SEOTask {
 export interface ChangeRecord {
   id: string;
   website_id: string;
+  page_id: string | null;
   seo_task_id: string;
   connector_type: string;
   before_state_json: Record<string, unknown>;
@@ -345,6 +346,106 @@ export function listHealthScores(token: string, organizationId: string, websiteI
   return request<SiteHealthScore[]>(`/organizations/${organizationId}/websites/${websiteId}/health-score`, {
     headers: authHeaders(token),
   });
+}
+
+export interface WebsiteOverview {
+  pages_discovered: number;
+  pages_indexed: number | null;
+  pending_approvals: number;
+  latest_health_score: SiteHealthScore | null;
+}
+
+export function getWebsiteOverview(token: string, organizationId: string, websiteId: string) {
+  return request<WebsiteOverview>(`/organizations/${organizationId}/websites/${websiteId}/overview`, {
+    headers: authHeaders(token),
+  });
+}
+
+export interface PageSnapshotSummary {
+  fetched_at: string;
+  status_code: number | null;
+  redirect_count: number;
+  title: string | null;
+  meta_description: string | null;
+  canonical_url: string | null;
+  robots_directives: string[];
+  heading_sequence_json: number[];
+  structured_data_json: Record<string, unknown>[];
+  word_count: number;
+  viewport_content: string | null;
+  rel_next_url: string | null;
+  rel_prev_url: string | null;
+}
+
+export interface PageImageSummary {
+  image_src: string | null;
+  alt_text: string | null;
+  has_alt: boolean;
+  is_decorative: boolean;
+  has_dimensions: boolean;
+  image_status: string;
+}
+
+export interface PageExternalLinkSummary {
+  url: string;
+  is_nofollow: boolean;
+  is_sponsored: boolean;
+  is_ugc: boolean;
+  link_status: string;
+}
+
+export interface PerformanceMetricSummary {
+  strategy: string;
+  lab_performance_score: number | null;
+  lab_lcp_ms: number | null;
+  lab_cls: number | null;
+  lab_tbt_ms: number | null;
+  field_lcp_ms: number | null;
+  field_cls: number | null;
+  field_inp_ms: number | null;
+  opportunities_json: Record<string, unknown>[];
+}
+
+export interface PageIndexingStatusSummary {
+  verdict: string;
+  coverage_state: string | null;
+  indexing_state: string | null;
+  last_crawl_time: string | null;
+  google_canonical_url: string | null;
+  user_canonical_url: string | null;
+  mobile_usability_verdict: string | null;
+  mobile_usability_issues_json: Record<string, unknown>[];
+}
+
+export interface PageReport {
+  page: Page;
+  latest_snapshot: PageSnapshotSummary | null;
+  images: PageImageSummary[];
+  external_links: PageExternalLinkSummary[];
+  performance: PerformanceMetricSummary | null;
+  indexing_status: PageIndexingStatusSummary | null;
+  findings: SEOFinding[];
+  change_history: ChangeRecord[];
+}
+
+export function getPageReport(token: string, organizationId: string, websiteId: string, pageId: string) {
+  return request<PageReport>(
+    `/organizations/${organizationId}/websites/${websiteId}/pages/${pageId}/report`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function listChangeRecords(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  pageId?: string
+) {
+  const query = pageId ? `?page_id=${pageId}` : "";
+  return request<ChangeRecord[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/change-records${query}`,
+    { headers: authHeaders(token) }
+  );
 }
 
 // --- Opportunities and AI proposals ---

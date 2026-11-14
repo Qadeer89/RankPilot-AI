@@ -13,6 +13,7 @@ import {
   Opportunity,
   OpportunityProposal,
   Page,
+  PageReport,
   QaSummary,
   Report,
   SEOFinding,
@@ -22,6 +23,7 @@ import {
   StrategySummary,
   Website,
   WebsiteConnection,
+  WebsiteOverview,
   approveTask,
   connectGitHub,
   connectSanity,
@@ -41,10 +43,12 @@ import {
   getGa4Properties,
   getInternalLinkSuggestions,
   getMe,
+  getPageReport,
   getQaSummary,
   getSearchPerformance,
   getSearchProperties,
   getWebsite,
+  getWebsiteOverview,
   getWeeklyStrategy,
   listConnections,
   listCrawls,
@@ -95,6 +99,7 @@ function downloadCsv(filename: string, headers: string[], rows: (string | number
 const TABS = [
   "overview",
   "crawls",
+  "pages",
   "findings",
   "opportunities",
   "tasks",
@@ -107,6 +112,7 @@ type Tab = (typeof TABS)[number];
 const TAB_LABELS: Record<Tab, string> = {
   overview: "Overview",
   crawls: "Crawls",
+  pages: "Pages",
   findings: "Findings",
   opportunities: "Opportunities",
   tasks: "Tasks",
@@ -145,6 +151,11 @@ export default function WebsiteDetailClient() {
   const [showSearchPerformance, setShowSearchPerformance] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [changeRecords, setChangeRecords] = useState<Record<string, ChangeRecord>>({});
+  const [overview, setOverview] = useState<WebsiteOverview | null>(null);
+  const [expandedPageId, setExpandedPageId] = useState<string | null>(null);
+  const [pageReports, setPageReports] = useState<Record<string, PageReport>>({});
+  const [pageReportLoading, setPageReportLoading] = useState<string | null>(null);
+  const [pageReportError, setPageReportError] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   function requestConfirm(message: string, onConfirm: () => void) {
@@ -266,7 +277,34 @@ export default function WebsiteDetailClient() {
         // GA4 may not actually be connected yet; ignore.
       }
     }
+    try {
+      setOverview(await getWebsiteOverview(token, orgId, websiteId));
+    } catch {
+      // Best-effort: the overview tile row just stays hidden if this fails.
+    }
   }, [websiteId]);
+
+  async function toggleExpandedPage(pageId: string) {
+    if (expandedPageId === pageId) {
+      setExpandedPageId(null);
+      return;
+    }
+    setExpandedPageId(pageId);
+    if (pageReports[pageId]) return;
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setPageReportLoading(pageId);
+    setPageReportError(null);
+    try {
+      const report = await getPageReport(token, orgId, websiteId, pageId);
+      setPageReports((prev) => ({ ...prev, [pageId]: report }));
+    } catch (err) {
+      setPageReportError(err instanceof ApiError ? err.message : "Failed to load page report.");
+    } finally {
+      setPageReportLoading(null);
+    }
+  }
 
   // While a crawl is pending/running, poll its progress every few seconds
   // (the backend now commits pages_fetched/pages_requested as it goes --
@@ -972,6 +1010,9 @@ export default function WebsiteDetailClient() {
               <MetricGrid
                 metrics={[
                   { label: "Pages crawled", value: pages.length },
+                  ...(overview?.pages_indexed !== null && overview?.pages_indexed !== undefined
+                    ? [{ label: "Pages indexed by Google", value: overview.pages_indexed }]
+                    : []),
                   {
                     label: "Open findings",
                     value: findings.filter((f) => f.status === "open").length,
@@ -1086,6 +1127,10 @@ export default function WebsiteDetailClient() {
                         {crawl.pages_fetched}/{crawl.pages_requested} pages fetched
                         {crawl.error_summary ? ` — ${crawl.error_summary}` : ""}
                       </span>
+                      <span className={styles.rowMeta}>
+                        {crawl.started_at ? `Started ${new Date(crawl.started_at).toLocaleString()}` : "Not started yet"}
+                        {crawl.completed_at ? ` · Completed ${new Date(crawl.completed_at).toLocaleString()}` : ""}
+                      </span>
                     </div>
                     <StatusBadge value={crawl.status} />
                   </div>
@@ -1097,6 +1142,120 @@ export default function WebsiteDetailClient() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {activeTab === "pages" && (
+          <div className={styles.card}>
+            <h2>Pages</h2>
+            {pages.length === 0 ? (
+              <EmptyState title="No pages yet" description="Run a crawl first — pages appear once they've been fetched." />
+            ) : (
+              pages.map((page) => {
+                const expanded = expandedPageId === page.id;
+                const report = pageReports[page.id];
+                const findingCount = findings.filter((f) => f.page_id === page.id && f.status === "open").length;
+                return (
+                  <div key={page.id} className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <div className={styles.row} style={{ border: "none", padding: 0 }}>
+                      <div className={styles.rowMain}>
+                        <span>{page.normalized_url}</span>
+                        <span className={styles.rowMeta}>
+                          {page.last_status_code ?? "—"} · {page.indexability_state}
+                          {findingCount > 0 ? ` · ${findingCount} open finding${findingCount === 1 ? "" : "s"}` : ""}
+                        </span>
+                      </div>
+                      <button className={styles.button} onClick={() => toggleExpandedPage(page.id)}>
+                        {expanded ? "Hide report" : "View report"}
+                      </button>
+                    </div>
+
+                    {expanded && (
+                      <div className={styles.rowMeta} style={{ marginTop: "0.75rem" }}>
+                        {pageReportLoading === page.id && <p>Loading report…</p>}
+                        {pageReportError && pageReportLoading !== page.id && <p>{pageReportError}</p>}
+                        {report && (
+                          <>
+                            <h3>Snapshot</h3>
+                            {report.latest_snapshot ? (
+                              <>
+                                <p>Title: {report.latest_snapshot.title ?? "Missing"}</p>
+                                <p>Meta description: {report.latest_snapshot.meta_description ?? "Missing"}</p>
+                                <p>Canonical: {report.latest_snapshot.canonical_url ?? "Missing"}</p>
+                                <p>Viewport: {report.latest_snapshot.viewport_content ?? "Missing"}</p>
+                                <p>Word count: {report.latest_snapshot.word_count}</p>
+                              </>
+                            ) : (
+                              <p>No snapshot yet — this page hasn&apos;t been crawled.</p>
+                            )}
+
+                            <h3>Images ({report.images.length})</h3>
+                            {report.images.length === 0 ? (
+                              <p>No images on this page.</p>
+                            ) : (
+                              report.images.map((img, i) => (
+                                <p key={i}>
+                                  {img.image_src ?? "(no src)"} — {img.has_alt ? "has alt text" : "missing alt text"}
+                                  {img.image_status !== "ok" ? ` · ${img.image_status}` : ""}
+                                </p>
+                              ))
+                            )}
+
+                            <h3>Performance</h3>
+                            {report.performance ? (
+                              <p>
+                                Lab score:{" "}
+                                {report.performance.lab_performance_score !== null
+                                  ? Math.round(report.performance.lab_performance_score)
+                                  : "Not measured"}
+                                {report.performance.field_lcp_ms !== null
+                                  ? ` · Field LCP: ${Math.round(report.performance.field_lcp_ms)}ms`
+                                  : ""}
+                              </p>
+                            ) : (
+                              <p>Not measured yet (connect PageSpeed Insights).</p>
+                            )}
+
+                            <h3>Google indexing status</h3>
+                            {report.indexing_status ? (
+                              <>
+                                <p>Verdict: {report.indexing_status.verdict}</p>
+                                {report.indexing_status.coverage_state && (
+                                  <p>Coverage: {report.indexing_status.coverage_state}</p>
+                                )}
+                                {report.indexing_status.google_canonical_url &&
+                                  report.indexing_status.user_canonical_url &&
+                                  report.indexing_status.google_canonical_url !==
+                                    report.indexing_status.user_canonical_url && (
+                                    <p>
+                                      Google chose a different canonical:{" "}
+                                      {report.indexing_status.google_canonical_url}
+                                    </p>
+                                  )}
+                              </>
+                            ) : (
+                              <p>Not measured yet (connect Google Search Console).</p>
+                            )}
+
+                            <h3>Fix history ({report.change_history.length})</h3>
+                            {report.change_history.length === 0 ? (
+                              <p>No automated fixes have been executed on this page.</p>
+                            ) : (
+                              report.change_history.map((change) => (
+                                <p key={change.id}>
+                                  {new Date(change.executed_at).toLocaleString()} —{" "}
+                                  {change.validation_status}
+                                </p>
+                              ))
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
