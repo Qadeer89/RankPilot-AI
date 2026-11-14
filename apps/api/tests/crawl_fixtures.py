@@ -28,6 +28,9 @@ HOME_HTML = """
 <a href="/missing-page">Missing</a>
 <a href="/blocked/secret">Secret</a>
 <img src="/broken" alt="References a URL this site crawled and knows returned an error">
+<a href="https://partner.example/resource">A working partner link</a>
+<a href="https://dead-partner.example/gone" rel="nofollow sponsored">A dead sponsored link</a>
+<a href="https://redirecting-partner.example/old">A partner link that redirects</a>
 </body></html>
 """
 
@@ -64,6 +67,15 @@ PAGES: dict[str, dict] = {
     "https://example.com/orphan": {"status_code": 200, "body": ORPHAN_HTML},
     "https://example.com/broken": {"status_code": 404, "body": NOT_FOUND_HTML},
     "https://example.com/missing-page": {"status_code": 404, "body": NOT_FOUND_HTML},
+    "https://partner.example/resource": {"status_code": 200, "body": "<html><body>ok</body></html>"},
+    "https://redirecting-partner.example/old": {
+        "status_code": 200,
+        "body": "<html><body>moved</body></html>",
+        "redirect_chain": ["https://redirecting-partner.example/old"],
+    },
+    # https://dead-partner.example/gone is deliberately NOT registered --
+    # fake_safe_fetch raises FetchError for it, simulating a genuinely
+    # unreachable external link.
 }
 
 

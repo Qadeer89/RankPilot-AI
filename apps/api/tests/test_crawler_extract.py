@@ -82,6 +82,60 @@ def test_word_count_excludes_script_and_style_text():
     assert extraction.word_count == 4
 
 
+def test_external_links_are_tracked_separately_from_internal_links():
+    html = """
+    <html><head><title>Links</title></head><body>
+    <a href="/about">About</a>
+    <a href="https://other-site.com/page" rel="nofollow">Other site</a>
+    <a href="https://sponsor.example/deal" rel="sponsored noopener">Sponsored deal</a>
+    <a href="https://ugc.example/comment" rel="ugc">A comment link</a>
+    <a href="https://plain.example/blog">Plain external link</a>
+    </body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.internal_links == ["https://example.com/about"]
+
+    by_url = {link.url: link for link in extraction.external_links}
+    assert set(by_url) == {
+        "https://other-site.com/page",
+        "https://sponsor.example/deal",
+        "https://ugc.example/comment",
+        "https://plain.example/blog",
+    }
+    assert by_url["https://other-site.com/page"].is_nofollow is True
+    assert by_url["https://sponsor.example/deal"].is_sponsored is True
+    assert by_url["https://ugc.example/comment"].is_ugc is True
+    plain = by_url["https://plain.example/blog"]
+    assert plain.is_nofollow is False and plain.is_sponsored is False and plain.is_ugc is False
+
+
+def test_cloudflare_email_obfuscation_link_is_not_misclassified_as_external():
+    """Regression guard for the external-link audit: a same-hostname link
+    _normalize_link deliberately excludes from internal_links (the
+    cdn-cgi email-obfuscation rewrite) must not fall through into
+    external_links either -- it's neither, it's noise to be dropped.
+    """
+    html = """
+    <html><head><title>Contact</title></head><body>
+    <a href="/cdn-cgi/l/email-protection#7e1a1d1c1b1a1e1a1d1a1b1a1f1d">Email us</a>
+    </body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/contact", site_hostname="example.com")
+    assert extraction.internal_links == []
+    assert extraction.external_links == []
+
+
+def test_external_links_are_deduplicated():
+    html = """
+    <html><head><title>Links</title></head><body>
+    <a href="https://other-site.com/page">First mention</a>
+    <a href="https://other-site.com/page">Second mention</a>
+    </body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert len(extraction.external_links) == 1
+
+
 def test_content_fingerprint_matches_for_identical_body_text_despite_different_scripts():
     html_a = """
     <html><head><title>A</title></head><body>

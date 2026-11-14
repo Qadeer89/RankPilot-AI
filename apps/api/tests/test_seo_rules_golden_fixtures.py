@@ -18,9 +18,11 @@ from datetime import datetime, timezone
 from app.models.page import Page
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
+from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.seo_rules.rules import (
     content,
     duplicates,
+    external_links,
     http_status,
     images,
     indexability,
@@ -541,3 +543,38 @@ def test_duplicate_body_content_negative_when_both_near_empty():
     }
     candidates = content.check_duplicate_body_content(snapshots)
     assert candidates == []
+
+
+def _external_link(**overrides) -> PageExternalLink:
+    defaults = dict(
+        url="https://example.org/page",
+        is_nofollow=False,
+        is_sponsored=False,
+        is_ugc=False,
+        link_status=ExternalLinkStatus.ok,
+    )
+    defaults.update(overrides)
+    return PageExternalLink(**defaults)
+
+
+def test_external_link_broken_positive():
+    candidates = external_links.check(uuid.uuid4(), [_external_link(link_status=ExternalLinkStatus.broken)])
+    assert _rule_codes(candidates) == {"EXTERNAL_LINK_BROKEN"}
+
+
+def test_external_link_broken_negative_when_ok():
+    candidates = external_links.check(uuid.uuid4(), [_external_link(link_status=ExternalLinkStatus.ok)])
+    assert candidates == []
+
+
+def test_external_link_broken_negative_when_unchecked():
+    """An unverified link (past the per-crawl cap, or not yet checked)
+    must never produce a finding -- that would fabricate a verdict
+    RankPilot hasn't actually confirmed."""
+    candidates = external_links.check(uuid.uuid4(), [_external_link(link_status=ExternalLinkStatus.unchecked)])
+    assert candidates == []
+
+
+def test_external_link_redirect_positive():
+    candidates = external_links.check(uuid.uuid4(), [_external_link(link_status=ExternalLinkStatus.redirect)])
+    assert _rule_codes(candidates) == {"EXTERNAL_LINK_REDIRECT"}

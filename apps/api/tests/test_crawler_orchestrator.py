@@ -268,6 +268,67 @@ def test_run_crawl_stops_early_when_website_is_paused_mid_run(db_session, monkey
     assert "paused" in finished.error_summary.lower()
 
 
+def test_verify_external_links_caps_checks_and_dedupes_shared_urls(db_session, monkeypatch):
+    """Two different pages linking to the *same* broken external URL
+    must trigger exactly one live check, not one per page, and a crawl
+    with more distinct external URLs than the per-crawl cap must leave
+    the rest "unchecked" rather than fabricating a verdict for them.
+    """
+    from app.crawler import fetch as fetch_module
+    from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
+
+    monkeypatch.setattr(orchestrator_module, "MAX_EXTERNAL_LINKS_VERIFIED_PER_CRAWL", 1)
+
+    website = _make_website(db_session)
+    now = datetime.now(timezone.utc)
+    page_a = Page(
+        website_id=website.id,
+        canonical_url="https://example.com/a",
+        normalized_url="https://example.com/a",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    page_b = Page(
+        website_id=website.id,
+        canonical_url="https://example.com/b",
+        normalized_url="https://example.com/b",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db_session.add_all([page_a, page_b])
+    db_session.flush()
+
+    db_session.add_all(
+        [
+            PageExternalLink(page_id=page_a.id, url="https://dead.example/shared"),
+            PageExternalLink(page_id=page_b.id, url="https://dead.example/shared"),
+            PageExternalLink(page_id=page_b.id, url="https://second.example/link"),
+        ]
+    )
+    db_session.flush()
+
+    calls = []
+
+    def fake_fetch(url, **kwargs):
+        calls.append(url)
+        raise fetch_module.FetchError("simulated failure")
+
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", fake_fetch)
+
+    orchestrator_module._verify_external_links(db_session, website, {page_a.id, page_b.id})
+    db_session.flush()
+
+    assert len(calls) == 1, "the shared URL must be checked once, not once per linking page"
+
+    rows = db_session.query(PageExternalLink).filter(PageExternalLink.page_id.in_([page_a.id, page_b.id])).all()
+    checked = [r for r in rows if r.url == calls[0]]
+    unchecked = [r for r in rows if r.url != calls[0]]
+    assert all(r.link_status == ExternalLinkStatus.broken for r in checked)
+    assert all(r.link_status == ExternalLinkStatus.unchecked for r in unchecked), (
+        "a URL past the per-crawl cap must stay unchecked, never defaulted to ok or broken"
+    )
+
+
 def test_throttle_respects_a_longer_robots_crawl_delay(monkeypatch):
     from protego import Protego
 

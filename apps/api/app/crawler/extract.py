@@ -34,6 +34,14 @@ class ImageExtraction:
 
 
 @dataclass(frozen=True)
+class ExternalLinkExtraction:
+    url: str
+    is_nofollow: bool
+    is_sponsored: bool
+    is_ugc: bool
+
+
+@dataclass(frozen=True)
 class PageExtraction:
     title: str | None
     meta_description: str | None
@@ -42,12 +50,13 @@ class PageExtraction:
     headings: dict[str, list[str]] = field(default_factory=dict)
     structured_data: list[StructuredDataBlock] = field(default_factory=list)
     internal_links: list[str] = field(default_factory=list)
+    external_links: list[ExternalLinkExtraction] = field(default_factory=list)
     images: list[ImageExtraction] = field(default_factory=list)
     content_fingerprint: str = ""
     word_count: int = 0
 
 
-def _normalize_link(href: str, base_url: str, site_hostname: str) -> str | None:
+def _absolute_http_url(href: str, base_url: str) -> str | None:
     href = href.strip()
     if not href or href.startswith(("mailto:", "tel:", "javascript:")):
         return None
@@ -56,6 +65,14 @@ def _normalize_link(href: str, base_url: str, site_hostname: str) -> str | None:
     parts = urlsplit(absolute)
     if parts.scheme not in ("http", "https"):
         return None
+    return absolute
+
+
+def _normalize_link(href: str, base_url: str, site_hostname: str) -> str | None:
+    absolute = _absolute_http_url(href, base_url)
+    if absolute is None:
+        return None
+    parts = urlsplit(absolute)
     if parts.hostname != site_hostname:
         return None
     # Cloudflare rewrites a mailto: href server-side into /cdn-cgi/l/email-
@@ -104,12 +121,41 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
             structured_data.append(StructuredDataBlock(raw=raw, parsed=None, parse_error=str(exc)))
 
     internal_links: list[str] = []
-    seen_links: set[str] = set()
+    external_links: list[ExternalLinkExtraction] = []
+    seen_internal: set[str] = set()
+    seen_external: set[str] = set()
     for anchor in soup.find_all("a", href=True):
         normalized = _normalize_link(anchor["href"], base_url, site_hostname)
-        if normalized and normalized not in seen_links:
-            seen_links.add(normalized)
-            internal_links.append(normalized)
+        if normalized is not None:
+            if normalized not in seen_internal:
+                seen_internal.add(normalized)
+                internal_links.append(normalized)
+            continue
+
+        # Not an internal link -- but it might still be a same-hostname
+        # link _normalize_link deliberately excluded (the cdn-cgi email-
+        # obfuscation case above), which must never be miscounted as
+        # external either.
+        absolute = _absolute_http_url(anchor["href"], base_url)
+        if absolute is None:
+            continue
+        if urlsplit(absolute).hostname == site_hostname:
+            continue
+        if absolute in seen_external:
+            continue
+        seen_external.add(absolute)
+
+        rel_attr = anchor.get("rel") or []
+        rel_values = rel_attr if isinstance(rel_attr, list) else rel_attr.split()
+        rel_values = [v.lower() for v in rel_values]
+        external_links.append(
+            ExternalLinkExtraction(
+                url=absolute,
+                is_nofollow="nofollow" in rel_values,
+                is_sponsored="sponsored" in rel_values,
+                is_ugc="ugc" in rel_values,
+            )
+        )
 
     images: list[ImageExtraction] = []
     for img in soup.find_all("img"):
@@ -150,6 +196,7 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         headings=headings,
         structured_data=structured_data,
         internal_links=internal_links,
+        external_links=external_links,
         images=images,
         content_fingerprint=content_fingerprint,
         word_count=word_count,

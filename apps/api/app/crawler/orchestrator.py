@@ -23,6 +23,7 @@ from app.crawler.sitemap import discover_sitemap_urls
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.page import IndexabilityState, Page
+from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.website import Website, WebsiteStatus
@@ -35,6 +36,15 @@ USER_AGENT = "RankPilotBot/0.1 (+https://rankpilot.ai/bot)"
 # host, since one crawl job fetches many URLs on the same host in a tight
 # loop otherwise. robots.txt's own Crawl-delay (if larger) wins.
 MIN_CRAWL_DELAY_SECONDS = 0.5
+
+# Bounds one crawl's worth of *outbound* verification requests to
+# other sites' domains, not this site's -- without a cap, a page with
+# hundreds of external links would turn one crawl into hundreds of
+# extra network round-trips to third-party hosts outside this site's
+# own crawl_budget accounting. Links past the cap stay "unchecked"
+# (not a false "ok") and get picked up on a later crawl.
+MAX_EXTERNAL_LINKS_VERIFIED_PER_CRAWL = 20
+EXTERNAL_LINK_CHECK_TIMEOUT_SECONDS = 5.0
 
 
 def _throttle(robots_policy: RobotsPolicy, user_agent: str) -> None:
@@ -123,6 +133,61 @@ def _sync_page_images(db: Session, page: Page, images: list) -> None:
                 image_status=ImageStatus.ok if image.src else ImageStatus.missing_src,
             )
         )
+
+
+def _sync_page_external_links(db: Session, page: Page, external_links: list) -> None:
+    """Replace a page's PageExternalLink rows with this crawl's fresh
+    extraction -- same current-state contract as _sync_page_images.
+    """
+    db.query(PageExternalLink).filter(PageExternalLink.page_id == page.id).delete()
+    for link in external_links:
+        db.add(
+            PageExternalLink(
+                page_id=page.id,
+                url=link.url,
+                is_nofollow=link.is_nofollow,
+                is_sponsored=link.is_sponsored,
+                is_ugc=link.is_ugc,
+            )
+        )
+
+
+def _verify_external_links(db: Session, website: Website, page_ids: set) -> None:
+    """Live-check a bounded number of this crawl's distinct external
+    link URLs and record ok/redirect/broken -- the one place this
+    crawler deliberately fetches a URL it doesn't control or verify
+    ahead of time belongs to this site (SECURITY_SPECIFICATION.md #4's
+    SSRF protections still apply: safe_fetch re-validates every hop).
+    """
+    if not page_ids:
+        return
+    rows = (
+        db.query(PageExternalLink)
+        .filter(PageExternalLink.page_id.in_(page_ids), PageExternalLink.link_status == ExternalLinkStatus.unchecked)
+        .all()
+    )
+    rows_by_url: dict[str, list[PageExternalLink]] = {}
+    for row in rows:
+        rows_by_url.setdefault(row.url, []).append(row)
+
+    checked = 0
+    for url, url_rows in rows_by_url.items():
+        if checked >= MAX_EXTERNAL_LINKS_VERIFIED_PER_CRAWL:
+            break
+        checked += 1
+        try:
+            result = safe_fetch(url, user_agent=USER_AGENT, timeout=EXTERNAL_LINK_CHECK_TIMEOUT_SECONDS)
+        except FetchError:
+            status = ExternalLinkStatus.broken
+        else:
+            if result.status_code >= 400:
+                status = ExternalLinkStatus.broken
+            elif result.redirect_chain:
+                status = ExternalLinkStatus.redirect
+            else:
+                status = ExternalLinkStatus.ok
+        for row in url_rows:
+            row.link_status = status
 
 
 def _upsert_page(db: Session, website: Website, normalized_url: str, canonical_url: str) -> Page:
@@ -228,6 +293,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
         pages_requested = 0
         errors: list[str] = []
         cancelled_reason: str | None = None
+        fetched_page_ids: set = set()
 
         while pages_requested < website.crawl_budget:
             # RP13-010: pick up an external cancel (POST .../cancel) or a
@@ -324,6 +390,8 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                 )
             )
             _sync_page_images(db, page, extraction.images)
+            _sync_page_external_links(db, page, extraction.external_links)
+            fetched_page_ids.add(page.id)
             pages_fetched += 1
 
             remaining_budget = website.crawl_budget - pages_requested
@@ -341,6 +409,8 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             crawl_job.pages_fetched = pages_fetched
             db.commit()
             _throttle(robots_policy, USER_AGENT)
+
+        _verify_external_links(db, website, fetched_page_ids)
 
         crawl_job.status = CrawlStatus.cancelled if cancelled_reason else CrawlStatus.completed
         crawl_job.pages_requested = pages_requested

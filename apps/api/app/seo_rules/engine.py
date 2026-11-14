@@ -16,6 +16,7 @@ from app.crawler.orchestrator import normalize_frontier_url
 from app.models.crawl_frontier import CrawlFrontier
 from app.models.crawl_job import CrawlJob
 from app.models.page import Page
+from app.models.page_external_link import PageExternalLink
 from app.models.page_image import PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_finding import FindingStatus, SEOFinding
@@ -23,6 +24,7 @@ from app.models.website import Website
 from app.seo_rules.rules import (
     content,
     duplicates,
+    external_links,
     http_status,
     images,
     indexability,
@@ -49,6 +51,16 @@ def _page_images_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UUID, list
         return {}
     rows = db.query(PageImage).filter(PageImage.page_id.in_(page_ids)).all()
     grouped: dict[UUID, list[PageImage]] = {}
+    for row in rows:
+        grouped.setdefault(row.page_id, []).append(row)
+    return grouped
+
+
+def _page_external_links_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UUID, list[PageExternalLink]]:
+    if not page_ids:
+        return {}
+    rows = db.query(PageExternalLink).filter(PageExternalLink.page_id.in_(page_ids)).all()
+    grouped: dict[UUID, list[PageExternalLink]] = {}
     for row in rows:
         grouped.setdefault(row.page_id, []).append(row)
     return grouped
@@ -92,6 +104,8 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "IMAGE_BROKEN",
     "THIN_CONTENT",
     "DUPLICATE_BODY_CONTENT",
+    "EXTERNAL_LINK_BROKEN",
+    "EXTERNAL_LINK_REDIRECT",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -185,6 +199,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
     pages_by_id = {p.id: p for p in pages_by_normalized_url.values()}
     sitemap_urls = _sitemap_normalized_urls(db, website.id)
     page_images_by_page_id = _page_images_by_page_id(db, set(snapshots_by_page_id.keys()))
+    page_external_links_by_page_id = _page_external_links_by_page_id(db, set(snapshots_by_page_id.keys()))
 
     candidates: list[FindingCandidate] = []
 
@@ -196,6 +211,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(structured_data.check(page_id, snapshot))
         candidates.extend(images.check(page_id, page_images_by_page_id.get(page_id, [])))
         candidates.extend(content.check_thin_content(page_id, snapshot))
+        candidates.extend(external_links.check(page_id, page_external_links_by_page_id.get(page_id, [])))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))

@@ -42,6 +42,8 @@ TECHNICAL_RULE_CODES = frozenset(
         "SITEMAP_URL_ERROR",
         "IMAGE_MISSING_SRC",
         "IMAGE_BROKEN",
+        "EXTERNAL_LINK_BROKEN",
+        "EXTERNAL_LINK_REDIRECT",
     }
 )
 ON_PAGE_RULE_CODES = frozenset(
