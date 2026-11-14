@@ -103,8 +103,14 @@ def test_page_report_aggregates_snapshot_images_performance_and_indexing_after_c
     compute_health_score(db_session, website, crawl_job)
     db_session.commit()
 
-    page = db_session.query(Page).filter(Page.website_id == website_id).first()
-    assert page is not None
+    # The crawl fetches several pages (home, about, orphan, the 404s);
+    # pick the home page specifically rather than an arbitrary one --
+    # Page.id is a random UUID, so an unordered .first() isn't stable.
+    page = (
+        db_session.query(Page)
+        .filter(Page.website_id == website_id, Page.normalized_url == "https://example.com/")
+        .one()
+    )
 
     db_session.add(
         PageImage(

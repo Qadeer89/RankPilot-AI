@@ -63,6 +63,7 @@ import {
   rejectTask,
   cancelTask,
   rollbackChange,
+  rotateDeployWebhookSecret,
   selectGa4Property,
   selectSearchProperty,
   startGa4Connect,
@@ -156,6 +157,7 @@ export default function WebsiteDetailClient() {
   const [pageReports, setPageReports] = useState<Record<string, PageReport>>({});
   const [pageReportLoading, setPageReportLoading] = useState<string | null>(null);
   const [pageReportError, setPageReportError] = useState<string | null>(null);
+  const [deployWebhookSecret, setDeployWebhookSecret] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   function requestConfirm(message: string, onConfirm: () => void) {
@@ -404,6 +406,24 @@ export default function WebsiteDetailClient() {
         }
       }
     );
+  }
+
+  async function handleRotateWebhookSecret() {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    const prompt = deployWebhookSecret
+      ? "Rotate the deploy webhook secret? Whatever your CMS/CI pipeline has configured today will stop working until it's updated with the new one."
+      : "Generate a deploy webhook secret for this website?";
+    requestConfirm(prompt, async () => {
+      setError(null);
+      try {
+        const result = await rotateDeployWebhookSecret(token, orgId, websiteId);
+        setDeployWebhookSecret(result.secret);
+      } catch (err) {
+        setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to generate webhook secret.");
+      }
+    });
   }
 
   async function handleToggleAutoExecute() {
@@ -2011,6 +2031,31 @@ export default function WebsiteDetailClient() {
                       </div>
                     </div>
                   ))
+              )}
+            </div>
+
+            <div className={styles.card}>
+              <h2>Deploy webhook</h2>
+              <p className={styles.rowMeta}>
+                Trigger an immediate re-crawl from any CMS or CI pipeline after a deploy, instead of waiting
+                for the next scheduled crawl. Rotating the secret invalidates whatever was configured before.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.button} onClick={handleRotateWebhookSecret}>
+                  {deployWebhookSecret ? "Rotate secret" : "Generate webhook secret"}
+                </button>
+              </div>
+              {deployWebhookSecret && (
+                <div className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <span className={styles.rowMeta}>
+                    POST to this URL with header <code>X-RankPilot-Webhook-Secret</code>. Shown once — copy it
+                    now:
+                  </span>
+                  <code style={{ wordBreak: "break-all" }}>
+                    {process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1"}/websites/{websiteId}/webhooks/deploy
+                  </code>
+                  <code style={{ wordBreak: "break-all" }}>{deployWebhookSecret}</code>
+                </div>
               )}
             </div>
           </>

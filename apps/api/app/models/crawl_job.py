@@ -15,6 +15,10 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class CrawlTrigger(str, enum.Enum):
     manual = "manual"
     scheduled = "scheduled"
+    # A deploy/content-change event from a connected CMS or CI pipeline,
+    # via the generic secret-authenticated webhook endpoint (RankPilot AI
+    # Phase 7 "Change Detection" -- deployment/webhook-triggered re-crawl).
+    webhook = "webhook"
 
 
 class CrawlStatus(str, enum.Enum):

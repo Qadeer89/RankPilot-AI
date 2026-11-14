@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     analytics,
     auth,
     crawls,
+    deploy_webhook,
     execution,
     health,
     opportunities,
@@ -20,6 +21,7 @@ api_router.include_router(auth.router)
 api_router.include_router(organizations.router)
 api_router.include_router(websites.router)
 api_router.include_router(crawls.router)
+api_router.include_router(deploy_webhook.router)
 api_router.include_router(search_console.router)
 api_router.include_router(analytics.router)
 api_router.include_router(opportunities.router)

@@ -60,6 +60,14 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     writes_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     search_console_site_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ga4_property_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Deployment/webhook-triggered re-crawl (RankPilot AI Phase 7 "Change
+    # Detection"). A hash, not the plaintext secret, the same pattern as
+    # WebsiteVerification.token_hash -- the plaintext is only ever shown
+    # once, at rotation time, and this is compared via hash_token().
+    # None until an admin rotates it for the first time, so the webhook
+    # endpoint stays disabled by default rather than accepting an unset
+    # or empty secret.
+    deploy_webhook_secret_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="websites")
     verifications: Mapped[list["WebsiteVerification"]] = relationship(

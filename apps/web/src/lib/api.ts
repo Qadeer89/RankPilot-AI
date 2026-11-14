@@ -933,3 +933,10 @@ export function sendSlackTestNotification(token: string, organizationId: string)
     headers: authHeaders(token),
   });
 }
+
+export function rotateDeployWebhookSecret(token: string, organizationId: string, websiteId: string) {
+  return request<{ secret: string }>(
+    `/organizations/${organizationId}/websites/${websiteId}/webhooks/deploy/rotate-secret`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
