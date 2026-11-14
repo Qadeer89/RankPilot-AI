@@ -66,7 +66,15 @@ export interface Website {
   platform: string;
   crawl_budget: number;
   status: string;
-  automation_policy: { auto_execute_risk_tier_1?: boolean };
+  automation_policy: {
+    auto_execute_risk_tier_1?: boolean;
+    auto_execute_categories?: Record<string, boolean>;
+    notify_on_regression?: boolean;
+    notify_on_auto_pipeline_summary?: boolean;
+  };
+  automation_mode: "audit" | "copilot" | "autopilot";
+  crawl_frequency_hours: number;
+  ai_daily_budget_usd_override: number | null;
   search_console_site_url: string | null;
   ga4_property_id: string | null;
 }
@@ -299,7 +307,17 @@ export function updateWebsiteSettings(
   token: string,
   organizationId: string,
   websiteId: string,
-  payload: { auto_execute_risk_tier_1?: boolean; crawl_budget?: number; display_name?: string }
+  payload: {
+    auto_execute_risk_tier_1?: boolean;
+    crawl_budget?: number;
+    display_name?: string;
+    automation_mode?: "audit" | "copilot" | "autopilot";
+    auto_execute_categories?: Record<string, boolean>;
+    crawl_frequency_hours?: number;
+    ai_daily_budget_usd_override?: number;
+    notify_on_regression?: boolean;
+    notify_on_auto_pipeline_summary?: boolean;
+  }
 ) {
   return request<Website>(`/organizations/${organizationId}/websites/${websiteId}/settings`, {
     method: "PATCH",

@@ -439,6 +439,74 @@ export default function WebsiteDetailClient() {
     }
   }
 
+  async function handleAutomationModeChange(mode: "audit" | "copilot" | "autopilot") {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      setWebsite(await updateWebsiteSettings(token, orgId, websiteId, { automation_mode: mode }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update automation mode.");
+    }
+  }
+
+  async function handleToggleCategory(category: string) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || !website) return;
+    setError(null);
+    try {
+      const current = website.automation_policy.auto_execute_categories?.[category] ?? false;
+      setWebsite(
+        await updateWebsiteSettings(token, orgId, websiteId, {
+          auto_execute_categories: { [category]: !current },
+        })
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update settings.");
+    }
+  }
+
+  async function handleCrawlFrequencyChange(hours: number) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || Number.isNaN(hours) || hours < 1) return;
+    setError(null);
+    try {
+      setWebsite(await updateWebsiteSettings(token, orgId, websiteId, { crawl_frequency_hours: hours }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update crawl frequency.");
+    }
+  }
+
+  async function handleAiBudgetOverrideChange(usd: number) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || Number.isNaN(usd) || usd < 0) return;
+    setError(null);
+    try {
+      setWebsite(await updateWebsiteSettings(token, orgId, websiteId, { ai_daily_budget_usd_override: usd }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update AI budget.");
+    }
+  }
+
+  async function handleToggleNotificationPreference(
+    key: "notify_on_regression" | "notify_on_auto_pipeline_summary"
+  ) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || !website) return;
+    setError(null);
+    try {
+      const current = website.automation_policy[key] ?? true;
+      setWebsite(await updateWebsiteSettings(token, orgId, websiteId, { [key]: !current }));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update settings.");
+    }
+  }
+
   async function handleGetProposal(opportunityId: string) {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
@@ -1087,6 +1155,25 @@ export default function WebsiteDetailClient() {
               <h2>Settings</h2>
             <div className={styles.row}>
               <div className={styles.rowMain}>
+                <span>Automation mode</span>
+                <span className={styles.rowMeta}>
+                  Audit: detect and report only, no AI drafting. Copilot: AI drafts fixes, always waits for
+                  your approval. Autopilot: low-risk fixes you&apos;ve opted into below auto-execute.
+                </span>
+              </div>
+              <select
+                className={styles.input}
+                aria-label="Automation mode"
+                value={website.automation_mode}
+                onChange={(e) => handleAutomationModeChange(e.target.value as "audit" | "copilot" | "autopilot")}
+              >
+                <option value="audit">Audit</option>
+                <option value="copilot">Copilot</option>
+                <option value="autopilot">Autopilot</option>
+              </select>
+            </div>
+            <div className={styles.row}>
+              <div className={styles.rowMain}>
                 <span>Website status</span>
                 <span className={styles.rowMeta}>
                   Pausing immediately stops all automated writes and also stops crawling (scheduled and
@@ -1119,6 +1206,87 @@ export default function WebsiteDetailClient() {
                 <label htmlFor="auto-execute">
                   Auto-execute low-risk (tier 1) changes without approval
                 </label>
+              </div>
+            </div>
+            <div className={styles.row}>
+              <div className={styles.rowMain}>
+                <span>Auto-execute by category</span>
+                <span className={styles.rowMeta}>Only takes effect in Autopilot mode.</span>
+              </div>
+              <div className={styles.actions} style={{ flexWrap: "wrap" }}>
+                {["metadata", "images", "canonical", "structured_data"].map((category) => (
+                  <label key={category} className={styles.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(website.automation_policy.auto_execute_categories?.[category])}
+                      onChange={() => handleToggleCategory(category)}
+                    />
+                    {category}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className={styles.row}>
+              <div className={styles.rowMain}>
+                <span>Crawl frequency</span>
+                <span className={styles.rowMeta}>How often this site is re-crawled on the daily schedule.</span>
+              </div>
+              <select
+                className={styles.input}
+                aria-label="Crawl frequency"
+                value={website.crawl_frequency_hours}
+                onChange={(e) => handleCrawlFrequencyChange(Number(e.target.value))}
+              >
+                <option value={6}>Every 6 hours</option>
+                <option value={12}>Every 12 hours</option>
+                <option value={24}>Daily</option>
+                <option value={72}>Every 3 days</option>
+                <option value={168}>Weekly</option>
+              </select>
+            </div>
+            <div className={styles.row}>
+              <div className={styles.rowMain}>
+                <span>AI daily budget override</span>
+                <span className={styles.rowMeta}>
+                  {website.ai_daily_budget_usd_override !== null
+                    ? `$${website.ai_daily_budget_usd_override.toFixed(2)}/day for this site`
+                    : "Using the account-wide default"}
+                </span>
+              </div>
+              <input
+                className={styles.input}
+                type="number"
+                min={0}
+                step={0.5}
+                aria-label="AI daily budget override in US dollars"
+                placeholder="e.g. 5.00"
+                defaultValue={website.ai_daily_budget_usd_override ?? ""}
+                onBlur={(e) => {
+                  const value = Number(e.target.value);
+                  if (e.target.value !== "") handleAiBudgetOverrideChange(value);
+                }}
+              />
+            </div>
+            <div className={styles.row}>
+              <div className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={website.automation_policy.notify_on_regression ?? true}
+                  onChange={() => handleToggleNotificationPreference("notify_on_regression")}
+                  id="notify-regression"
+                />
+                <label htmlFor="notify-regression">Notify on SEO regressions (new critical issues, score drops)</label>
+              </div>
+            </div>
+            <div className={styles.row}>
+              <div className={styles.checkboxRow}>
+                <input
+                  type="checkbox"
+                  checked={website.automation_policy.notify_on_auto_pipeline_summary ?? true}
+                  onChange={() => handleToggleNotificationPreference("notify_on_auto_pipeline_summary")}
+                  id="notify-summary"
+                />
+                <label htmlFor="notify-summary">Notify on automation summaries (fixes, failures, approvals)</label>
               </div>
             </div>
           </div>
