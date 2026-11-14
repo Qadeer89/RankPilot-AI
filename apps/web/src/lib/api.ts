@@ -83,6 +83,22 @@ export interface CrawlJob {
   error_summary: string | null;
 }
 
+export interface SiteHealthScore {
+  id: string;
+  website_id: string;
+  crawl_job_id: string;
+  overall_score: number | null;
+  technical_score: number | null;
+  on_page_score: number | null;
+  content_score: number | null;
+  performance_score: number | null;
+  critical_count: number;
+  warning_count: number;
+  info_count: number;
+  passed_count: number;
+  created_at: string;
+}
+
 export interface Page {
   id: string;
   website_id: string;
@@ -321,6 +337,12 @@ export function listPages(token: string, organizationId: string, websiteId: stri
 
 export function listFindings(token: string, organizationId: string, websiteId: string) {
   return request<SEOFinding[]>(`/organizations/${organizationId}/websites/${websiteId}/findings`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function listHealthScores(token: string, organizationId: string, websiteId: string) {
+  return request<SiteHealthScore[]>(`/organizations/${organizationId}/websites/${websiteId}/health-score`, {
     headers: authHeaders(token),
   });
 }

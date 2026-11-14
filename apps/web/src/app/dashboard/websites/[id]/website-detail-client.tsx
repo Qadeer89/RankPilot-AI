@@ -18,6 +18,7 @@ import {
   SEOFinding,
   SEOTask,
   SearchPerformance,
+  SiteHealthScore,
   StrategySummary,
   Website,
   WebsiteConnection,
@@ -48,6 +49,7 @@ import {
   listConnections,
   listCrawls,
   listFindings,
+  listHealthScores,
   listOpportunities,
   listOrphanPages,
   listPages,
@@ -128,6 +130,7 @@ export default function WebsiteDetailClient() {
   const [loading, setLoading] = useState(true);
 
   const [crawls, setCrawls] = useState<CrawlJob[]>([]);
+  const [healthScores, setHealthScores] = useState<SiteHealthScore[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [findings, setFindings] = useState<SEOFinding[]>([]);
   const [findingsSearch, setFindingsSearch] = useState("");
@@ -225,7 +228,7 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    const [site, crawlList, pageList, findingList, opportunityList, taskList, connectionList, reportList] =
+    const [site, crawlList, pageList, findingList, opportunityList, taskList, connectionList, reportList, healthScoreList] =
       await Promise.all([
         getWebsite(token, orgId, websiteId),
         listCrawls(token, orgId, websiteId),
@@ -235,6 +238,7 @@ export default function WebsiteDetailClient() {
         listTasks(token, orgId, websiteId),
         listConnections(token, orgId, websiteId),
         listReports(token, orgId, websiteId),
+        listHealthScores(token, orgId, websiteId),
       ]);
     setWebsite(site);
     if (site.search_console_site_url) setSitePropertyInput(site.search_console_site_url);
@@ -246,6 +250,7 @@ export default function WebsiteDetailClient() {
     setTasks(taskList);
     setConnections(connectionList);
     setReports(reportList);
+    setHealthScores(healthScoreList);
 
     if (site.search_console_site_url) {
       try {
@@ -896,6 +901,71 @@ export default function WebsiteDetailClient() {
                 </div>
               );
             })()}
+
+            {healthScores.length > 0 && (
+              <div className={styles.card}>
+                <h2>SEO Health Score</h2>
+                {(() => {
+                  const current = healthScores[0];
+                  const previous = healthScores[1];
+                  const delta =
+                    current.overall_score !== null && previous?.overall_score != null
+                      ? current.overall_score - previous.overall_score
+                      : null;
+                  const pendingApprovals = tasks.filter((t) => t.approval_status === "pending").length;
+                  const autoFixed = tasks.filter((t) => t.status === "completed").length;
+                  const fmt = (v: number | null) => (v === null ? "Not measured" : Math.round(v));
+                  return (
+                    <>
+                      <div className={styles.healthScoreHeader}>
+                        <span className={styles.healthScoreValue}>
+                          {current.overall_score !== null ? Math.round(current.overall_score) : "—"}
+                        </span>
+                        <span className={styles.rowMeta}>/ 100</span>
+                        {delta !== null && (
+                          <span className={delta >= 0 ? styles.scoreUp : styles.scoreDown}>
+                            {delta >= 0 ? "▲" : "▼"} {Math.abs(Math.round(delta))} vs previous crawl
+                          </span>
+                        )}
+                      </div>
+                      <MetricGrid
+                        metrics={[
+                          {
+                            label: "Critical issues",
+                            value: current.critical_count,
+                            attention: current.critical_count > 0,
+                          },
+                          { label: "Warnings", value: current.warning_count },
+                          { label: "Passed checks", value: current.passed_count },
+                          { label: "Auto-fixed issues", value: autoFixed },
+                          { label: "Pending approvals", value: pendingApprovals, attention: pendingApprovals > 0 },
+                          { label: "Technical score", value: fmt(current.technical_score) },
+                          { label: "On-page score", value: fmt(current.on_page_score) },
+                          { label: "Content score", value: fmt(current.content_score) },
+                          { label: "Performance score", value: fmt(current.performance_score) },
+                        ]}
+                      />
+                      {healthScores.length > 1 && (
+                        <div>
+                          <span className={styles.rowMeta}>Score history (most recent first)</span>
+                          <div className={styles.scoreHistoryRow}>
+                            {healthScores.slice(0, 10).map((s) => (
+                              <span
+                                key={s.id}
+                                className={styles.scoreHistoryPoint}
+                                title={new Date(s.created_at).toLocaleString()}
+                              >
+                                {s.overall_score !== null ? Math.round(s.overall_score) : "–"}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
 
             <div className={styles.card}>
               <h2>Site health</h2>

@@ -86,6 +86,54 @@
   gap: 14px;
 }
 
+.healthScoreHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.healthScoreValue {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--rp-ink);
+  line-height: 1;
+}
+
+.scoreUp {
+  color: var(--rp-success);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scoreDown {
+  color: var(--rp-danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scoreHistoryRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.scoreHistoryPoint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rp-muted);
+}
+
 .taskGroup {
   display: flex;
   flex-direction: column;
