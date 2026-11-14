@@ -266,26 +266,46 @@ export default function WebsiteDetailClient() {
   // While a crawl is pending/running, poll its progress every few seconds
   // (the backend now commits pages_fetched/pages_requested as it goes --
   // app/crawler/orchestrator.py) instead of only finding out once the
-  // whole crawl has finished. Once no crawl is active anymore, do one
-  // full refresh to pick up whatever the crawl changed (findings,
-  // opportunities, and now auto-generated tasks).
+  // whole crawl has finished.
+  const settleAttemptsRef = useRef(0);
   useEffect(() => {
     const hasActiveCrawl = crawls.some((c) => c.status === "pending" || c.status === "running");
-    if (!hasActiveCrawl) return;
+
+    if (hasActiveCrawl) {
+      settleAttemptsRef.current = 0;
+      const token = tokenRef.current;
+      const orgId = orgIdRef.current;
+      if (!token || !orgId) return;
+      const interval = setInterval(async () => {
+        try {
+          setCrawls(await listCrawls(token, orgId, websiteId));
+        } catch {
+          // Transient polling error -- the next tick (or a manual refresh) will catch up.
+        }
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+
+    // The crawl itself just finished, but the auto-task pipeline
+    // (app/opportunities/auto_pipeline.py) keeps writing tasks for a
+    // while after that -- one refresh right away would often still show
+    // stale "pending" tasks it hasn't gotten to yet. Refresh a few more
+    // times on a backoff instead of only once, so the Tasks/Opportunities
+    // tabs actually catch up with those trailing writes.
+    const delays = [3000, 6000, 12000, 24000];
+    if (settleAttemptsRef.current >= delays.length) return;
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
-    const interval = setInterval(async () => {
+    const timeout = setTimeout(async () => {
+      settleAttemptsRef.current += 1;
       try {
-        const latest = await listCrawls(token, orgId, websiteId);
-        setCrawls(latest);
-        const stillActive = latest.some((c) => c.status === "pending" || c.status === "running");
-        if (!stillActive) await refreshAll();
+        await refreshAll();
       } catch {
-        // Transient polling error -- the next tick (or a manual refresh) will catch up.
+        // Transient polling error -- the next attempt (or a manual refresh) will catch up.
       }
-    }, 3000);
-    return () => clearInterval(interval);
+    }, delays[settleAttemptsRef.current]);
+    return () => clearTimeout(timeout);
   }, [crawls, websiteId, refreshAll]);
 
   useEffect(() => {
