@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     # is a cost/latency cap, the same spirit as MAX_AUTO_TASKS_PER_CRAWL.
     pagespeed_max_pages_per_sync: int = 10
 
+    # Google Search Console URL Inspection API (RankPilot AI Phase 5
+    # "Google Search Intelligence"). Reuses the same Search Console OAuth
+    # connection as search performance sync -- no separate key/consent.
+    # Bounded per run for the same reason as pagespeed_max_pages_per_sync:
+    # one inspection call per page, each taking real time against Google's
+    # own quota.
+    url_inspection_max_pages_per_sync: int = 10
+
     # Email notifications (RP-0804). All optional: unset means
     # notifications are recorded as skipped_not_configured, never a crash.
     smtp_host: str | None = None

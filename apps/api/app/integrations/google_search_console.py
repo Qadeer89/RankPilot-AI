@@ -26,6 +26,10 @@ from app.integrations.google_oauth_common import (
 from app.integrations import google_oauth_common
 
 SEARCH_CONSOLE_API_BASE = "https://www.googleapis.com/webmasters/v3"
+# The URL Inspection API lives on a different host/version than the
+# legacy Search Analytics endpoints above -- both are covered by the
+# same webmasters.readonly OAuth scope, so no extra consent is needed.
+URL_INSPECTION_API_BASE = "https://searchconsole.googleapis.com/v1"
 SCOPE = "https://www.googleapis.com/auth/webmasters.readonly"
 
 __all__ = [
@@ -39,6 +43,7 @@ __all__ = [
     "refresh_access_token",
     "list_sites",
     "query_search_analytics",
+    "inspect_url",
 ]
 
 
@@ -106,3 +111,21 @@ def query_search_analytics(
     if response.status_code != 200:
         raise GoogleApiError(f"Search analytics query failed: HTTP {response.status_code} {response.text[:300]}")
     return response.json().get("rows", [])
+
+
+def inspect_url(access_token: str, site_url: str, inspection_url: str) -> dict:
+    """Run a live URL Inspection API call for `inspection_url` under
+    `site_url` and return the raw `inspectionResult` dict (indexStatusResult
+    + mobileUsabilityResult). The caller maps this onto a PageIndexingStatus
+    row -- a genuinely-absent field (e.g. Google never crawled this page)
+    must stay None there, never a fabricated default.
+    """
+    response = httpx.post(
+        f"{URL_INSPECTION_API_BASE}/urlInspection/index:inspect",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+        json={"inspectionUrl": inspection_url, "siteUrl": site_url},
+        timeout=30.0,
+    )
+    if response.status_code != 200:
+        raise GoogleApiError(f"URL inspection failed for {inspection_url}: HTTP {response.status_code} {response.text[:300]}")
+    return response.json().get("inspectionResult", {})

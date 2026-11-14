@@ -52,4 +52,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.daily_sync_performance_metrics_for_all_websites",
         "schedule": crontab(hour=2, minute=30),
     },
+    "daily-sync-url-inspection": {
+        "task": "app.tasks.scheduler.daily_sync_url_inspection_for_all_websites",
+        "schedule": crontab(hour=1, minute=45),
+    },
 }

@@ -19,6 +19,7 @@ from app.models.page import Page
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
+from app.models.page_indexing_status import PageIndexingStatus
 from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.seo_rules.rules import (
@@ -29,6 +30,7 @@ from app.seo_rules.rules import (
     http_status,
     images,
     indexability,
+    indexing,
     links,
     metadata,
     mobile,
@@ -797,3 +799,70 @@ def test_performance_optimization_opportunity_positive_when_lighthouse_found_sav
     candidates = performance.check(uuid.uuid4(), metric)
     assert _rule_codes(candidates) == {"PERFORMANCE_OPTIMIZATION_OPPORTUNITY"}
     assert candidates[0].evidence["opportunities"][0]["audit_id"] == "render-blocking-resources"
+
+
+def _indexing_status(**overrides) -> PageIndexingStatus:
+    defaults = dict(verdict="PASS", indexing_state="INDEXING_ALLOWED", mobile_usability_issues_json=[])
+    defaults.update(overrides)
+    return PageIndexingStatus(**defaults)
+
+
+def test_google_indexing_blocked_negative_when_no_status_exists():
+    assert indexing.check(uuid.uuid4(), None) == []
+
+
+def test_google_indexing_blocked_negative_when_indexing_allowed():
+    status = _indexing_status(indexing_state="INDEXING_ALLOWED")
+    assert indexing.check(uuid.uuid4(), status) == []
+
+
+def test_google_indexing_blocked_positive_on_robots_txt_block():
+    status = _indexing_status(verdict="FAIL", indexing_state="BLOCKED_BY_ROBOTS_TXT")
+    candidates = indexing.check(uuid.uuid4(), status)
+    assert _rule_codes(candidates) == {"GOOGLE_INDEXING_BLOCKED"}
+
+
+def test_google_indexing_blocked_positive_on_meta_tag_block():
+    status = _indexing_status(verdict="FAIL", indexing_state="BLOCKED_BY_META_TAG")
+    candidates = indexing.check(uuid.uuid4(), status)
+    assert _rule_codes(candidates) == {"GOOGLE_INDEXING_BLOCKED"}
+
+
+def test_google_canonical_mismatch_negative_when_canonicals_agree():
+    status = _indexing_status(
+        google_canonical_url="https://example.com/about", user_canonical_url="https://example.com/about"
+    )
+    assert indexing.check(uuid.uuid4(), status) == []
+
+
+def test_google_canonical_mismatch_negative_when_either_canonical_is_unknown():
+    status = _indexing_status(google_canonical_url=None, user_canonical_url="https://example.com/about")
+    assert indexing.check(uuid.uuid4(), status) == []
+
+
+def test_google_canonical_mismatch_positive_when_google_chose_a_different_url():
+    status = _indexing_status(
+        google_canonical_url="https://example.com/canonical-page",
+        user_canonical_url="https://example.com/about",
+    )
+    candidates = indexing.check(uuid.uuid4(), status)
+    assert _rule_codes(candidates) == {"GOOGLE_CANONICAL_MISMATCH"}
+    assert candidates[0].evidence["google_canonical_url"] == "https://example.com/canonical-page"
+
+
+def test_google_canonical_mismatch_negative_when_urls_differ_only_by_trailing_slash():
+    status = _indexing_status(
+        google_canonical_url="https://example.com/about/", user_canonical_url="https://example.com/about"
+    )
+    assert indexing.check(uuid.uuid4(), status) == []
+
+
+def test_both_indexing_findings_can_fire_together():
+    status = _indexing_status(
+        verdict="FAIL",
+        indexing_state="BLOCKED_BY_HTTP_HEADER",
+        google_canonical_url="https://example.com/other",
+        user_canonical_url="https://example.com/about",
+    )
+    candidates = indexing.check(uuid.uuid4(), status)
+    assert _rule_codes(candidates) == {"GOOGLE_INDEXING_BLOCKED", "GOOGLE_CANONICAL_MISMATCH"}

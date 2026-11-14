@@ -18,6 +18,7 @@ from app.models.crawl_job import CrawlJob
 from app.models.page import Page
 from app.models.page_external_link import PageExternalLink
 from app.models.page_image import PageImage
+from app.models.page_indexing_status import PageIndexingStatus
 from app.models.page_render_result import PageRenderResult
 from app.models.page_snapshot import PageSnapshot
 from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
@@ -31,6 +32,7 @@ from app.seo_rules.rules import (
     http_status,
     images,
     indexability,
+    indexing,
     links,
     metadata,
     mobile,
@@ -91,6 +93,13 @@ def _page_performance_metrics_by_page_id(db: Session, page_ids: set[UUID]) -> di
     return {row.page_id: row for row in rows}
 
 
+def _page_indexing_statuses_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UUID, PageIndexingStatus]:
+    if not page_ids:
+        return {}
+    rows = db.query(PageIndexingStatus).filter(PageIndexingStatus.page_id.in_(page_ids)).all()
+    return {row.page_id: row for row in rows}
+
+
 def _sitemap_normalized_urls(db: Session, website_id: UUID) -> set[str]:
     rows = (
         db.query(CrawlFrontier.url)
@@ -140,6 +149,8 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "MOBILE_VIEWPORT_MISSING",
     "MOBILE_VIEWPORT_NOT_RESPONSIVE",
     "PERFORMANCE_OPTIMIZATION_OPPORTUNITY",
+    "GOOGLE_INDEXING_BLOCKED",
+    "GOOGLE_CANONICAL_MISMATCH",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -236,6 +247,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
     page_external_links_by_page_id = _page_external_links_by_page_id(db, set(snapshots_by_page_id.keys()))
     page_render_results_by_page_id = _page_render_results_by_page_id(db, set(snapshots_by_page_id.keys()))
     page_performance_metrics_by_page_id = _page_performance_metrics_by_page_id(db, set(snapshots_by_page_id.keys()))
+    page_indexing_statuses_by_page_id = _page_indexing_statuses_by_page_id(db, set(snapshots_by_page_id.keys()))
 
     candidates: list[FindingCandidate] = []
 
@@ -253,6 +265,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(rendering.check(page_id, page_render_results_by_page_id.get(page_id)))
         candidates.extend(mobile.check(page_id, snapshot))
         candidates.extend(performance.check(page_id, page_performance_metrics_by_page_id.get(page_id)))
+        candidates.extend(indexing.check(page_id, page_indexing_statuses_by_page_id.get(page_id)))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))

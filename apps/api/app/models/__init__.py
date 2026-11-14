@@ -13,6 +13,7 @@ from app.models.organization import Organization, OrganizationPlan, Organization
 from app.models.page import IndexabilityState, Page
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.models.page_image import ImageStatus, PageImage
+from app.models.page_indexing_status import PageIndexingStatus
 from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.models.page_snapshot import PageSnapshot
 from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
@@ -62,6 +63,7 @@ __all__ = [
     "PageExternalLink",
     "ImageStatus",
     "PageImage",
+    "PageIndexingStatus",
     "PageRenderResult",
     "RenderStatus",
     "PageSnapshot",

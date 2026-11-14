@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.integrations.ga4_sync import sync_ga4_metrics
 from app.integrations.performance_sync import sync_performance_metrics
 from app.integrations.search_console_sync import sync_search_performance
+from app.integrations.url_inspection_sync import sync_url_inspection_status
 from app.models.website import VerificationStatus, Website, WebsiteStatus
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.reporting.weekly_report import generate_weekly_report
@@ -117,6 +118,37 @@ def daily_sync_performance_metrics_for_all_websites() -> int:
                 synced += 1
             except Exception:
                 logger.exception("Failed to sync performance metrics for website %s", website.id)
+                db.rollback()
+        return synced
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scheduler.daily_sync_url_inspection_for_all_websites")
+def daily_sync_url_inspection_for_all_websites() -> int:
+    """Pull Google's own indexing view (URL Inspection API) for every
+    website with a connected Search Console property. Reuses the same
+    OAuth connection as daily_sync_search_signals_for_all_websites --
+    no separate consent, no separate config flag; this is simply a
+    no-op for a website with no Search Console property selected.
+    """
+    db = SessionLocal()
+    synced = 0
+    try:
+        websites = (
+            db.query(Website)
+            .filter(Website.status == WebsiteStatus.active, Website.verification_status == VerificationStatus.verified)
+            .all()
+        )
+        for website in websites:
+            if not website.search_console_site_url:
+                continue
+            try:
+                sync_url_inspection_status(db, website)
+                db.commit()
+                synced += 1
+            except Exception:
+                logger.exception("Failed to sync URL inspection status for website %s", website.id)
                 db.rollback()
         return synced
     finally:
