@@ -99,7 +99,14 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
                 continue
             try:
                 execute_task(db, website, task)
-                db.commit()
             except ExecutionBlocked as exc:
-                db.rollback()
+                # execute_task already marks the task "failed" and flushes
+                # that (e.g. an operation the connector doesn't support for
+                # this specific document) before raising, for every case
+                # past its early guard clauses (paused, writes disabled,
+                # no connector, etc., which mutate nothing). Committing
+                # here persists whichever of those actually happened;
+                # rolling back would silently erase that "failed" write
+                # and leave the task looking "pending" forever.
                 logger.info("auto_pipeline: could not auto-execute task %s (%s)", task.id, exc)
+            db.commit()

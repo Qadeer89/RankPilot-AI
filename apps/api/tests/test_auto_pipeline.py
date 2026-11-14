@@ -1,9 +1,10 @@
 from app.ai.schemas import OpportunityProposal
 from app.crawler.orchestrator import run_crawl
+from app.execution.service import ExecutionBlocked
 from app.models.crawl_job import CrawlTrigger
 from app.models.organization import Organization
 from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
-from app.models.seo_task import ApprovalStatus, SEOTask
+from app.models.seo_task import ApprovalStatus, SEOTask, SEOTaskStatus
 from app.models.website import Website
 from app.opportunities import auto_pipeline
 from app.opportunities.scoring import refresh_opportunities_for_website
@@ -112,3 +113,40 @@ def test_auto_pipeline_skips_opportunities_past_the_per_crawl_cap(db_session, mo
 
     tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
     assert len(tasks) == 1
+
+
+def test_auto_pipeline_persists_a_failed_status_from_execute_task_instead_of_reverting_it(db_session, monkeypatch):
+    """Regression test: execute_task marks a task "failed" (and flushes
+    that) before raising ExecutionBlocked for a connector/document-level
+    failure (e.g. Sanity: "No 'blog' document found" for a service-page
+    URL). auto_pipeline must commit that, not roll it back -- rolling
+    back would silently revert the task to "pending" forever, making it
+    look retriable when it never can succeed.
+    """
+    patch_crawler_network(monkeypatch)
+    _stub_proposal(monkeypatch)
+    website = _make_website(db_session)
+
+    website.automation_policy = {"auto_execute_risk_tier_1": True}
+    db_session.flush()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+
+    def fake_execute_task(db, website, task):
+        task.status = SEOTaskStatus.failed
+        db.flush()
+        raise ExecutionBlocked("No Sanity 'blog' document found matching URL: " + task.proposed_change_json["target_url"])
+
+    monkeypatch.setattr(auto_pipeline, "execute_task", fake_execute_task)
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
+    assert tasks, "expected at least one not_required task to attempt auto-execution"
+    not_required_tasks = [t for t in tasks if t.approval_status == ApprovalStatus.not_required]
+    assert not_required_tasks, "fixture should produce at least one tier-1 not_required task"
+    assert all(t.status == SEOTaskStatus.failed for t in not_required_tasks)
