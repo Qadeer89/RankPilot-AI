@@ -20,6 +20,7 @@ from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.models.page_render_result import PageRenderResult, RenderStatus
+from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.seo_rules.rules import (
     content,
     duplicates,
@@ -30,7 +31,9 @@ from app.seo_rules.rules import (
     indexability,
     links,
     metadata,
+    mobile,
     pagination,
+    performance,
     rendering,
     sitemap,
     structured_data,
@@ -54,6 +57,7 @@ def _snapshot(**overrides) -> PageSnapshot:
         content_fingerprint=None,
         word_count=250,
         heading_sequence_json=[],
+        viewport_content="width=device-width, initial-scale=1",
     )
     defaults.update(overrides)
     return PageSnapshot(**defaults)
@@ -745,3 +749,51 @@ def test_js_rendering_content_gap_boundary_exactly_at_threshold_triggers():
     result = _render_result(raw_word_count=20, rendered_word_count=40)
     candidates = rendering.check(uuid.uuid4(), result)
     assert _rule_codes(candidates) == {"JS_RENDERING_CONTENT_GAP"}
+
+
+def test_mobile_viewport_missing_positive():
+    snapshot = _snapshot(viewport_content=None)
+    candidates = mobile.check(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"MOBILE_VIEWPORT_MISSING"}
+
+
+def test_mobile_viewport_missing_negative_when_present_and_responsive():
+    snapshot = _snapshot(viewport_content="width=device-width, initial-scale=1")
+    candidates = mobile.check(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def test_mobile_viewport_not_responsive_positive_on_fixed_width():
+    snapshot = _snapshot(viewport_content="width=980")
+    candidates = mobile.check(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"MOBILE_VIEWPORT_NOT_RESPONSIVE"}
+
+
+def test_mobile_viewport_not_responsive_negative_regardless_of_spacing_or_case():
+    snapshot = _snapshot(viewport_content="Width = Device-Width, initial-scale=1.0")
+    candidates = mobile.check(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def _performance_metric(**overrides) -> PerformanceMetric:
+    defaults = dict(strategy=PerformanceStrategy.mobile, opportunities_json=[])
+    defaults.update(overrides)
+    return PerformanceMetric(**defaults)
+
+
+def test_performance_optimization_opportunity_negative_when_no_metric():
+    assert performance.check(uuid.uuid4(), None) == []
+
+
+def test_performance_optimization_opportunity_negative_when_no_opportunities_found():
+    metric = _performance_metric(opportunities_json=[])
+    assert performance.check(uuid.uuid4(), metric) == []
+
+
+def test_performance_optimization_opportunity_positive_when_lighthouse_found_savings():
+    metric = _performance_metric(
+        opportunities_json=[{"audit_id": "render-blocking-resources", "title": "Eliminate render-blocking resources", "savings_ms": 450.0}]
+    )
+    candidates = performance.check(uuid.uuid4(), metric)
+    assert _rule_codes(candidates) == {"PERFORMANCE_OPTIMIZATION_OPPORTUNITY"}
+    assert candidates[0].evidence["opportunities"][0]["audit_id"] == "render-blocking-resources"

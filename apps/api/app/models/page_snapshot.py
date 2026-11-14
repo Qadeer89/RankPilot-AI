@@ -41,6 +41,7 @@ class PageSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     rel_next_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     rel_prev_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     heading_sequence_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    viewport_content: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     page: Mapped["Page"] = relationship(back_populates="snapshots")
     crawl_job: Mapped["CrawlJob"] = relationship()

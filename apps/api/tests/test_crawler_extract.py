@@ -184,6 +184,18 @@ def test_heading_sequence_is_empty_when_no_headings_present():
     assert extraction.heading_sequence == []
 
 
+def test_viewport_content_is_extracted_when_present():
+    html = '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body></body></html>'
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.viewport_content == "width=device-width, initial-scale=1"
+
+
+def test_viewport_content_is_none_when_absent():
+    html = "<html><head><title>No viewport</title></head><body></body></html>"
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.viewport_content is None
+
+
 def test_content_fingerprint_matches_for_identical_body_text_despite_different_scripts():
     html_a = """
     <html><head><title>A</title></head><body>

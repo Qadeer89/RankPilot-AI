@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Enum, Float, ForeignKey, UniqueConstraint
+from sqlalchemy import JSON, Enum, Float, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,5 +48,10 @@ class PerformanceMetric(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     field_lcp_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     field_cls: Mapped[float | None] = mapped_column(Float, nullable=True)
     field_inp_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Lighthouse's own "opportunity" audits with nonzero estimated
+    # savings (RankPilot AI Phase 4 "Performance Recommendations") --
+    # Lighthouse's own findings, re-surfaced, not a RankPilot judgment
+    # call. [] when Lighthouse found none, never a fabricated list.
+    opportunities_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     page: Mapped["Page"] = relationship()

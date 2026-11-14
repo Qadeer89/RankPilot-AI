@@ -428,6 +428,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                     word_count=extraction.word_count,
                     rel_next_url=extraction.rel_next_url,
                     rel_prev_url=extraction.rel_prev_url,
+                    viewport_content=extraction.viewport_content,
                 )
             )
             _sync_page_images(db, page, extraction.images)

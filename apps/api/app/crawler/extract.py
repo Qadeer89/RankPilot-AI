@@ -57,6 +57,7 @@ class PageExtraction:
     word_count: int = 0
     rel_next_url: str | None = None
     rel_prev_url: str | None = None
+    viewport_content: str | None = None
 
 
 def _absolute_http_url(href: str, base_url: str) -> str | None:
@@ -106,6 +107,9 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
     robots_tag = soup.find("meta", attrs={"name": "robots"})
     robots_content = robots_tag.get("content", "") if robots_tag else ""
     meta_robots_directives = [d.strip().lower() for d in robots_content.split(",") if d.strip()]
+
+    viewport_tag = soup.find("meta", attrs={"name": "viewport"})
+    viewport_content = (viewport_tag.get("content", "").strip() if viewport_tag else "") or None
 
     # rel=next/prev (app/seo_rules/rules/pagination.py). Deprecated by
     # Google for ranking purposes in 2019 but still a widely-used,
@@ -228,4 +232,5 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         word_count=word_count,
         rel_next_url=rel_next_url,
         rel_prev_url=rel_prev_url,
+        viewport_content=viewport_content,
     )

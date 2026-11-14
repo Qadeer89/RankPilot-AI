@@ -20,6 +20,7 @@ from app.models.page_external_link import PageExternalLink
 from app.models.page_image import PageImage
 from app.models.page_render_result import PageRenderResult
 from app.models.page_snapshot import PageSnapshot
+from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.models.seo_finding import FindingStatus, SEOFinding
 from app.models.website import Website
 from app.seo_rules.rules import (
@@ -32,7 +33,9 @@ from app.seo_rules.rules import (
     indexability,
     links,
     metadata,
+    mobile,
     pagination,
+    performance,
     rendering,
     sitemap,
     structured_data,
@@ -74,6 +77,17 @@ def _page_render_results_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UU
     if not page_ids:
         return {}
     rows = db.query(PageRenderResult).filter(PageRenderResult.page_id.in_(page_ids)).all()
+    return {row.page_id: row for row in rows}
+
+
+def _page_performance_metrics_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UUID, PerformanceMetric]:
+    if not page_ids:
+        return {}
+    rows = (
+        db.query(PerformanceMetric)
+        .filter(PerformanceMetric.page_id.in_(page_ids), PerformanceMetric.strategy == PerformanceStrategy.mobile)
+        .all()
+    )
     return {row.page_id: row for row in rows}
 
 
@@ -123,6 +137,9 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "HEADING_HIERARCHY_SKIP",
     "JS_RENDERING_CONTENT_GAP",
     "RENDER_FAILURE",
+    "MOBILE_VIEWPORT_MISSING",
+    "MOBILE_VIEWPORT_NOT_RESPONSIVE",
+    "PERFORMANCE_OPTIMIZATION_OPPORTUNITY",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -218,6 +235,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
     page_images_by_page_id = _page_images_by_page_id(db, set(snapshots_by_page_id.keys()))
     page_external_links_by_page_id = _page_external_links_by_page_id(db, set(snapshots_by_page_id.keys()))
     page_render_results_by_page_id = _page_render_results_by_page_id(db, set(snapshots_by_page_id.keys()))
+    page_performance_metrics_by_page_id = _page_performance_metrics_by_page_id(db, set(snapshots_by_page_id.keys()))
 
     candidates: list[FindingCandidate] = []
 
@@ -233,6 +251,8 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(pagination.check(page_id, page.canonical_url, snapshot))
         candidates.extend(headings.check_hierarchy(page_id, snapshot))
         candidates.extend(rendering.check(page_id, page_render_results_by_page_id.get(page_id)))
+        candidates.extend(mobile.check(page_id, snapshot))
+        candidates.extend(performance.check(page_id, page_performance_metrics_by_page_id.get(page_id)))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))

@@ -72,6 +72,9 @@ def sync_performance_metrics(
         existing.field_lcp_ms = result.field_lcp_ms
         existing.field_cls = result.field_cls
         existing.field_inp_ms = result.field_inp_ms
+        existing.opportunities_json = [
+            {"audit_id": o.audit_id, "title": o.title, "savings_ms": o.savings_ms} for o in result.opportunities
+        ]
         synced += 1
 
     db.flush()

@@ -5,7 +5,7 @@ import pytest
 
 from app.config import get_settings
 from app.integrations import performance_sync
-from app.integrations.pagespeed import CoreWebVitalsResult, PageSpeedApiError
+from app.integrations.pagespeed import CoreWebVitalsResult, PageSpeedApiError, PerformanceOpportunity
 from app.models.organization import Organization
 from app.models.page import Page
 from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
@@ -43,7 +43,7 @@ def _make_website_with_pages(db_session, page_count=2):
     return website, pages
 
 
-def _fake_result(score=80.0):
+def _fake_result(score=80.0, opportunities=None):
     return CoreWebVitalsResult(
         strategy="mobile",
         lab_performance_score=score,
@@ -53,6 +53,7 @@ def _fake_result(score=80.0):
         field_lcp_ms=None,
         field_cls=None,
         field_inp_ms=None,
+        opportunities=opportunities or [],
     )
 
 
@@ -110,3 +111,34 @@ def test_sync_skips_a_page_whose_api_call_fails_without_aborting_the_rest(db_ses
 
     assert synced == 1
     assert db_session.query(PerformanceMetric).count() == 1
+
+
+def test_sync_persists_opportunities_as_plain_dicts(db_session, monkeypatch):
+    monkeypatch.setattr(get_settings(), "pagespeed_api_key", "test-key")
+    website, _pages = _make_website_with_pages(db_session, page_count=1)
+
+    opportunities = [PerformanceOpportunity(audit_id="unused-javascript", title="Reduce unused JavaScript", savings_ms=900.0)]
+    monkeypatch.setattr(
+        performance_sync, "fetch_core_web_vitals", lambda url, **kwargs: _fake_result(opportunities=opportunities)
+    )
+
+    performance_sync.sync_performance_metrics(db_session, website)
+    db_session.flush()
+
+    metric = db_session.query(PerformanceMetric).one()
+    assert metric.opportunities_json == [
+        {"audit_id": "unused-javascript", "title": "Reduce unused JavaScript", "savings_ms": 900.0}
+    ]
+
+
+def test_sync_persists_empty_opportunities_when_lighthouse_found_none(db_session, monkeypatch):
+    monkeypatch.setattr(get_settings(), "pagespeed_api_key", "test-key")
+    website, _pages = _make_website_with_pages(db_session, page_count=1)
+
+    monkeypatch.setattr(performance_sync, "fetch_core_web_vitals", lambda url, **kwargs: _fake_result())
+
+    performance_sync.sync_performance_metrics(db_session, website)
+    db_session.flush()
+
+    metric = db_session.query(PerformanceMetric).one()
+    assert metric.opportunities_json == []

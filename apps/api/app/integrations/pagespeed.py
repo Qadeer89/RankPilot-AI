@@ -19,7 +19,7 @@ measured" pattern as every other external integration in this codebase
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -40,9 +40,38 @@ _FIELD_LCP_KEY = "LARGEST_CONTENTFUL_PAINT_MS"
 _FIELD_CLS_KEY = "CUMULATIVE_LAYOUT_SHIFT_SCORE"
 _FIELD_INP_KEY = "INTERACTION_TO_NEXT_PAINT"
 
+# Lighthouse's own "opportunity" audit IDs (RankPilot AI Phase 4
+# "Performance Recommendations") -- each maps directly to one of the
+# categories the feature asks for (large images, image formats,
+# unnecessary JS, render-blocking resources, CSS, slow-loading
+# resources). These are Lighthouse's own findings, re-surfaced, not a
+# RankPilot judgment call -- the savings estimate attached to each one
+# comes straight from the API response.
+_OPPORTUNITY_AUDIT_IDS = (
+    "render-blocking-resources",
+    "unminified-css",
+    "unminified-javascript",
+    "unused-css-rules",
+    "unused-javascript",
+    "modern-image-formats",
+    "uses-optimized-images",
+    "uses-responsive-images",
+    "efficient-animated-content",
+    "uses-text-compression",
+    "server-response-time",
+)
+MAX_OPPORTUNITIES_REPORTED = 5
+
 
 class PageSpeedApiError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class PerformanceOpportunity:
+    audit_id: str
+    title: str
+    savings_ms: float
 
 
 @dataclass(frozen=True)
@@ -55,6 +84,7 @@ class CoreWebVitalsResult:
     field_lcp_ms: float | None  # None when Google has no real-user data for this page
     field_cls: float | None
     field_inp_ms: float | None
+    opportunities: list[PerformanceOpportunity] = field(default_factory=list)
 
 
 def _audit_numeric_value(lighthouse_result: dict, audit_id: str) -> float | None:
@@ -63,6 +93,23 @@ def _audit_numeric_value(lighthouse_result: dict, audit_id: str) -> float | None
         return None
     value = audit.get("numericValue")
     return float(value) if value is not None else None
+
+
+def _extract_opportunities(lighthouse_result: dict) -> list[PerformanceOpportunity]:
+    audits = lighthouse_result.get("audits", {})
+    found: list[PerformanceOpportunity] = []
+    for audit_id in _OPPORTUNITY_AUDIT_IDS:
+        audit = audits.get(audit_id)
+        if not audit:
+            continue
+        savings_ms = (audit.get("details") or {}).get("overallSavingsMs")
+        if not savings_ms or savings_ms <= 0:
+            continue
+        found.append(
+            PerformanceOpportunity(audit_id=audit_id, title=audit.get("title", audit_id), savings_ms=float(savings_ms))
+        )
+    found.sort(key=lambda o: o.savings_ms, reverse=True)
+    return found[:MAX_OPPORTUNITIES_REPORTED]
 
 
 def fetch_core_web_vitals(
@@ -121,4 +168,5 @@ def fetch_core_web_vitals(
         field_lcp_ms=_field_metric(_FIELD_LCP_KEY),
         field_cls=field_cls,
         field_inp_ms=_field_metric(_FIELD_INP_KEY),
+        opportunities=_extract_opportunities(lighthouse_result),
     )
