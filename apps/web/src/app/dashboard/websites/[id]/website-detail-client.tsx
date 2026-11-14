@@ -813,6 +813,45 @@ export default function WebsiteDetailClient() {
 
         {activeTab === "overview" && (
           <>
+            {(() => {
+              const hostCounts = new Map<string, number>();
+              for (const page of pages) {
+                try {
+                  const host = new URL(page.normalized_url).hostname.toLowerCase();
+                  hostCounts.set(host, (hostCounts.get(host) ?? 0) + 1);
+                } catch {
+                  // malformed URL -- skip, this check is best-effort
+                }
+              }
+              if (hostCounts.size <= 1) return null;
+              const breakdown = Array.from(hostCounts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .map(([host, count]) => `${host} (${count} page${count === 1 ? "" : "s"})`)
+                .join(", ");
+              let canonicalHost = "your canonical domain";
+              try {
+                if (website) canonicalHost = new URL(website.canonical_url).hostname.toLowerCase();
+              } catch {
+                // leave fallback
+              }
+              return (
+                <div className={`${styles.card} ${styles.healthAlert}`}>
+                  <h2>Technical health check</h2>
+                  <p className={styles.rowMeta}>
+                    Crawled pages span {hostCounts.size} different hostnames: {breakdown}. Search engines
+                    treat each hostname as a separate site, which splits ranking signals and is the usual
+                    cause of duplicate-title, duplicate-meta-description, and canonical-mismatch findings
+                    below.
+                  </p>
+                  <p className={styles.rowMeta}>
+                    Fix: add a server-level 301 redirect from the other hostname(s) to{" "}
+                    <strong>{canonicalHost}</strong>, and make sure the site&apos;s sitemap and canonical
+                    tags all use that same hostname. Then run a crawl again.
+                  </p>
+                </div>
+              );
+            })()}
+
             <div className={styles.card}>
               <h2>Site health</h2>
               <MetricGrid
