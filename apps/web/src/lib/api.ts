@@ -261,6 +261,13 @@ export function listWebsites(token: string, organizationId: string) {
   });
 }
 
+export function deleteWebsite(token: string, organizationId: string, websiteId: string) {
+  return request<void>(`/organizations/${organizationId}/websites/${websiteId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+}
+
 export function registerWebsite(
   token: string,
   organizationId: string,

@@ -9,6 +9,7 @@ import {
   Website,
   WebsiteOverviewRow,
   confirmVerification,
+  deleteWebsite,
   getMe,
   getOrganizationOverview,
   listWebsites,
@@ -16,6 +17,7 @@ import {
   startVerification,
 } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./dashboard.module.css";
 
@@ -30,6 +32,7 @@ export default function DashboardPage() {
   const [newName, setNewName] = useState("");
   const [pendingInstructions, setPendingInstructions] = useState<Record<string, string>>({});
   const [confirmTokens, setConfirmTokens] = useState<Record<string, string>>({});
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
 
   const organization = me?.organizations[0];
 
@@ -94,6 +97,19 @@ export default function DashboardPage() {
       await refreshWebsites(token, organization.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to start verification.");
+    }
+  }
+
+  async function handleDeleteWebsite(websiteId: string) {
+    const token = tokenRef.current;
+    if (!token || !organization) return;
+    setError(null);
+    try {
+      await deleteWebsite(token, organization.id, websiteId);
+      setConfirmDelete(null);
+      await refreshWebsites(token, organization.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete website.");
     }
   }
 
@@ -166,8 +182,17 @@ export default function DashboardPage() {
                 <Link href={`/dashboard/websites/${site.id}`}>
                   <strong>{site.display_name}</strong>
                 </Link>
-                <StatusBadge value={site.verification_status} />
-                {row && <StatusBadge value={row.status} />}
+                <div className={styles.websiteRowHeaderRight}>
+                  <StatusBadge value={site.verification_status} />
+                  {row && <StatusBadge value={row.status} />}
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    onClick={() => setConfirmDelete({ id: site.id, name: site.display_name })}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
               <span>{site.canonical_url}</span>
               {row && (
@@ -205,6 +230,16 @@ export default function DashboardPage() {
           })}
         </div>
       </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          message={`Delete "${confirmDelete.name}"? This permanently removes the website and all its crawl history, findings, opportunities and tasks. This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => handleDeleteWebsite(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 }

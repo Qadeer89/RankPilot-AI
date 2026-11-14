@@ -113,6 +113,28 @@
   color: var(--rp-ink);
 }
 
+.websiteRowHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deleteButton {
+  padding: 5px 12px;
+  border-radius: var(--rp-radius-control);
+  border: 1px solid var(--rp-danger);
+  background: var(--rp-surface);
+  color: var(--rp-danger);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.deleteButton:hover {
+  background: var(--rp-danger-soft);
+}
+
 .statusBadge {
   font-size: 11px;
   font-weight: 600;
