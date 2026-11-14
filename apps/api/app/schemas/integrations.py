@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 
 from pydantic import BaseModel
@@ -34,6 +35,40 @@ class SearchPerformanceResponse(BaseModel):
         "Search Console data is delayed and aggregated; it is not real-time ranking telemetry."
     )
     rows: list[SearchPerformanceRow]
+
+
+class WindowStatsResponse(BaseModel):
+    clicks: int
+    impressions: int
+    average_position: float
+
+
+class PageTrendSignalResponse(BaseModel):
+    page_id: uuid.UUID
+    signals: list[str]
+    prior: WindowStatsResponse
+    recent: WindowStatsResponse
+
+
+class RankingOpportunityResponse(BaseModel):
+    query: str
+    page_id: uuid.UUID | None
+    average_position: float
+    impressions: int
+
+
+class CannibalizationCandidateResponse(BaseModel):
+    query: str
+    pages: list[dict]
+
+
+class SearchPerformanceIntelligenceResponse(BaseModel):
+    freshness_note: str = (
+        "Search Console data is delayed and aggregated; it is not real-time ranking telemetry."
+    )
+    declining_pages: list[PageTrendSignalResponse]
+    ranking_improvement_opportunities: list[RankingOpportunityResponse]
+    keyword_cannibalization: list[CannibalizationCandidateResponse]
 
 
 class Ga4PropertiesResponse(BaseModel):

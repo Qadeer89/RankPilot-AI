@@ -141,3 +141,94 @@ def test_search_performance_is_tenant_scoped(client, monkeypatch):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 403
+
+
+def test_search_performance_intelligence_reports_trend_signals(client, monkeypatch, db_session):
+    from datetime import date, timedelta
+
+    from app.integrations import token_store
+    from app.models.keyword_observation import KeywordObservation
+    from app.models.page import Page
+    from app.models.website import Website
+
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "gsc-intel@example.com", "GSC Intel Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    token_store.upsert_connection(
+        db_session,
+        uuid.UUID(org_id),
+        OAuthProvider.google_search_console,
+        TokenSet(
+            access_token="access-1",
+            refresh_token="refresh-1",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            scope="scope",
+            token_type="Bearer",
+        ),
+    )
+
+    now = datetime.now(timezone.utc)
+    page = Page(
+        website_id=uuid.UUID(website_id),
+        canonical_url="https://example.com/about",
+        normalized_url="https://example.com/about",
+        first_seen_at=now,
+        last_seen_at=now,
+        last_status_code=200,
+    )
+    db_session.add(page)
+    db_session.flush()
+
+    db_session.add(
+        KeywordObservation(
+            website_id=uuid.UUID(website_id),
+            page_id=page.id,
+            query="declining query",
+            date=date.today() - timedelta(days=20),
+            clicks=20,
+            impressions=100,
+            ctr=0.2,
+            average_position=5.0,
+            source="google_search_console",
+        )
+    )
+    db_session.add(
+        KeywordObservation(
+            website_id=uuid.UUID(website_id),
+            page_id=page.id,
+            query="declining query",
+            date=date.today() - timedelta(days=5),
+            clicks=2,
+            impressions=95,
+            ctr=0.02,
+            average_position=5.0,
+            source="google_search_console",
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/search-performance/intelligence", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["declining_pages"]) == 1
+    assert body["declining_pages"][0]["page_id"] == str(page.id)
+    assert "clicks_declining" in body["declining_pages"][0]["signals"]
+    assert body["ranking_improvement_opportunities"] == []
+    assert body["keyword_cannibalization"] == []
+
+
+def test_search_performance_intelligence_is_tenant_scoped(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token_a, org_a = _register_with_org(client, "intel-a@example.com", "Intel Org A")
+    website_id = _create_website(client, token_a, org_a)
+
+    token_b, org_b = _register_with_org(client, "intel-b@example.com", "Intel Org B")
+    response = client.get(
+        f"/api/v1/organizations/{org_b}/websites/{website_id}/search-performance/intelligence",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404

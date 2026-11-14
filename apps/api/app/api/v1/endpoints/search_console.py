@@ -9,6 +9,11 @@ from app.core.resources import get_website_or_404
 from app.db.session import get_db
 from app.integrations import search_console_sync, token_store
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
+from app.opportunities.search_trend_signals import (
+    detect_keyword_cannibalization,
+    detect_page_trend_signals,
+    detect_ranking_improvement_opportunities,
+)
 from app.integrations.google_search_console import (
     GoogleApiError,
     GoogleIntegrationNotConfigured,
@@ -22,12 +27,17 @@ from app.models.keyword_observation import KeywordObservation
 from app.models.membership import Membership, MembershipRole
 from app.models.oauth_connection import OAuthProvider
 from app.schemas.integrations import (
+    CannibalizationCandidateResponse,
     ConnectUrlResponse,
+    PageTrendSignalResponse,
+    RankingOpportunityResponse,
+    SearchPerformanceIntelligenceResponse,
     SearchPerformanceResponse,
     SearchPerformanceRow,
     SearchPropertiesResponse,
     SelectPropertyRequest,
     SyncResultResponse,
+    WindowStatsResponse,
 )
 from app.schemas.website import WebsiteResponse
 
@@ -174,3 +184,45 @@ def get_search_performance(
         for o in observations
     ]
     return SearchPerformanceResponse(rows=rows)
+
+
+@router.get(
+    "/organizations/{organization_id}/websites/{website_id}/search-performance/intelligence",
+    response_model=SearchPerformanceIntelligenceResponse,
+)
+def get_search_performance_intelligence(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
+) -> SearchPerformanceIntelligenceResponse:
+    """Report-only search-performance signals (RankPilot AI Phase 5):
+    pages losing clicks/impressions or slipping in ranking, queries
+    close to page 1 that aren't there yet, and keyword cannibalization
+    candidates. Unlike CTR opportunities, none of these feed the
+    auto-execute pipeline -- there's no existing AI fix operation for
+    any of them.
+    """
+    website = get_website_or_404(db, organization_id, website_id)
+
+    declining = [
+        PageTrendSignalResponse(
+            page_id=s.page_id,
+            signals=s.signals,
+            prior=WindowStatsResponse(**s.prior.__dict__),
+            recent=WindowStatsResponse(**s.recent.__dict__),
+        )
+        for s in detect_page_trend_signals(db, website)
+    ]
+    ranking_opportunities = [
+        RankingOpportunityResponse(**o.__dict__) for o in detect_ranking_improvement_opportunities(db, website)
+    ]
+    cannibalization = [
+        CannibalizationCandidateResponse(**c.__dict__) for c in detect_keyword_cannibalization(db, website)
+    ]
+
+    return SearchPerformanceIntelligenceResponse(
+        declining_pages=declining,
+        ranking_improvement_opportunities=ranking_opportunities,
+        keyword_cannibalization=cannibalization,
+    )
