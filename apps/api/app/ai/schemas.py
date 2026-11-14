@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-ALLOWED_OPERATIONS = {"set_title", "set_meta_description"}
+ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text"}
 
 
 class EvidenceRef(BaseModel):

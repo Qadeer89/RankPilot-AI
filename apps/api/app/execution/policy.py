@@ -26,6 +26,7 @@ BLOCKED_RISK_TIER = 3
 OPERATION_CATEGORY: dict[str, str] = {
     "set_title": "metadata",
     "set_meta_description": "metadata",
+    "set_alt_text": "images",
 }
 
 

@@ -5,7 +5,13 @@ present").
 
 from __future__ import annotations
 
-from app.connectors.wordpress import WordPressCredentials, current_meta_description, current_title, get_resource
+from app.connectors.wordpress import (
+    WordPressCredentials,
+    current_alt_text,
+    current_meta_description,
+    current_title,
+    get_resource,
+)
 
 
 def validate_wordpress_change(
@@ -17,6 +23,8 @@ def validate_wordpress_change(
         actual_value = current_title(resource)
     elif operation == "set_meta_description":
         actual_value = current_meta_description(resource)
+    elif operation == "set_alt_text":
+        actual_value = current_alt_text(resource)
     else:
         raise ValueError(f"Unknown operation: {operation}")
 

@@ -256,3 +256,47 @@ def test_execute_task_rolls_back_on_failed_validation(db_session, monkeypatch):
 
     rollback = db_session.query(RollbackRecord).filter(RollbackRecord.change_record_id == change_record.id).one()
     assert rollback.status == RollbackStatus.completed
+
+
+def _alt_text_proposal(opportunity_id, image_url="https://example.com/hero.jpg"):
+    return OpportunityProposal(
+        opportunity_id=str(opportunity_id),
+        summary="Add alt text to an image.",
+        evidence=[{"page_url": image_url, "finding_code": "IMAGE_MISSING_ALT"}],
+        proposed_actions=[
+            {"operation": "set_alt_text", "target_url": image_url, "value": "A sunrise over the hero banner"}
+        ],
+        risk_tier=1,
+        confidence=0.9,
+        requires_approval=False,
+        validation_plan=["Fetch media", "Verify alt text"],
+    )
+
+
+def test_execute_task_happy_path_for_set_alt_text(db_session, monkeypatch):
+    website, opportunity = _make_website_and_opportunity(
+        db_session, automation_policy={"auto_execute_risk_tier_1": True}
+    )
+    opportunity.category = "images"
+    db_session.flush()
+    _connect_wordpress(db_session, website, monkeypatch)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _alt_text_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        if "/media" in url and params:
+            return _FakeResponse(200, [{"id": 7, "source_url": "https://example.com/hero.jpg"}])
+        return _FakeResponse(200, {"id": 7, "alt_text": "A sunrise over the hero banner"})
+
+    def fake_post(url, auth=None, json=None, timeout=None):
+        return _FakeResponse(200, {"id": 7, "alt_text": json["alt_text"]})
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+
+    change_record = execution_service.execute_task(db_session, website, task)
+
+    assert change_record.validation_status == ValidationStatus.passed
+    assert task.status == SEOTaskStatus.completed
+    assert change_record.before_state_json["post_type"] == "media"

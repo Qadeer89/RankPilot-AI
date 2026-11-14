@@ -149,6 +149,22 @@ RULE_OPPORTUNITY_TEMPLATES: dict[str, OpportunityTemplate] = {
         effort_estimate=0.2,
         risk_tier=1,
     ),
+    "IMAGE_MISSING_ALT": OpportunityTemplate(
+        category="images",
+        title="Add missing image alt text",
+        rationale="This page has one or more non-decorative images with no alt attribute at all, hurting accessibility and image search visibility.",
+        impact_estimate=0.4,
+        effort_estimate=0.2,
+        risk_tier=1,
+    ),
+    "IMAGE_UNHELPFUL_ALT_TEXT": OpportunityTemplate(
+        category="images",
+        title="Replace filename-like image alt text",
+        rationale="This page has image alt text that just restates the filename, telling search engines and screen readers nothing useful about the image.",
+        impact_estimate=0.3,
+        effort_estimate=0.2,
+        risk_tier=1,
+    ),
 }
 
 

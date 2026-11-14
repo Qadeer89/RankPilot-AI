@@ -1,8 +1,9 @@
 from app.ai.schemas import OpportunityProposal
 from app.connectors import sanity
+from app.connectors import wordpress as wp
 from app.connectors.errors import ConnectorError
 from app.crawler.orchestrator import run_crawl
-from app.execution.connections import connect_sanity
+from app.execution.connections import connect_sanity, connect_wordpress
 from app.execution.service import ExecutionBlocked
 from app.models.crawl_job import CrawlTrigger
 from app.models.organization import Organization
@@ -201,5 +202,72 @@ def test_auto_pipeline_prefilter_skips_unwritable_targets_without_spending_an_ai
     db_session.flush()
 
     assert ai_call_count["count"] == 0, "AI should never be called for a target the connector just confirmed it can't write"
+    tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
+    assert len(tasks) == 0
+
+
+def test_auto_pipeline_prefilter_resolves_image_opportunities_via_media_lookup_not_post_lookup(db_session, monkeypatch):
+    """An "images" category opportunity's target is an image src, not a
+    page URL -- the pre-filter must call find_media_by_url for it, never
+    find_post_by_url (which would look for a post/page at that image URL
+    and always fail), and must never spend an AI call once that media
+    lookup fails.
+    """
+
+    class _FakeResponse:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+            self.text = str(payload)
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+
+    website = _make_website(db_session)
+    connect_wordpress(db_session, website, "rankpilot", "app-pass-123")
+
+    opportunity = SEOOpportunity(
+        website_id=website.id,
+        page_id=None,
+        category="images",
+        title="Add missing image alt text",
+        rationale="This page has images with no alt attribute.",
+        impact_estimate=0.4,
+        confidence=1.0,
+        effort_estimate=0.2,
+        risk_tier=1,
+        evidence_json={
+            "rule_code": "IMAGE_MISSING_ALT",
+            "finding_evidence": {"count": 1, "images": ["https://example.com/hero.jpg"]},
+        },
+    )
+    db_session.add(opportunity)
+    db_session.flush()
+
+    monkeypatch.setattr(
+        auto_pipeline,
+        "find_post_by_url",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not be called for an image target")),
+    )
+    monkeypatch.setattr(
+        auto_pipeline,
+        "find_media_by_url",
+        lambda credentials, image_url: (_ for _ in ()).throw(wp.WordPressConnectorError("no match")),
+    )
+
+    ai_call_count = {"count": 0}
+
+    def fake_propose(db, website, opportunity, snapshot):
+        ai_call_count["count"] += 1
+        raise AssertionError("AI should never be called once the media lookup confirmed it can't write")
+
+    monkeypatch.setattr(auto_pipeline, "propose_content_fix", fake_propose)
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    assert ai_call_count["count"] == 0
     tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
     assert len(tasks) == 0

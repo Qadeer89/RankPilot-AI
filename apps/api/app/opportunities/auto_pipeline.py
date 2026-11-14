@@ -21,7 +21,12 @@ from app.ai.client import AINotConfigured
 from app.ai.content_agent import propose_content_fix
 from app.ai.runner import PromptTooLarge
 from app.connectors.errors import ConnectorError
-from app.connectors.wordpress import UnsupportedOperation, WordPressConnectorError, find_post_by_url
+from app.connectors.wordpress import (
+    UnsupportedOperation,
+    WordPressConnectorError,
+    find_media_by_url,
+    find_post_by_url,
+)
 from app.execution.connections import get_connected_content_connector, get_connector_credentials, get_wordpress_credentials
 from app.execution.service import (
     GENERIC_CONNECTOR_MODULES,
@@ -40,13 +45,22 @@ logger = logging.getLogger(__name__)
 
 
 def _target_url_for(db: Session, opportunity: SEOOpportunity) -> str | None:
+    if opportunity.category == "images":
+        images = opportunity.evidence_json.get("finding_evidence", {}).get("images", [])
+        if not images:
+            return None
+        first = images[0]
+        src = first.get("src") if isinstance(first, dict) else first
+        return src or None
     if opportunity.page_id is None:
         return None
     page = db.get(Page, opportunity.page_id)
     return page.canonical_url if page is not None else None
 
 
-def _connector_can_write(db: Session, website: Website, target_url: str | None) -> tuple[bool, str | None]:
+def _connector_can_write(
+    db: Session, website: Website, target_url: str | None, *, is_image: bool = False
+) -> tuple[bool, str | None]:
     """Best-effort pre-check, before any AI call: can the connected
     connector actually find/write this specific URL right now?
 
@@ -66,10 +80,16 @@ def _connector_can_write(db: Session, website: Website, target_url: str | None) 
     if connector_type is None:
         return True, None
 
+    if is_image and connector_type != ConnectorType.wordpress:
+        return False, f"Image alt-text writes are not yet supported by the {connector_type.value} connector."
+
     if connector_type == ConnectorType.wordpress:
         try:
             credentials = get_wordpress_credentials(db, website)
-            find_post_by_url(credentials, target_url)
+            if is_image:
+                find_media_by_url(credentials, target_url)
+            else:
+                find_post_by_url(credentials, target_url)
             return True, None
         except LookupError as exc:
             return False, str(exc)
@@ -122,7 +142,9 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
             break
 
         target_url = _target_url_for(db, opportunity)
-        writable, skip_reason = _connector_can_write(db, website, target_url)
+        writable, skip_reason = _connector_can_write(
+            db, website, target_url, is_image=(opportunity.category == "images")
+        )
         if not writable:
             logger.info(
                 "auto_pipeline: skipping opportunity %s, target not writable by the connected connector (%s)",

@@ -21,13 +21,18 @@ from app.connectors.errors import ConnectorError, safe_request
 
 YOAST_META_DESCRIPTION_KEY = "_yoast_wpseo_metadesc"
 POST_TYPES_TO_SEARCH = ("pages", "posts")
+MEDIA_RESOURCE_TYPE = "media"
 REQUEST_TIMEOUT_SECONDS = 15.0
 
 # Declared capability set (CW-001, addendum §4.3): the operations this
 # connector actually implements. execution/service.py rejects any other
 # operation before attempting it, instead of failing deep inside a write
-# call or a raw AttributeError.
-SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
+# call or a raw AttributeError. set_alt_text lands on WordPress first
+# (core wp/v2/media supports it on every install, unlike meta description)
+# -- other connectors get it only once their content model is checked to
+# actually support per-image alt text (RankPilot AI Phase 2 "AI Alt Text
+# Generation").
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description", "set_alt_text"})
 
 
 class WordPressConnectorError(ConnectorError):
@@ -96,6 +101,39 @@ def find_post_by_url(credentials: WordPressCredentials, target_url: str) -> tupl
     raise WordPressConnectorError(f"No WordPress page or post found matching URL: {target_url}")
 
 
+def find_media_by_url(credentials: WordPressCredentials, image_url: str) -> int:
+    """Resolve an <img src> URL to a WordPress media attachment ID by
+    matching the filename against the Media Library's search index, then
+    confirming the candidate's own source_url actually matches (a search
+    match alone isn't proof -- two different images can share a filename
+    stem, e.g. two unrelated "hero.jpg" uploads on a busy site).
+    """
+    filename = urlsplit(image_url).path.rsplit("/", 1)[-1]
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    if not stem:
+        raise WordPressConnectorError(f"Could not derive a filename from image URL: {image_url}")
+
+    response = safe_request(
+        httpx.get,
+        f"{_api_base(credentials.site_url)}/{MEDIA_RESOURCE_TYPE}",
+        params={"search": stem},
+        auth=credentials.auth,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
+    )
+    if response.status_code != 200:
+        raise WordPressConnectorError(
+            f"Could not search WordPress media: HTTP {response.status_code} {response.text[:200]}"
+        )
+
+    for candidate in response.json():
+        source_url = candidate.get("source_url", "")
+        if source_url == image_url or source_url.rsplit("/", 1)[-1] == filename:
+            return candidate["id"]
+
+    raise WordPressConnectorError(f"No WordPress media attachment found matching image URL: {image_url}")
+
+
 def get_resource(credentials: WordPressCredentials, post_type: str, post_id: int) -> dict:
     response = safe_request(
         httpx.get,
@@ -117,6 +155,10 @@ def current_title(resource: dict) -> str:
 
 def current_meta_description(resource: dict) -> str:
     return resource.get("meta", {}).get(YOAST_META_DESCRIPTION_KEY, "")
+
+
+def current_alt_text(resource: dict) -> str:
+    return resource.get("alt_text", "")
 
 
 def update_title(credentials: WordPressCredentials, post_type: str, post_id: int, new_title: str) -> dict:
@@ -161,5 +203,26 @@ def update_meta_description(
         raise UnsupportedOperation(
             "WordPress accepted the request but did not persist the meta description; "
             "this site likely doesn't support this field."
+        )
+    return body
+
+
+def update_alt_text(credentials: WordPressCredentials, media_id: int, new_alt_text: str) -> dict:
+    response = safe_request(
+        httpx.post,
+        f"{_api_base(credentials.site_url)}/{MEDIA_RESOURCE_TYPE}/{media_id}",
+        auth=credentials.auth,
+        json={"alt_text": new_alt_text},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
+    )
+    if response.status_code != 200:
+        raise WordPressConnectorError(
+            f"Failed to update alt text on media/{media_id}: HTTP {response.status_code} {response.text[:200]}"
+        )
+    body = response.json()
+    if current_alt_text(body) != new_alt_text:
+        raise UnsupportedOperation(
+            "WordPress accepted the request but did not persist the image alt text."
         )
     return body

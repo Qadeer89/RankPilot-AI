@@ -40,6 +40,11 @@ def test_opportunities_are_derived_from_open_findings(db_session, monkeypatch):
     assert "Fix a broken page" in titles
     assert "Resolve a duplicate page title" in titles
     assert "Add internal links to an orphan page" in titles
+    assert "Add missing image alt text" in titles
+    assert "Replace filename-like image alt text" in titles
+
+    image_opportunities = [o for o in opportunities if o.title == "Add missing image alt text"]
+    assert all(o.category == "images" for o in image_opportunities)
 
     # Sorted by score descending.
     scores = [o.score for o in opportunities]

@@ -19,12 +19,16 @@ from app.connectors import wordpress as wordpress_connector
 from app.connectors.errors import ConnectorError
 from app.crawler.fetch import FetchError, safe_fetch
 from app.connectors.wordpress import (
+    MEDIA_RESOURCE_TYPE,
     UnsupportedOperation,
     WordPressConnectorError,
+    current_alt_text,
     current_meta_description,
     current_title,
+    find_media_by_url,
     find_post_by_url,
     get_resource,
+    update_alt_text,
     update_meta_description,
     update_title,
 )
@@ -262,9 +266,17 @@ def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
         except LookupError as exc:
             raise ExecutionBlocked(str(exc)) from exc
         try:
-            post_type, post_id = find_post_by_url(credentials, target_url)
+            if operation == "set_alt_text":
+                post_type, post_id = MEDIA_RESOURCE_TYPE, find_media_by_url(credentials, target_url)
+            else:
+                post_type, post_id = find_post_by_url(credentials, target_url)
             resource = get_resource(credentials, post_type, post_id)
-            current_value = current_title(resource) if operation == "set_title" else current_meta_description(resource)
+            if operation == "set_title":
+                current_value = current_title(resource)
+            elif operation == "set_meta_description":
+                current_value = current_meta_description(resource)
+            else:
+                current_value = current_alt_text(resource)
         except (WordPressConnectorError, UnsupportedOperation) as exc:
             raise ExecutionBlocked(str(exc)) from exc
     else:
@@ -361,12 +373,17 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
             raise ExecutionBlocked(str(exc)) from exc
 
         try:
-            post_type, post_id = find_post_by_url(credentials, target_url)
+            if operation == "set_alt_text":
+                post_type, post_id = MEDIA_RESOURCE_TYPE, find_media_by_url(credentials, target_url)
+            else:
+                post_type, post_id = find_post_by_url(credentials, target_url)
             before = get_resource(credentials, post_type, post_id)
             if operation == "set_title":
                 before_value = current_title(before)
             elif operation == "set_meta_description":
                 before_value = current_meta_description(before)
+            elif operation == "set_alt_text":
+                before_value = current_alt_text(before)
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
 
@@ -382,6 +399,8 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
                 update_title(credentials, post_type, post_id, new_value)
             elif operation == "set_meta_description":
                 update_meta_description(credentials, post_type, post_id, new_value)
+            elif operation == "set_alt_text":
+                update_alt_text(credentials, post_id, new_value)
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
 
@@ -496,6 +515,8 @@ def rollback_change(
                 update_title(credentials, post_type, post_id, before["value"])
             elif operation == "set_meta_description":
                 update_meta_description(credentials, post_type, post_id, before["value"])
+            elif operation == "set_alt_text":
+                update_alt_text(credentials, post_id, before["value"])
             else:
                 raise ValueError(f"No rollback method for operation: {operation}")
 

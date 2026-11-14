@@ -15,18 +15,20 @@ before/after state capture and deterministic post-change validation.
 
 ## Shared operation vocabulary
 
-All four connectors implement the same two operations, so the execution
-engine's risk-tier, approval, and rollback logic doesn't need to know
-which connector it's talking to:
+All four connectors implement the same two page/resource-level
+operations, so the execution engine's risk-tier, approval, and rollback
+logic doesn't need to know which connector it's talking to:
 
 | Operation | Meaning |
 |---|---|
 | `set_title` | Set the page/resource's `<title>` (SEO title tag) |
 | `set_meta_description` | Set the page/resource's meta description |
 
-No connector supports any other operation today (no delete, no
-permalink/URL changes, no template/theme changes, no robots/indexability
-changes, no bulk/mass operations) — consistent with
+`set_alt_text` (RankPilot AI Phase 2 "AI Alt Text Generation") targets an
+individual *image*, not a page, and is WordPress-only today — see that
+connector's section below. No connector supports any other operation
+(no delete, no permalink/URL changes, no template/theme changes, no
+robots/indexability changes, no bulk/mass operations) — consistent with
 `WEBSITE_CONNECTORS.md` #3's MVP restriction.
 
 ---
@@ -43,9 +45,15 @@ owner's main login). Credentials: `(site_url, username, application_password)`.
 |---|---|---|
 | `set_title` | `POST /wp-json/wp/v2/{pages\|posts}/{id}` with `{"title": ...}` | Reliable — core WordPress REST field |
 | `set_meta_description` | Same endpoint, `{"meta": {"_yoast_wpseo_metadesc": ...}}` | **Best-effort** — raises `UnsupportedOperation` if the site doesn't expose a Yoast-SEO-compatible meta key, or if WordPress silently accepted but didn't persist the value |
+| `set_alt_text` | `POST /wp-json/wp/v2/media/{id}` with `{"alt_text": ...}` | Reliable — core WordPress REST field on every media attachment, no plugin required |
 
 **Target resolution:** `find_post_by_url` matches the target URL's slug
-against `pages` then `posts` (first match wins).
+against `pages` then `posts` (first match wins). `set_alt_text`'s target
+is the *image* URL, not a page URL, so it resolves separately via
+`find_media_by_url`: searches the Media Library by filename stem, then
+confirms the candidate's own `source_url` actually matches before
+trusting it (a filename-stem search match alone isn't proof — two
+different uploads can share a stem).
 
 **Rollback:** re-applies the captured before-value via the same
 operation (`update_title`/`update_meta_description`). Fully tested

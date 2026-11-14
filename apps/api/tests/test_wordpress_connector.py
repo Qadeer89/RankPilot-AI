@@ -102,3 +102,58 @@ def test_update_meta_description_success(monkeypatch):
     )
     result = wp.update_meta_description(CREDENTIALS, "pages", 42, "A new description")
     assert wp.current_meta_description(result) == "A new description"
+
+
+def test_find_media_by_url_matches_on_exact_source_url(monkeypatch):
+    def fake_get(url, params=None, auth=None, timeout=None):
+        assert "/media" in url
+        assert params == {"search": "hero"}
+        return _FakeResponse(
+            200,
+            [
+                {"id": 7, "source_url": "https://example.com/wp-content/uploads/hero.jpg"},
+                {"id": 8, "source_url": "https://example.com/wp-content/uploads/hero-2.jpg"},
+            ],
+        )
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    media_id = wp.find_media_by_url(CREDENTIALS, "https://example.com/wp-content/uploads/hero.jpg")
+    assert media_id == 7
+
+
+def test_find_media_by_url_raises_when_no_candidate_actually_matches(monkeypatch):
+    # A search match on filename stem alone isn't proof: a different image
+    # with the same stem but a different extension/path must not be
+    # mistaken for the one we're looking for.
+    monkeypatch.setattr(
+        wp.httpx,
+        "get",
+        lambda *a, **k: _FakeResponse(
+            200, [{"id": 7, "source_url": "https://example.com/uploads/hero-unrelated.png"}]
+        ),
+    )
+    with pytest.raises(wp.WordPressConnectorError):
+        wp.find_media_by_url(CREDENTIALS, "https://example.com/uploads/hero.jpg")
+
+
+def test_find_media_by_url_raises_when_search_finds_nothing(monkeypatch):
+    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, []))
+    with pytest.raises(wp.WordPressConnectorError):
+        wp.find_media_by_url(CREDENTIALS, "https://example.com/uploads/missing.jpg")
+
+
+def test_update_alt_text_success(monkeypatch):
+    def fake_post(url, auth=None, json=None, timeout=None):
+        assert "/media/7" in url
+        assert json == {"alt_text": "A golden retriever on the beach"}
+        return _FakeResponse(200, {"id": 7, "alt_text": "A golden retriever on the beach"})
+
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    result = wp.update_alt_text(CREDENTIALS, 7, "A golden retriever on the beach")
+    assert wp.current_alt_text(result) == "A golden retriever on the beach"
+
+
+def test_update_alt_text_detects_silent_no_op(monkeypatch):
+    monkeypatch.setattr(wp.httpx, "post", lambda *a, **k: _FakeResponse(200, {"id": 7, "alt_text": ""}))
+    with pytest.raises(wp.UnsupportedOperation):
+        wp.update_alt_text(CREDENTIALS, 7, "A golden retriever on the beach")
