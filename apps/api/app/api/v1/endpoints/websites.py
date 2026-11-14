@@ -12,7 +12,7 @@ from app.core.verification import build_instructions, check_html_file_verificati
 from app.db.session import get_db
 from app.models.audit_event import AuditEvent
 from app.models.membership import Membership, MembershipRole
-from app.models.website import VerificationStatus, Website, WebsiteStatus
+from app.models.website import AutomationMode, VerificationStatus, Website, WebsiteStatus
 from app.models.website_verification import VerificationMethod, WebsiteVerification
 from app.schemas.website import (
     VerificationConfirmRequest,
@@ -107,6 +107,36 @@ def update_website_settings(
             **website.automation_policy,
             "auto_execute_risk_tier_1": payload.auto_execute_risk_tier_1,
         }
+    if payload.auto_execute_categories is not None:
+        website.automation_policy = {
+            **website.automation_policy,
+            "auto_execute_categories": {
+                **website.automation_policy.get("auto_execute_categories", {}),
+                **payload.auto_execute_categories,
+            },
+        }
+    if payload.notify_on_regression is not None:
+        website.automation_policy = {
+            **website.automation_policy,
+            "notify_on_regression": payload.notify_on_regression,
+        }
+    if payload.notify_on_auto_pipeline_summary is not None:
+        website.automation_policy = {
+            **website.automation_policy,
+            "notify_on_auto_pipeline_summary": payload.notify_on_auto_pipeline_summary,
+        }
+    if payload.automation_mode is not None:
+        try:
+            website.automation_mode = AutomationMode(payload.automation_mode)
+        except ValueError as exc:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"automation_mode must be one of {[m.value for m in AutomationMode]}.",
+            ) from exc
+    if payload.crawl_frequency_hours is not None:
+        website.crawl_frequency_hours = payload.crawl_frequency_hours
+    if payload.ai_daily_budget_usd_override is not None:
+        website.ai_daily_budget_usd_override = payload.ai_daily_budget_usd_override
 
     db.add(
         AuditEvent(

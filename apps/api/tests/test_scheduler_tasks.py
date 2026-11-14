@@ -78,3 +78,97 @@ def test_run_retention_cleanup_returns_counts(db_session, monkeypatch):
 
     result = scheduler_module.run_retention_cleanup()
     assert set(result.keys()) == {"deleted_page_snapshots", "deleted_audit_events", "deleted_notifications"}
+
+
+def test_daily_crawl_skips_a_website_whose_frequency_has_not_elapsed(db_session, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
+
+    website = _make_website(db_session)
+    website.crawl_frequency_hours = 24
+    recent_crawl = CrawlJob(
+        website_id=website.id,
+        trigger=CrawlTrigger.scheduled,
+        status=CrawlStatus.completed,
+        started_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    db_session.add(recent_crawl)
+    db_session.commit()
+
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    import app.tasks.crawl as crawl_module
+
+    monkeypatch.setattr(crawl_module, "run_site_crawl", type("R", (), {"delay": staticmethod(lambda *a: None)}))
+
+    count = scheduler_module.daily_crawl_all_active_websites()
+    assert count == 0
+
+
+def test_daily_crawl_enqueues_once_the_frequency_has_elapsed(db_session, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
+
+    website = _make_website(db_session)
+    website.crawl_frequency_hours = 6
+    old_crawl = CrawlJob(
+        website_id=website.id,
+        trigger=CrawlTrigger.scheduled,
+        status=CrawlStatus.completed,
+        started_at=datetime.now(timezone.utc) - timedelta(hours=7),
+    )
+    db_session.add(old_crawl)
+    db_session.commit()
+
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    enqueued = []
+    import app.tasks.crawl as crawl_module
+
+    monkeypatch.setattr(
+        crawl_module, "run_site_crawl", type("R", (), {"delay": staticmethod(lambda *a: enqueued.append(a))})
+    )
+
+    count = scheduler_module.daily_crawl_all_active_websites()
+    assert count == 1
+    assert len(enqueued) == 1
+
+
+def test_daily_crawl_skips_a_website_with_an_already_active_crawl(db_session, monkeypatch):
+    from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
+
+    website = _make_website(db_session)
+    db_session.add(CrawlJob(website_id=website.id, trigger=CrawlTrigger.manual, status=CrawlStatus.running))
+    db_session.commit()
+
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    import app.tasks.crawl as crawl_module
+
+    monkeypatch.setattr(crawl_module, "run_site_crawl", type("R", (), {"delay": staticmethod(lambda *a: None)}))
+
+    count = scheduler_module.daily_crawl_all_active_websites()
+    assert count == 0
+
+
+def test_daily_crawl_enqueues_a_never_before_crawled_website_immediately(db_session, monkeypatch):
+    _make_website(db_session)
+
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    enqueued = []
+    import app.tasks.crawl as crawl_module
+
+    monkeypatch.setattr(
+        crawl_module, "run_site_crawl", type("R", (), {"delay": staticmethod(lambda *a: enqueued.append(a))})
+    )
+
+    count = scheduler_module.daily_crawl_all_active_websites()
+    assert count == 1
+    assert len(enqueued) == 1

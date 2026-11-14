@@ -29,8 +29,11 @@ celery_app.conf.update(
 
 celery_app.conf.beat_schedule = {
     "daily-crawl-all-active-websites": {
+        # Runs hourly now, not once daily -- the task itself decides
+        # whether each website is actually due based on its own
+        # crawl_frequency_hours (RankPilot AI Phase 8 "User Controls").
         "task": "app.tasks.scheduler.daily_crawl_all_active_websites",
-        "schedule": crontab(hour=2, minute=0),
+        "schedule": crontab(minute=0),
     },
     "daily-sync-search-signals": {
         "task": "app.tasks.scheduler.daily_sync_search_signals_for_all_websites",

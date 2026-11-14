@@ -50,7 +50,7 @@ def test_kill_switch_blocks_every_call_regardless_of_spend(db_session, monkeypat
 
     website = _make_website(db_session)
     with pytest.raises(BudgetExceeded, match="kill switch"):
-        enforce_daily_budget(db_session, website.id)
+        enforce_daily_budget(db_session, website)
 
 
 def test_global_budget_blocks_a_site_that_has_not_itself_spent_anything(db_session, monkeypatch):
@@ -63,7 +63,7 @@ def test_global_budget_blocks_a_site_that_has_not_itself_spent_anything(db_sessi
     other_site = _make_website(db_session)
     # other_site has spent $0 itself, but the global ceiling is already exceeded.
     with pytest.raises(BudgetExceeded, match="Global AI spend"):
-        enforce_daily_budget(db_session, other_site.id)
+        enforce_daily_budget(db_session, other_site)
 
 
 def test_today_global_spend_usd_sums_across_websites(db_session):
@@ -84,12 +84,12 @@ def test_per_site_budget_still_enforced_when_global_budget_has_room(db_session, 
     _record_spend(db_session, website, 2.0)
 
     with pytest.raises(BudgetExceeded, match="daily AI budget"):
-        enforce_daily_budget(db_session, website.id)
+        enforce_daily_budget(db_session, website)
 
 
 def test_enforce_daily_budget_passes_when_under_both_ceilings(db_session):
     website = _make_website(db_session)
-    enforce_daily_budget(db_session, website.id)  # should not raise
+    enforce_daily_budget(db_session, website)  # should not raise
 
 
 def test_run_ai_agent_rejects_an_oversized_prompt_before_any_budget_or_api_call(db_session, monkeypatch):

@@ -331,3 +331,47 @@ def test_create_tasks_from_proposal_honors_category_opt_in(db_session, monkeypat
     )[0]
 
     assert task.approval_status == ApprovalStatus.not_required
+
+
+# --- RankPilot AI Phase 8: automation modes --------------------------------
+
+
+def test_requires_approval_in_copilot_mode_ignores_blanket_flag(db_session):
+    from app.models.website import AutomationMode
+
+    website, _ = _make_website_and_opportunity(db_session, automation_policy={"auto_execute_risk_tier_1": True})
+    website.automation_mode = AutomationMode.copilot
+    assert policy.requires_approval(website, 1, "set_title") is True
+
+
+def test_requires_approval_in_copilot_mode_ignores_category_opt_in(db_session):
+    from app.models.website import AutomationMode
+
+    website, _ = _make_website_and_opportunity(
+        db_session, automation_policy={"auto_execute_categories": {"metadata": True}}
+    )
+    website.automation_mode = AutomationMode.copilot
+    assert policy.requires_approval(website, 1, "set_title") is True
+
+
+def test_requires_approval_in_audit_mode_also_always_requires_approval(db_session):
+    from app.models.website import AutomationMode
+
+    website, _ = _make_website_and_opportunity(db_session, automation_policy={"auto_execute_risk_tier_1": True})
+    website.automation_mode = AutomationMode.audit
+    assert policy.requires_approval(website, 1, "set_title") is True
+
+
+def test_requires_approval_in_autopilot_mode_is_unchanged(db_session):
+    from app.models.website import AutomationMode
+
+    website, _ = _make_website_and_opportunity(db_session, automation_policy={"auto_execute_risk_tier_1": True})
+    website.automation_mode = AutomationMode.autopilot
+    assert policy.requires_approval(website, 1, "set_title") is False
+
+
+def test_automation_mode_defaults_to_autopilot(db_session):
+    from app.models.website import AutomationMode
+
+    website, _ = _make_website_and_opportunity(db_session)
+    assert website.automation_mode == AutomationMode.autopilot

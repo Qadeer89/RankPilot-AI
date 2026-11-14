@@ -38,7 +38,7 @@ from app.models.page import Page
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import ApprovalStatus, SEOTask
-from app.models.website import Website, WebsiteStatus
+from app.models.website import AutomationMode, Website, WebsiteStatus
 from app.models.website_connection import ConnectorType
 from app.notifications.dispatch import notify_organization
 
@@ -119,6 +119,14 @@ MAX_AUTO_TASKS_PER_CRAWL = 20
 
 
 def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
+    # Audit mode (RankPilot AI Phase 8 "Automation Modes"): detect and
+    # report only -- the background pipeline never drafts an AI proposal
+    # here, let alone executes a write. (Copilot mode still drafts and
+    # creates tasks below; policy.requires_approval is what stops those
+    # from auto-executing.)
+    if website.automation_mode == AutomationMode.audit:
+        return
+
     opportunities = (
         db.query(SEOOpportunity)
         .filter(SEOOpportunity.website_id == website.id, SEOOpportunity.status == OpportunityStatus.open)
@@ -215,7 +223,8 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
     # A single end-of-run digest rather than one notification per task --
     # a busy site auto-fixing dozens of titles in one crawl shouldn't send
     # dozens of Slack messages (RankPilot AI Phase 7 "Notifications").
-    if auto_fixed_count or auto_fix_failed_count or pending_approval_count:
+    notify_on_summary = website.automation_policy.get("notify_on_auto_pipeline_summary", True)
+    if notify_on_summary and (auto_fixed_count or auto_fix_failed_count or pending_approval_count):
         lines = [f"Automation summary for {website.display_name} ({website.canonical_url}):"]
         if auto_fixed_count:
             lines.append(f"- {auto_fixed_count} fix{'es' if auto_fixed_count != 1 else ''} auto-executed")

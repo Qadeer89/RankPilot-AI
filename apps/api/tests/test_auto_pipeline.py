@@ -324,3 +324,85 @@ def test_auto_pipeline_sends_no_digest_when_nothing_happened(db_session, monkeyp
         .all()
     )
     assert notifications == []
+
+
+def test_auto_pipeline_drafts_nothing_in_audit_mode(db_session, monkeypatch):
+    from app.models.notification import Notification
+    from app.models.website import AutomationMode
+
+    patch_crawler_network(monkeypatch)
+
+    def fail_if_called(*a, **k):
+        raise AssertionError("propose_content_fix should never be called in audit mode")
+
+    monkeypatch.setattr(auto_pipeline, "propose_content_fix", fail_if_called)
+
+    website = _make_website(db_session)
+    website.automation_mode = AutomationMode.audit
+    db_session.commit()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    opportunities = refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+    assert any(o.status == OpportunityStatus.open for o in opportunities)
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    assert db_session.query(SEOTask).filter(SEOTask.website_id == website.id).count() == 0
+    notifications = (
+        db_session.query(Notification).filter(Notification.organization_id == website.organization_id).all()
+    )
+    assert notifications == []
+
+
+def test_auto_pipeline_in_copilot_mode_drafts_but_never_auto_executes(db_session, monkeypatch):
+    from app.models.website import AutomationMode
+
+    patch_crawler_network(monkeypatch)
+    _stub_proposal(monkeypatch)
+    website = _make_website(db_session)
+    website.automation_mode = AutomationMode.copilot
+    website.automation_policy = {"auto_execute_risk_tier_1": True}
+    db_session.commit()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
+    assert len(tasks) > 0
+    assert all(t.approval_status == ApprovalStatus.pending for t in tasks)
+    assert all(t.status != SEOTaskStatus.completed for t in tasks)
+
+
+def test_auto_pipeline_respects_the_notify_on_auto_pipeline_summary_toggle(db_session, monkeypatch):
+    from app.models.notification import Notification
+    from app.notifications import slack as slack_module
+
+    patch_crawler_network(monkeypatch)
+    _stub_proposal(monkeypatch)
+    monkeypatch.setattr(slack_module, "_get_webhook_url", lambda organization: None)
+    website = _make_website(db_session)
+    website.automation_policy = {"notify_on_auto_pipeline_summary": False}
+    db_session.commit()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    notifications = (
+        db_session.query(Notification)
+        .filter(Notification.organization_id == website.organization_id, Notification.event_type == "auto_pipeline_summary")
+        .all()
+    )
+    assert notifications == []

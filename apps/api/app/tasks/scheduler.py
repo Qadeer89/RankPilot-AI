@@ -8,6 +8,7 @@ same run.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 from app.celery_app import celery_app
 from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
@@ -17,6 +18,7 @@ from app.integrations.ga4_sync import sync_ga4_metrics
 from app.integrations.performance_sync import sync_performance_metrics
 from app.integrations.search_console_sync import sync_search_performance
 from app.integrations.url_inspection_sync import sync_url_inspection_status
+from app.models.crawl_job import CrawlJob, CrawlStatus
 from app.models.website import VerificationStatus, Website, WebsiteStatus
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.reporting.weekly_report import generate_weekly_report
@@ -26,12 +28,21 @@ from app.usage.metering import record_daily_usage
 logger = logging.getLogger(__name__)
 
 
+_ACTIVE_CRAWL_STATUSES = (CrawlStatus.pending, CrawlStatus.running)
+
+
 @celery_app.task(name="app.tasks.scheduler.daily_crawl_all_active_websites")
 def daily_crawl_all_active_websites() -> int:
-    """RP-0801/RP-0802: enqueue a scheduled crawl for every verified,
-    active website. Each crawl still runs through the same crawl_budget
-    and risk-tier gates as a manual crawl — a daily schedule means daily
-    checks, not forced daily changes (SYSTEM_ARCHITECTURE.md #9).
+    """Enqueue a scheduled crawl for every verified, active website whose
+    own crawl_frequency_hours has actually elapsed since its last crawl
+    (RankPilot AI Phase 8 "User Controls" -- configure crawl frequency;
+    RP-0801/RP-0802's original one-fixed-cadence-for-everyone behavior).
+    This task itself now runs hourly (celery_app.py's beat schedule) so a
+    website configured for e.g. every 6 hours is actually checked on that
+    cadence, not just once a day regardless of what it's set to. Each
+    crawl still runs through the same crawl_budget and risk-tier gates as
+    a manual crawl — a schedule means regular checks, not forced changes
+    (SYSTEM_ARCHITECTURE.md #9).
     """
     from app.tasks.crawl import run_site_crawl
 
@@ -43,7 +54,21 @@ def daily_crawl_all_active_websites() -> int:
             .filter(Website.status == WebsiteStatus.active, Website.verification_status == VerificationStatus.verified)
             .all()
         )
+        now = datetime.now(timezone.utc)
         for website in websites:
+            last_crawl = (
+                db.query(CrawlJob)
+                .filter(CrawlJob.website_id == website.id)
+                .order_by(CrawlJob.created_at.desc())
+                .first()
+            )
+            if last_crawl is not None:
+                if last_crawl.status in _ACTIVE_CRAWL_STATUSES:
+                    continue
+                reference_time = last_crawl.started_at or last_crawl.created_at
+                if now - reference_time < timedelta(hours=website.crawl_frequency_hours):
+                    continue
+
             try:
                 crawl_job = create_crawl_job(db, website, trigger=CrawlTrigger.scheduled)
                 db.commit()

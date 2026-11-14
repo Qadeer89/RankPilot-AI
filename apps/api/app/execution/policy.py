@@ -12,7 +12,7 @@ and SEO_AUTOMATION_ENGINE.md #4 allows blocking tier 3 by default.
 
 from __future__ import annotations
 
-from app.models.website import Website
+from app.models.website import AutomationMode, Website
 
 BLOCKED_RISK_TIER = 3
 
@@ -48,6 +48,12 @@ def requires_approval(website: Website, risk_tier: int, operation: str | None = 
     """
     if risk_tier <= 0:
         return False
+    # Audit and Copilot modes (RankPilot AI Phase 8 "Automation Modes")
+    # never auto-execute anything, regardless of tier or per-category
+    # opt-in -- only Autopilot mode (the default, unchanged behavior)
+    # reaches the tier/category logic below.
+    if website.automation_mode != AutomationMode.autopilot:
+        return True
     if risk_tier == 1:
         if operation is not None:
             category = change_category_for_operation(operation)

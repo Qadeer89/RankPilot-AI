@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import JSON, Boolean, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,6 +28,30 @@ class WebsiteStatus(str, enum.Enum):
     active = "active"
     paused = "paused"
     deleted = "deleted"
+
+
+class AutomationMode(str, enum.Enum):
+    """Three clearly-defined automation modes (RankPilot AI Phase 8
+    "Autopilot Controls"), replacing what was previously only an
+    implicit "copilot with an auto-execute dial" behavior.
+
+    audit: detect and report only -- the automatic background pipeline
+    (app/opportunities/auto_pipeline.py) never drafts an AI proposal,
+    let alone executes a write. A human can still manually request a
+    proposal/task through the API, but it always requires approval
+    (never auto-executes), same as copilot below.
+    copilot: AI drafts fixes automatically; every task always requires
+    approval regardless of risk tier or per-category auto-execute
+    settings -- never auto-executes.
+    autopilot: the original behavior, unchanged for backward
+    compatibility -- tier-1 changes auto-execute per
+    automation_policy's blanket flag or per-category opt-in
+    (app/execution/policy.py); tier 2+ always needs approval.
+    """
+
+    audit = "audit"
+    copilot = "copilot"
+    autopilot = "autopilot"
 
 
 class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -68,6 +92,17 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # endpoint stays disabled by default rather than accepting an unset
     # or empty secret.
     deploy_webhook_secret_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    automation_mode: Mapped[AutomationMode] = mapped_column(
+        Enum(AutomationMode, name="website_automation_mode"), default=AutomationMode.autopilot, nullable=False
+    )
+    # How often this website should be re-crawled on the daily schedule
+    # (RankPilot AI Phase 8 "User Controls" -- configure crawl frequency).
+    # The scheduler task still ticks hourly; this is compared against the
+    # most recent crawl's start time, not a separate per-website cron.
+    crawl_frequency_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    # Overrides config.ai_daily_budget_usd_per_site for this one website
+    # when set; None (the default) means "use the global per-site default".
+    ai_daily_budget_usd_override: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="websites")
     verifications: Mapped[list["WebsiteVerification"]] = relationship(

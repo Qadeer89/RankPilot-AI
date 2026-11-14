@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.agent_run import AgentRun
+from app.models.website import Website
 
 
 class BudgetExceeded(RuntimeError):
@@ -60,13 +61,13 @@ def _acquire_budget_lock(db: Session, website_id: uuid.UUID) -> None:
     db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _advisory_lock_key(website_id)})
 
 
-def enforce_daily_budget(db: Session, website_id: uuid.UUID) -> None:
+def enforce_daily_budget(db: Session, website: Website) -> None:
     settings = get_settings()
 
     if settings.ai_kill_switch_enabled:
         raise BudgetExceeded("AI calls are disabled by the global kill switch (RANKPILOT_AI_KILL_SWITCH_ENABLED).")
 
-    _acquire_budget_lock(db, website_id)
+    _acquire_budget_lock(db, website.id)
 
     global_spent = today_global_spend_usd(db)
     if global_spent >= settings.ai_global_daily_budget_usd:
@@ -75,9 +76,17 @@ def enforce_daily_budget(db: Session, website_id: uuid.UUID) -> None:
             f"${settings.ai_global_daily_budget_usd:.2f} global daily budget."
         )
 
-    spent = today_spend_usd(db, website_id)
-    if spent >= settings.ai_daily_budget_usd_per_site:
+    # RankPilot AI Phase 8 "User Controls" -- a website can override the
+    # global per-site default with its own daily cap; None (the default)
+    # means "use the global default", never a fabricated per-site number.
+    per_site_budget = (
+        website.ai_daily_budget_usd_override
+        if website.ai_daily_budget_usd_override is not None
+        else settings.ai_daily_budget_usd_per_site
+    )
+    spent = today_spend_usd(db, website.id)
+    if spent >= per_site_budget:
         raise BudgetExceeded(
-            f"Website {website_id} has already spent ${spent:.4f} today, "
-            f"at or above the ${settings.ai_daily_budget_usd_per_site:.2f} daily AI budget."
+            f"Website {website.id} has already spent ${spent:.4f} today, "
+            f"at or above the ${per_site_budget:.2f} daily AI budget."
         )

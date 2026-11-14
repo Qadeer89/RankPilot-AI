@@ -20,6 +20,9 @@ class WebsiteResponse(BaseModel):
     crawl_budget: int
     status: str
     automation_policy: dict
+    automation_mode: str
+    crawl_frequency_hours: int
+    ai_daily_budget_usd_override: float | None
     search_console_site_url: str | None
     ga4_property_id: str | None
 
@@ -30,6 +33,16 @@ class WebsiteSettingsUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=255)
     crawl_budget: int | None = Field(default=None, ge=1, le=10000)
     auto_execute_risk_tier_1: bool | None = None
+    # RankPilot AI Phase 8 "Automation Modes": "audit", "copilot" or
+    # "autopilot" -- validated against the enum in the endpoint, not
+    # here, so an invalid value gets a clear 400 rather than a silent
+    # pydantic coercion failure.
+    automation_mode: str | None = None
+    auto_execute_categories: dict[str, bool] | None = None
+    crawl_frequency_hours: int | None = Field(default=None, ge=1, le=168)
+    ai_daily_budget_usd_override: float | None = Field(default=None, ge=0)
+    notify_on_regression: bool | None = None
+    notify_on_auto_pipeline_summary: bool | None = None
 
 
 class VerificationConfirmRequest(BaseModel):

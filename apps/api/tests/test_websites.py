@@ -244,3 +244,106 @@ def test_update_website_settings_toggles_automation_policy(client, monkeypatch):
     body = response.json()
     assert body["automation_policy"] == {"auto_execute_risk_tier_1": True}
     assert body["crawl_budget"] == 50
+
+
+def test_update_website_settings_sets_automation_mode(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor-mode@example.com", "Acme Mode")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+    assert created.json()["automation_mode"] == "autopilot"
+
+    response = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={"automation_mode": "audit"},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["automation_mode"] == "audit"
+
+
+def test_update_website_settings_rejects_an_invalid_automation_mode(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor-badmode@example.com", "Acme Bad Mode")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+
+    response = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={"automation_mode": "something_made_up"},
+        headers=headers,
+    )
+    assert response.status_code == 400
+
+
+def test_update_website_settings_sets_crawl_frequency_and_budget_override(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor-freq@example.com", "Acme Freq")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+    assert created.json()["crawl_frequency_hours"] == 24
+    assert created.json()["ai_daily_budget_usd_override"] is None
+
+    response = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={"crawl_frequency_hours": 6, "ai_daily_budget_usd_override": 2.5},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["crawl_frequency_hours"] == 6
+    assert body["ai_daily_budget_usd_override"] == 2.5
+
+
+def test_update_website_settings_merges_category_opt_ins_and_notification_toggles(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor-cats@example.com", "Acme Cats")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+
+    first = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={"auto_execute_categories": {"metadata": True}},
+        headers=headers,
+    )
+    assert first.json()["automation_policy"]["auto_execute_categories"] == {"metadata": True}
+
+    second = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={
+            "auto_execute_categories": {"images": True},
+            "notify_on_regression": False,
+            "notify_on_auto_pipeline_summary": False,
+        },
+        headers=headers,
+    )
+    assert second.status_code == 200, second.text
+    policy = second.json()["automation_policy"]
+    # Merged, not replaced -- the earlier "metadata" opt-in survives.
+    assert policy["auto_execute_categories"] == {"metadata": True, "images": True}
+    assert policy["notify_on_regression"] is False
+    assert policy["notify_on_auto_pipeline_summary"] is False

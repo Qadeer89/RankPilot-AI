@@ -96,7 +96,8 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         # (app/monitoring/regression_detection.py).
         try:
             regressions = detect_regressions(db, website, crawl_job)
-            if regressions.has_regressions:
+            notify_on_regression = website.automation_policy.get("notify_on_regression", True)
+            if regressions.has_regressions and notify_on_regression:
                 lines = [f"SEO regression detected on {website.display_name} ({website.canonical_url}):"]
                 for f in regressions.new_critical_findings:
                     lines.append(f"- New critical finding: {f.rule_code}")

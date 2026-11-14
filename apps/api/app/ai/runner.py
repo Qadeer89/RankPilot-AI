@@ -55,7 +55,7 @@ def run_ai_agent(
             f"{settings.ai_max_prompt_characters}-character limit (RANKPILOT_AI_MAX_PROMPT_CHARACTERS)."
         )
 
-    enforce_daily_budget(db, website.id)
+    enforce_daily_budget(db, website)
 
     client = get_openai_client()
 
