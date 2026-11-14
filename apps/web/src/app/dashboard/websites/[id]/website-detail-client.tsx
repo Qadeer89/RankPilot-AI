@@ -157,6 +157,7 @@ export default function WebsiteDetailClient() {
   const [pageReports, setPageReports] = useState<Record<string, PageReport>>({});
   const [pageReportLoading, setPageReportLoading] = useState<string | null>(null);
   const [pageReportError, setPageReportError] = useState<string | null>(null);
+  const [taskSubTab, setTaskSubTab] = useState<string | null>(null);
   const [deployWebhookSecret, setDeployWebhookSecret] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
@@ -231,6 +232,10 @@ export default function WebsiteDetailClient() {
   const [showGa4Metrics, setShowGa4Metrics] = useState(false);
 
   const [strategySummary, setStrategySummary] = useState<StrategySummary | null>(null);
+  const [strategyLoading, setStrategyLoading] = useState(false);
+  const [orphanLoading, setOrphanLoading] = useState(false);
+  const [orphanSearchDone, setOrphanSearchDone] = useState(false);
+  const [linkSuggestionLoading, setLinkSuggestionLoading] = useState<string | null>(null);
   const [orphanPages, setOrphanPages] = useState<Page[]>([]);
   const [linkSuggestions, setLinkSuggestions] = useState<Record<string, InternalLinkSuggestions>>({});
   const [qaSummaries, setQaSummaries] = useState<Record<string, QaSummary>>({});
@@ -879,10 +884,13 @@ export default function WebsiteDetailClient() {
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
     setError(null);
+    setStrategyLoading(true);
     try {
       setStrategySummary(await getWeeklyStrategy(token, orgId, websiteId));
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to generate strategy.");
+    } finally {
+      setStrategyLoading(false);
     }
   }
 
@@ -891,10 +899,14 @@ export default function WebsiteDetailClient() {
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
     setError(null);
+    setOrphanLoading(true);
     try {
       setOrphanPages(await listOrphanPages(token, orgId, websiteId));
+      setOrphanSearchDone(true);
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to load orphan pages.");
+    } finally {
+      setOrphanLoading(false);
     }
   }
 
@@ -903,11 +915,14 @@ export default function WebsiteDetailClient() {
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
     setError(null);
+    setLinkSuggestionLoading(pageId);
     try {
       const suggestions = await getInternalLinkSuggestions(token, orgId, websiteId, pageId);
       setLinkSuggestions((prev) => ({ ...prev, [pageId]: suggestions }));
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to get link suggestions.");
+    } finally {
+      setLinkSuggestionLoading(null);
     }
   }
 
@@ -959,16 +974,21 @@ export default function WebsiteDetailClient() {
               <span>{website.canonical_url}</span>
               <StatusBadge value={website.verification_status} />
               <StatusBadge value={website.status} />
-              <span>
-                {(() => {
-                  const lastCrawl = [...crawls].sort(
-                    (a, b) => new Date(b.started_at ?? 0).getTime() - new Date(a.started_at ?? 0).getTime()
-                  )[0];
-                  if (!lastCrawl) return "No crawls yet";
-                  if (!lastCrawl.completed_at) return `Last crawl: ${lastCrawl.status}`;
-                  return `Last crawl: ${new Date(lastCrawl.completed_at).toLocaleString()}`;
-                })()}
-              </span>
+              {(() => {
+                const lastCrawl = [...crawls].sort(
+                  (a, b) => new Date(b.started_at ?? 0).getTime() - new Date(a.started_at ?? 0).getTime()
+                )[0];
+                if (!lastCrawl) return <span>No crawls yet</span>;
+                if (!lastCrawl.completed_at) {
+                  return (
+                    <>
+                      <span>Last crawl:</span>
+                      <StatusBadge value={lastCrawl.status} />
+                    </>
+                  );
+                }
+                return <span>Last crawl: {new Date(lastCrawl.completed_at).toLocaleString()}</span>;
+              })()}
             </div>
           </div>
         </div>
@@ -1752,16 +1772,29 @@ export default function WebsiteDetailClient() {
                 },
               ];
 
-              return groups
-                .filter((group) => group.items.length > 0)
-                .map((group) => (
-                  <div key={group.key} className={styles.taskGroup}>
-                    <h3 className={styles.taskGroupHeading}>
-                      {group.label} ({group.items.length})
-                    </h3>
-                    {group.items.map(renderTaskRow)}
+              const nonEmptyGroups = groups.filter((group) => group.items.length > 0);
+              const selectedKey =
+                taskSubTab && nonEmptyGroups.some((g) => g.key === taskSubTab)
+                  ? taskSubTab
+                  : nonEmptyGroups[0]?.key;
+              const selectedGroup = nonEmptyGroups.find((g) => g.key === selectedKey);
+
+              return (
+                <>
+                  <div className={styles.subTabs}>
+                    {nonEmptyGroups.map((group) => (
+                      <button
+                        key={group.key}
+                        className={`${styles.subTab} ${selectedKey === group.key ? styles.subTabActive : ""}`}
+                        onClick={() => setTaskSubTab(group.key)}
+                      >
+                        {group.label} ({group.items.length})
+                      </button>
+                    ))}
                   </div>
-                ));
+                  {selectedGroup && <div className={styles.taskGroup}>{selectedGroup.items.map(renderTaskRow)}</div>}
+                </>
+              );
             })()}
           </div>
         )}
@@ -2240,8 +2273,12 @@ export default function WebsiteDetailClient() {
                 Data source: this site&apos;s open opportunities (deterministic, rule-derived). A short
                 weekly narrative and focus areas, never a ranking/traffic guarantee.
               </p>
-              <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={handleGetWeeklyStrategy}>
-                Generate this week&apos;s strategy
+              <button
+                className={`${styles.button} ${styles.buttonPrimary}`}
+                onClick={handleGetWeeklyStrategy}
+                disabled={strategyLoading}
+              >
+                {strategyLoading ? "Generating…" : "Generate this week's strategy"}
               </button>
               {strategySummary && (
                 <div className={styles.proposalBox}>
@@ -2265,13 +2302,17 @@ export default function WebsiteDetailClient() {
                 pointing to them) and suggests which existing pages could link to them — there&apos;s no
                 connector operation to add a link automatically, so nothing here is ever applied for you.
               </p>
-              <button className={styles.button} onClick={handleLoadOrphanPages}>
-                Find orphan pages
+              <button className={styles.button} onClick={handleLoadOrphanPages} disabled={orphanLoading}>
+                {orphanLoading ? "Searching…" : "Find orphan pages"}
               </button>
-              {orphanPages.length === 0 && (
+              {!orphanLoading && orphanPages.length === 0 && (
                 <EmptyState
-                  title="No orphan pages loaded yet"
-                  description={'Click "Find orphan pages" to check for pages nothing else links to.'}
+                  title={orphanSearchDone ? "No orphan pages found" : "No orphan pages loaded yet"}
+                  description={
+                    orphanSearchDone
+                      ? "Every crawled page has at least one internal link pointing to it."
+                      : 'Click "Find orphan pages" to check for pages nothing else links to.'
+                  }
                 />
               )}
               {orphanPages.map((page) => (
@@ -2282,8 +2323,12 @@ export default function WebsiteDetailClient() {
                       <span className={styles.rowMeta}>indexability: {page.indexability_state}</span>
                     </div>
                     {!linkSuggestions[page.id] && (
-                      <button className={styles.button} onClick={() => handleGetLinkSuggestions(page.id)}>
-                        Suggest internal links
+                      <button
+                        className={styles.button}
+                        onClick={() => handleGetLinkSuggestions(page.id)}
+                        disabled={linkSuggestionLoading === page.id}
+                      >
+                        {linkSuggestionLoading === page.id ? "Searching…" : "Suggest internal links"}
                       </button>
                     )}
                   </div>

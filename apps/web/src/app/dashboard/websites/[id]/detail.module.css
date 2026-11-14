@@ -154,6 +154,36 @@
   margin: 8px 0 0;
 }
 
+.subTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+
+.subTab {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rp-muted);
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.subTab:hover {
+  color: var(--rp-ink);
+}
+
+.subTabActive {
+  color: var(--rp-primary);
+  background: var(--rp-primary-soft);
+  border-color: var(--rp-primary);
+}
+
 .progressTrack {
   height: 6px;
   border-radius: var(--rp-radius-pill);
