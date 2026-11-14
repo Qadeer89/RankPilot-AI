@@ -117,6 +117,14 @@ RULE_OPPORTUNITY_TEMPLATES: dict[str, OpportunityTemplate] = {
         effort_estimate=0.4,
         risk_tier=1,
     ),
+    "STRUCTURED_DATA_MISSING": OpportunityTemplate(
+        category="structured_data",
+        title="Add structured data (JSON-LD)",
+        rationale="This page has no structured data at all, missing a chance at rich-result eligibility in search.",
+        impact_estimate=0.3,
+        effort_estimate=0.3,
+        risk_tier=2,
+    ),
     "ORPHAN_PAGE_CANDIDATE": OpportunityTemplate(
         category="internal_linking",
         title="Add internal links to an orphan page",

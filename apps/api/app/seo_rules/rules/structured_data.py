@@ -1,4 +1,6 @@
-"""Structured data (JSON-LD) syntax validation (RP-0405)."""
+"""Structured data (JSON-LD) syntax validation and presence check
+(RP-0405, RankPilot AI Phase 3 "Schema Markup Automation").
+"""
 
 from __future__ import annotations
 
@@ -29,5 +31,20 @@ def check(page_id: uuid.UUID, snapshot: PageSnapshot) -> list[FindingCandidate]:
                     },
                 )
             )
+
+    # A heuristic, not a confirmed error (MASTER_SPEC.md #8): not every
+    # page benefits equally from structured data, so this fires at low
+    # confidence and info severity rather than being treated as a
+    # defect the way a parse error is.
+    if not snapshot.schema_json:
+        candidates.append(
+            FindingCandidate(
+                page_id=page_id,
+                rule_code="STRUCTURED_DATA_MISSING",
+                severity=FindingSeverity.info,
+                confidence=0.5,
+                evidence={},
+            )
+        )
 
     return candidates

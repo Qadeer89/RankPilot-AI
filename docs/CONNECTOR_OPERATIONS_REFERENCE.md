@@ -39,6 +39,21 @@ with no auto-execute opt-in, regardless of the AI's own confidence —
 "never automatically change canonical URLs where the correct
 destination is uncertain."
 
+`set_schema_json` (RankPilot AI Phase 3 "Schema Markup Automation") is
+GitHub-only — WordPress has no verified, actually-rendered mechanism
+for a raw custom JSON-LD override (unlike `set_meta_description`'s
+Yoast meta key, nothing reads an equivalent field back out for schema),
+so this platform does not claim the capability there. The AI agent that
+drafts this value is restricted to `@type` `WebPage`/`Article` and a
+small allowlisted property set (never `author`, `publisher`,
+`aggregateRating`, `review`, `offers`, or any other fact-bearing
+property), and every property value is deterministically checked
+against the evidence actually given to the model before it can reach
+this operation at all (`app/ai/schema_validation.py`) — "avoid
+inventing business information, ratings, reviews, or other unsupported
+facts" is enforced in code, not only by prompt. Also forced to risk
+tier 2, same as `set_canonical`.
+
 No connector supports any other operation (no delete, no permalink/URL
 changes, no template/theme changes, no robots/indexability changes, no
 bulk/mass operations) — consistent with `WEBSITE_CONNECTORS.md` #3's
@@ -160,6 +175,7 @@ proposed change, for a human to review and merge.
 | `set_title` | Regex-replaces the `<title>...</title>` block in the resolved source file, commits to a new branch, opens a PR | Only works if the file has an existing `<title>` tag; raises `UnsupportedOperation` otherwise |
 | `set_meta_description` | Regex-replaces the `<meta name="description" content="...">` tag, same commit/PR flow | Only works if the file has an existing meta description tag |
 | `set_canonical` | Regex-replaces the `<link rel="canonical" href="...">` tag, same commit/PR flow | Only works if the file has an existing canonical `<link>` tag; raises `UnsupportedOperation` otherwise |
+| `set_schema_json` | Replaces an existing `<script type="application/ld+json">` block, or inserts a new one before `</head>` if none exists, same commit/PR flow | Raises `UnsupportedOperation` only if the file has no `</head>` tag at all |
 
 **Target resolution:** `find_target` tries a small set of conventional
 static-site paths derived from the URL (e.g. `/about/` → `about.html`,

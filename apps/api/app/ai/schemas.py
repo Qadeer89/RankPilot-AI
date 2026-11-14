@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text", "set_canonical"}
+ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text", "set_canonical", "set_schema_json"}
 
 # A canonical change can silently de-index a page or merge it into the
 # wrong one if the destination is wrong -- far less forgiving than a
@@ -18,8 +18,12 @@ ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text", "set_
 # risk_tier/requires_approval judgment: every set_canonical action
 # forces tier >= 2, which policy.requires_approval() always gates on
 # approval with no auto-execute opt-in, regardless of what the model
-# itself returned.
-MIN_RISK_TIER_BY_OPERATION = {"set_canonical": 2}
+# itself returned. set_schema_json gets the same floor: a fabricated or
+# malformed structured-data block can misrepresent the business in
+# search results, so it too always requires human approval -- on top
+# of the separate, stricter groundedness check in
+# app/ai/schema_validation.py.
+MIN_RISK_TIER_BY_OPERATION = {"set_canonical": 2, "set_schema_json": 2}
 
 
 class EvidenceRef(BaseModel):

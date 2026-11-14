@@ -28,6 +28,7 @@ OPERATION_CATEGORY: dict[str, str] = {
     "set_meta_description": "metadata",
     "set_alt_text": "images",
     "set_canonical": "canonical",
+    "set_schema_json": "structured_data",
 }
 
 

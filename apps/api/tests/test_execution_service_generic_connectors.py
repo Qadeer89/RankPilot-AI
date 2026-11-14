@@ -348,3 +348,64 @@ def test_execute_task_happy_path_via_webflow(db_session, monkeypatch):
     assert change_record.connector_type == ConnectorType.webflow
     assert change_record.validation_status == ValidationStatus.passed
     assert task.status == SEOTaskStatus.completed
+
+
+def _schema_proposal(opportunity_id, target_url="https://example.com/about"):
+    schema_value = '{"@context": "https://schema.org", "@type": "WebPage", "name": "About"}'
+    return OpportunityProposal(
+        opportunity_id=str(opportunity_id),
+        summary="Add structured data.",
+        evidence=[{"page_url": target_url, "finding_code": "STRUCTURED_DATA_MISSING"}],
+        proposed_actions=[{"operation": "set_schema_json", "target_url": target_url, "value": schema_value}],
+        risk_tier=2,
+        confidence=0.9,
+        requires_approval=True,
+        validation_plan=["Fetch page", "Verify structured data"],
+    )
+
+
+def test_execute_task_via_github_inserts_schema_json_happy_path(db_session, monkeypatch):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    monkeypatch.setattr(github_pr, "verify_credentials", lambda credentials: {"id": 1})
+    conn.connect_github(db_session, website, "acme", "marketing-site", "main", "ghp_abc123")
+
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _schema_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
+
+    page_html = "<html><head><title>About</title></head><body>About</body></html>"
+    schema_tag = '<script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "name": "About"}</script>\n'
+    new_html = page_html.replace("</head>", schema_tag + "</head>")
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/contents/about.html"):
+            if params and params.get("ref") not in (None, "main"):
+                return _FakeResponse(200, {"content": base64.b64encode(new_html.encode()).decode()})
+            return _FakeResponse(200, {"sha": "sha1", "content": base64.b64encode(page_html.encode()).decode()})
+        if url.endswith("/git/ref/heads/main"):
+            return _FakeResponse(200, {"object": {"sha": "base-sha"}})
+        if "/pulls/" in url:
+            return _FakeResponse(200, {"state": "open"})
+        return _FakeResponse(404, {})
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        if url.endswith("/git/refs"):
+            return _FakeResponse(201, {"ref": json["ref"]})
+        if url.endswith("/pulls"):
+            return _FakeResponse(201, {"number": 11, "html_url": "https://github.com/acme/marketing-site/pull/11"})
+        return _FakeResponse(400, {})
+
+    def fake_put(url, json=None, headers=None, timeout=None):
+        return _FakeResponse(200, {"commit": {"sha": "new-sha"}})
+
+    monkeypatch.setattr(github_pr.httpx, "get", fake_get)
+    monkeypatch.setattr(github_pr.httpx, "post", fake_post)
+    monkeypatch.setattr(github_pr.httpx, "put", fake_put)
+
+    change_record = execution_service.execute_task(db_session, website, task)
+
+    assert change_record.connector_type == ConnectorType.github
+    assert change_record.validation_status == ValidationStatus.passed
+    assert task.status == SEOTaskStatus.completed
+    assert change_record.before_state_json["value"] == ""

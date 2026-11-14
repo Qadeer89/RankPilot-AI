@@ -67,13 +67,21 @@ def test_auto_pipeline_creates_one_task_per_open_opportunity(db_session, monkeyp
     db_session.flush()
 
     tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
-    assert len(tasks) == open_count
+    # One task per open opportunity, up to the per-crawl cap -- a fixture
+    # producing more open opportunities than the cap is expected now that
+    # STRUCTURED_DATA_MISSING fires for every page with no JSON-LD.
+    assert len(tasks) == min(open_count, auto_pipeline.MAX_AUTO_TASKS_PER_CRAWL)
     # No connector is connected in this test, so none of these auto-execute --
     # they either stay pending approval or not_required, never completed.
     assert all(t.status.value != "completed" for t in tasks)
 
 
 def test_auto_pipeline_does_not_duplicate_tasks_on_a_second_run(db_session, monkeypatch):
+    """Idempotency: no opportunity is ever ticketed twice, across any
+    number of runs -- not "the task count never grows," since a fixture
+    with more open opportunities than the per-crawl cap legitimately
+    picks up more of them (still none repeated) on a later run.
+    """
     patch_crawler_network(monkeypatch)
     _stub_proposal(monkeypatch)
     website = _make_website(db_session)
@@ -85,13 +93,17 @@ def test_auto_pipeline_does_not_duplicate_tasks_on_a_second_run(db_session, monk
 
     auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
     db_session.flush()
-    first_count = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).count()
+    first_run_opportunity_ids = {
+        row[0] for row in db_session.query(SEOTask.opportunity_id).filter(SEOTask.website_id == website.id).all()
+    }
 
     auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
     db_session.flush()
-    second_count = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).count()
+    tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
+    opportunity_ids = [t.opportunity_id for t in tasks]
 
-    assert second_count == first_count
+    assert len(opportunity_ids) == len(set(opportunity_ids)), "no opportunity should ever get two tasks"
+    assert first_run_opportunity_ids.issubset(set(opportunity_ids))
 
 
 def test_auto_pipeline_skips_opportunities_past_the_per_crawl_cap(db_session, monkeypatch):

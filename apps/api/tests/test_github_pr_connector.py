@@ -211,3 +211,38 @@ def test_rollback_closes_pull_request(monkeypatch):
     assert closed["url"].endswith("/pulls/42")
     assert closed["json"] == {"state": "closed"}
     assert result["state"] == "closed"
+
+
+def test_get_current_value_for_schema_json_is_empty_when_no_block_exists():
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": PAGE_HTML}
+    assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_schema_json") == ""
+
+
+def test_apply_change_inserts_a_new_schema_block_when_none_exists():
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": PAGE_HTML}
+    new_value = '{"@context": "https://schema.org", "@type": "WebPage", "name": "About", "url": "https://x/about"}'
+    new_content = github_pr._replace("set_schema_json", target_ref["content"], new_value)
+    assert new_value in new_content
+    assert new_content.count("application/ld+json") == 1
+    assert "</head>" in new_content
+
+
+def test_apply_change_replaces_an_existing_schema_block():
+    content_with_schema = PAGE_HTML.replace(
+        "</head>", '<script type="application/ld+json">{"old": true}</script></head>'
+    )
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": content_with_schema}
+    new_value = '{"@context": "https://schema.org", "@type": "WebPage", "name": "About", "url": "https://x/about"}'
+    new_content = github_pr._replace("set_schema_json", target_ref["content"], new_value)
+    assert new_value in new_content
+    assert '{"old": true}' not in new_content
+    assert new_content.count("application/ld+json") == 1
+
+
+def test_apply_change_raises_unsupported_operation_for_schema_json_when_no_head_tag():
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": "<html><body>No head tag</body></html>"}
+    try:
+        github_pr.apply_change(CREDENTIALS, target_ref, "set_schema_json", "{}")
+        assert False, "expected UnsupportedOperation"
+    except UnsupportedOperation:
+        pass

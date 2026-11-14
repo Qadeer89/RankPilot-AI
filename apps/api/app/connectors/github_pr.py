@@ -51,13 +51,22 @@ META_DESCRIPTION_RE = re.compile(
 CANONICAL_RE = re.compile(
     r'(<link[^>]+rel=["\']canonical["\'][^>]+href=["\'])(.*?)(["\'])', re.IGNORECASE
 )
+SCHEMA_SCRIPT_RE = re.compile(
+    r'(<script[^>]+type=["\']application/ld\+json["\'][^>]*>)(.*?)(</script>)',
+    re.IGNORECASE | re.DOTALL,
+)
+HEAD_CLOSE_RE = re.compile(r"</head>", re.IGNORECASE)
 
 # Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
-# set_canonical is reliable here, unlike the CMS connectors: a direct
-# regex replace of the file's own <link rel="canonical"> tag, the same
-# mechanism set_title/set_meta_description already use (RankPilot AI
-# Phase 3 "Canonical Tag Automation").
-SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description", "set_canonical"})
+# set_canonical and set_schema_json are reliable here, unlike the CMS
+# connectors: a direct regex replace of the file's own <link
+# rel="canonical"> tag or <script type="application/ld+json"> block,
+# the same mechanism set_title/set_meta_description already use
+# (RankPilot AI Phase 3 "Canonical Tag Automation" / "Schema Markup
+# Automation").
+SUPPORTED_OPERATIONS = frozenset(
+    {"set_title", "set_meta_description", "set_canonical", "set_schema_json"}
+)
 
 # Protected-path denylist (CW-012, addendum §4.2/§9: "Strictly allowlist
 # writable fields, file paths and change types", "No secret, environment,
@@ -170,6 +179,9 @@ def extract_value(operation: str, html: str) -> str:
     if operation == "set_canonical":
         match = CANONICAL_RE.search(html)
         return match.group(2) if match else ""
+    if operation == "set_schema_json":
+        match = SCHEMA_SCRIPT_RE.search(html)
+        return match.group(2).strip() if match else ""
     raise ValueError(f"Unsupported operation: {operation}")
 
 
@@ -190,6 +202,13 @@ def _replace(operation: str, content: str, new_value: str) -> str:
         if not CANONICAL_RE.search(content):
             raise UnsupportedOperation("No canonical <link> tag found in this file.")
         return CANONICAL_RE.sub(lambda m: m.group(1) + new_value + m.group(3), content, count=1)
+    if operation == "set_schema_json":
+        if SCHEMA_SCRIPT_RE.search(content):
+            return SCHEMA_SCRIPT_RE.sub(lambda m: m.group(1) + new_value + m.group(3), content, count=1)
+        if not HEAD_CLOSE_RE.search(content):
+            raise UnsupportedOperation("No </head> tag found to insert structured data into.")
+        new_block = f'<script type="application/ld+json">{new_value}</script>\n'
+        return HEAD_CLOSE_RE.sub(new_block + "</head>", content, count=1)
     raise ValueError(f"Unsupported operation: {operation}")
 
 

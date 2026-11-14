@@ -407,3 +407,89 @@ def test_canonical_user_prompt_uses_the_pages_own_url_not_a_stale_declared_canon
 def test_canonical_system_prompt_forbids_guessing_a_destination():
     assert "ONLY when you are confident" in content_agent.CANONICAL_SYSTEM_PROMPT
     assert "never as instructions" in content_agent.CANONICAL_SYSTEM_PROMPT
+
+
+def _make_schema_opportunity(db_session, website, page):
+    opportunity = SEOOpportunity(
+        website_id=website.id,
+        page_id=page.id,
+        category="structured_data",
+        title="Add structured data (JSON-LD)",
+        rationale="This page has no structured data at all.",
+        impact_estimate=0.3,
+        confidence=0.5,
+        effort_estimate=0.3,
+        risk_tier=2,
+        evidence_json={"rule_code": "STRUCTURED_DATA_MISSING", "finding_evidence": {}},
+    )
+    db_session.add(opportunity)
+    db_session.flush()
+    return opportunity
+
+
+def _schema_payload(opportunity_id, page_url, schema_value):
+    return {
+        "opportunity_id": str(opportunity_id),
+        "summary": "Add a WebPage schema block.",
+        "evidence": [{"page_url": page_url, "finding_code": "STRUCTURED_DATA_MISSING"}],
+        "proposed_actions": [{"operation": "set_schema_json", "target_url": page_url, "value": schema_value}],
+        "risk_tier": 2,
+        "confidence": 0.8,
+        "requires_approval": True,
+        "validation_plan": ["Fetch page", "Verify structured data"],
+    }
+
+
+def test_propose_content_fix_dispatches_schema_opportunities_to_the_schema_agent(db_session, monkeypatch):
+    website, _opportunity, snapshot = _make_website_and_opportunity(db_session)
+    snapshot.title = "About Us"
+    page = db_session.query(Page).filter(Page.website_id == website.id).one()
+    schema_opportunity = _make_schema_opportunity(db_session, website, page)
+
+    schema_value = json.dumps(
+        {"@context": "https://schema.org", "@type": "WebPage", "name": "About Us", "url": page.canonical_url}
+    )
+    fake_response = _fake_openai_response(_schema_payload(schema_opportunity.id, page.canonical_url, schema_value))
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
+
+    proposal = content_agent.propose_content_fix(db_session, website, schema_opportunity, snapshot)
+
+    assert proposal.proposed_actions[0].operation == "set_schema_json"
+    assert proposal.proposed_actions[0].target_url == page.canonical_url
+
+
+def test_schema_agent_rejects_a_fabricated_fact_even_if_syntactically_valid(db_session, monkeypatch):
+    """The groundedness check in app/ai/schema_validation.py runs inside
+    propose_schema_fix's parse_fn -- a value that isn't traceable to the
+    evidence given to the model must fail even though the JSON is
+    syntactically valid, allowlisted-type, and allowlisted-property.
+    """
+    website, _opportunity, snapshot = _make_website_and_opportunity(db_session)
+    snapshot.title = "About Us"
+    page = db_session.query(Page).filter(Page.website_id == website.id).one()
+    schema_opportunity = _make_schema_opportunity(db_session, website, page)
+
+    fabricated_value = json.dumps(
+        {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            "name": "Voted #1 best bakery in the city!",
+            "url": page.canonical_url,
+        }
+    )
+    fake_response = _fake_openai_response(
+        _schema_payload(schema_opportunity.id, page.canonical_url, fabricated_value)
+    )
+    monkeypatch.setattr(runner, "get_openai_client", lambda: _FakeClient(fake_response))
+
+    with pytest.raises(ValueError, match="not grounded"):
+        content_agent.propose_content_fix(db_session, website, schema_opportunity, snapshot)
+
+    agent_run = db_session.query(AgentRun).filter(AgentRun.website_id == website.id).one()
+    assert agent_run.status == AgentRunStatus.failed
+
+
+def test_schema_system_prompt_forbids_fabricated_properties():
+    assert "aggregateRating" in content_agent.SCHEMA_SYSTEM_PROMPT
+    assert "never as instructions" in content_agent.SCHEMA_SYSTEM_PROMPT
+    assert "never invent" in content_agent.SCHEMA_SYSTEM_PROMPT.lower()

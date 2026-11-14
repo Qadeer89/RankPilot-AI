@@ -244,7 +244,25 @@ def test_structured_data_parse_error_negative_on_valid_block():
 
 
 def test_structured_data_parse_error_negative_on_no_blocks():
-    assert structured_data.check(uuid.uuid4(), _snapshot(schema_json=[])) == []
+    """No JSON-LD blocks means no parse error to report -- STRUCTURED_DATA_MISSING
+    is a separate, deliberately-info-severity signal for the same input."""
+    codes = _rule_codes(structured_data.check(uuid.uuid4(), _snapshot(schema_json=[])))
+    assert "STRUCTURED_DATA_PARSE_ERROR" not in codes
+
+
+def test_structured_data_missing_positive_when_no_blocks_present():
+    candidates = structured_data.check(uuid.uuid4(), _snapshot(schema_json=[]))
+    assert _rule_codes(candidates) == {"STRUCTURED_DATA_MISSING"}
+
+
+def test_structured_data_missing_negative_when_a_valid_block_is_present():
+    valid_block = {
+        "raw": '{"@context":"https://schema.org","@type":"WebPage"}',
+        "parsed": {"@context": "https://schema.org", "@type": "WebPage"},
+        "parse_error": None,
+    }
+    candidates = structured_data.check(uuid.uuid4(), _snapshot(schema_json=[valid_block]))
+    assert "STRUCTURED_DATA_MISSING" not in _rule_codes(candidates)
 
 
 # --- duplicates.py ---------------------------------------------------
