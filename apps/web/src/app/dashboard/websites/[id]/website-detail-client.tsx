@@ -1244,74 +1244,108 @@ export default function WebsiteDetailClient() {
             {tasks.length === 0 && (
               <EmptyState title="No tasks yet" description="A task is created once you accept an AI proposal for an opportunity." />
             )}
-            {tasks.map((task) => (
-              <div key={task.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span>{task.task_type}</span>
-                  <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
-                </div>
-                <div className={styles.actions}>
-                  <StatusBadge value={task.approval_status} label={`approval: ${task.approval_status}`} />
-                  <StatusBadge value={task.status} />
-                  {task.approval_status === "pending" && (
-                    <>
-                      <button className={styles.button} onClick={() => handleTaskAction(task.id, "approve")}>
-                        Approve
-                      </button>
-                      <button
-                        className={`${styles.button} ${styles.buttonDanger}`}
-                        onClick={() => handleTaskAction(task.id, "reject")}
-                      >
-                        Reject
-                      </button>
-                    </>
-                  )}
-                  {(task.approval_status === "approved" || task.approval_status === "not_required") &&
-                    task.status === "pending" && (
+            {(() => {
+              const renderTaskRow = (task: SEOTask) => (
+                <div key={task.id} className={styles.row}>
+                  <div className={styles.rowMain}>
+                    <span>{task.task_type}</span>
+                    <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
+                  </div>
+                  <div className={styles.actions}>
+                    <StatusBadge value={task.approval_status} label={`approval: ${task.approval_status}`} />
+                    <StatusBadge value={task.status} />
+                    {task.approval_status === "pending" && (
                       <>
-                        <button
-                          className={`${styles.button} ${styles.buttonPrimary}`}
-                          onClick={() => handleTaskAction(task.id, "execute")}
-                        >
-                          Execute
+                        <button className={styles.button} onClick={() => handleTaskAction(task.id, "approve")}>
+                          Approve
                         </button>
                         <button
                           className={`${styles.button} ${styles.buttonDanger}`}
-                          onClick={() => handleTaskAction(task.id, "cancel")}
+                          onClick={() => handleTaskAction(task.id, "reject")}
                         >
-                          Cancel
+                          Reject
                         </button>
                       </>
                     )}
-                  {changeRecords[task.id]?.validation_status === "failed" && (
-                    <button
-                      className={`${styles.button} ${styles.buttonDanger}`}
-                      onClick={() => handleRollback(task.id)}
-                    >
-                      Roll back
-                    </button>
+                    {(task.approval_status === "approved" || task.approval_status === "not_required") &&
+                      task.status === "pending" && (
+                        <>
+                          <button
+                            className={`${styles.button} ${styles.buttonPrimary}`}
+                            onClick={() => handleTaskAction(task.id, "execute")}
+                          >
+                            Execute
+                          </button>
+                          <button
+                            className={`${styles.button} ${styles.buttonDanger}`}
+                            onClick={() => handleTaskAction(task.id, "cancel")}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    {changeRecords[task.id]?.validation_status === "failed" && (
+                      <button
+                        className={`${styles.button} ${styles.buttonDanger}`}
+                        onClick={() => handleRollback(task.id)}
+                      >
+                        Roll back
+                      </button>
+                    )}
+                    {changeRecords[task.id] && !qaSummaries[task.id] && (
+                      <button className={styles.button} onClick={() => handleGetQaSummary(task.id)}>
+                        Get QA summary
+                      </button>
+                    )}
+                  </div>
+                  {changeRecords[task.id] && (
+                    <span className={styles.rowMeta}>
+                      last execution validation: {changeRecords[task.id].validation_status}
+                    </span>
                   )}
-                  {changeRecords[task.id] && !qaSummaries[task.id] && (
-                    <button className={styles.button} onClick={() => handleGetQaSummary(task.id)}>
-                      Get QA summary
-                    </button>
+                  {qaSummaries[task.id] && (
+                    <div className={styles.proposalBox}>
+                      <span>{qaSummaries[task.id].summary}</span>
+                      <span className={styles.rowMeta}>
+                        validation status: {qaSummaries[task.id].validation_status}
+                      </span>
+                    </div>
                   )}
                 </div>
-                {changeRecords[task.id] && (
-                  <span className={styles.rowMeta}>
-                    last execution validation: {changeRecords[task.id].validation_status}
-                  </span>
-                )}
-                {qaSummaries[task.id] && (
-                  <div className={styles.proposalBox}>
-                    <span>{qaSummaries[task.id].summary}</span>
-                    <span className={styles.rowMeta}>
-                      validation status: {qaSummaries[task.id].validation_status}
-                    </span>
+              );
+
+              const groups: { key: string; label: string; items: SEOTask[] }[] = [
+                {
+                  key: "needs_approval",
+                  label: "Needs your approval",
+                  items: tasks.filter((t) => t.approval_status === "pending"),
+                },
+                {
+                  key: "ready",
+                  label: "Ready to execute",
+                  items: tasks.filter((t) => t.approval_status !== "pending" && t.status === "pending"),
+                },
+                { key: "executing", label: "Executing", items: tasks.filter((t) => t.status === "executing") },
+                { key: "completed", label: "Completed", items: tasks.filter((t) => t.status === "completed") },
+                { key: "failed", label: "Failed", items: tasks.filter((t) => t.status === "failed") },
+                {
+                  key: "rejected",
+                  label: "Rejected / cancelled",
+                  items: tasks.filter((t) => t.status === "rejected"),
+                },
+              ];
+
+              return groups
+                .filter((group) => group.items.length > 0)
+                .map((group) => (
+                  <div key={group.key} className={styles.taskGroup}>
+                    <h3 className={styles.taskGroupHeading}>
+                      {group.label} ({group.items.length})
+                    </h3>
+                    {group.items.map(renderTaskRow)}
                   </div>
-                )}
-              </div>
-            ))}
+                ));
+            })()}
           </div>
         )}
 
