@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.crawler.extract import extract_page
 from app.crawler.fetch import FetchError, safe_fetch
+from app.crawler.render import RenderError, looks_js_rendered, render_page
 from app.crawler.robots import RobotsPolicy, fetch_robots_policy
 from app.crawler.sitemap import discover_sitemap_urls
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
@@ -25,6 +26,7 @@ from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.page import IndexabilityState, Page
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.models.page_image import ImageStatus, PageImage
+from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.models.page_snapshot import PageSnapshot
 from app.models.website import Website, WebsiteStatus
 
@@ -188,6 +190,42 @@ def _verify_external_links(db: Session, website: Website, page_ids: set) -> None
                 status = ExternalLinkStatus.ok
         for row in url_rows:
             row.link_status = status
+
+
+def _maybe_render_page(db: Session, page: Page, *, final_url: str, raw_html: str, raw_word_count: int) -> None:
+    """Attempt headless rendering only when the raw HTML looks
+    JS-dependent (app/crawler/render.py's narrow heuristic) -- most
+    pages never reach this far. Replaces any prior PageRenderResult
+    for this page, the same current-state contract PageImage follows.
+    """
+    db.query(PageRenderResult).filter(PageRenderResult.page_id == page.id).delete()
+
+    if not looks_js_rendered(raw_html=raw_html, word_count=raw_word_count):
+        return
+
+    try:
+        rendered = render_page(final_url)
+    except RenderError as exc:
+        db.add(
+            PageRenderResult(
+                page_id=page.id,
+                render_status=RenderStatus.failed,
+                raw_word_count=raw_word_count,
+                rendered_word_count=None,
+                error_message=str(exc)[:1024],
+            )
+        )
+        return
+
+    rendered_extraction = extract_page(rendered.html, base_url=final_url, site_hostname=urlsplit(final_url).hostname or "")
+    db.add(
+        PageRenderResult(
+            page_id=page.id,
+            render_status=RenderStatus.ok,
+            raw_word_count=raw_word_count,
+            rendered_word_count=rendered_extraction.word_count,
+        )
+    )
 
 
 def _upsert_page(db: Session, website: Website, normalized_url: str, canonical_url: str) -> Page:
@@ -394,6 +432,13 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             )
             _sync_page_images(db, page, extraction.images)
             _sync_page_external_links(db, page, extraction.external_links)
+            _maybe_render_page(
+                db,
+                page,
+                final_url=result.final_url,
+                raw_html=result.body,
+                raw_word_count=extraction.word_count,
+            )
             fetched_page_ids.add(page.id)
             pages_fetched += 1
 

@@ -340,3 +340,106 @@ def test_throttle_respects_a_longer_robots_crawl_delay(monkeypatch):
     orchestrator_module._throttle(policy, "RankPilotBot/0.1")
 
     assert slept["seconds"] == 5.0
+
+
+def test_maybe_render_page_skips_rendering_for_normal_content_pages(db_session, monkeypatch):
+    from app.models.page_render_result import PageRenderResult
+
+    called = {"render": False}
+    monkeypatch.setattr(orchestrator_module, "render_page", lambda url: called.setdefault("render", True))
+
+    website = _make_website(db_session)
+    now = datetime.now(timezone.utc)
+    page = Page(
+        website_id=website.id,
+        canonical_url="https://example.com/",
+        normalized_url="https://example.com/",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db_session.add(page)
+    db_session.flush()
+
+    orchestrator_module._maybe_render_page(
+        db_session,
+        page,
+        final_url="https://example.com/",
+        raw_html="<html><body><p>Plenty of ordinary page content here.</p></body></html>",
+        raw_word_count=200,
+    )
+    db_session.flush()
+
+    assert called["render"] is False
+    assert db_session.query(PageRenderResult).filter(PageRenderResult.page_id == page.id).count() == 0
+
+
+def test_maybe_render_page_records_a_successful_render(db_session, monkeypatch):
+    from app.crawler.render import RenderResult
+    from app.models.page_render_result import PageRenderResult, RenderStatus
+
+    monkeypatch.setattr(
+        orchestrator_module,
+        "render_page",
+        lambda url: RenderResult(html="<html><body>Lots of client-rendered content appears here now.</body></html>"),
+    )
+
+    website = _make_website(db_session)
+    now = datetime.now(timezone.utc)
+    page = Page(
+        website_id=website.id,
+        canonical_url="https://example.com/app",
+        normalized_url="https://example.com/app",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db_session.add(page)
+    db_session.flush()
+
+    orchestrator_module._maybe_render_page(
+        db_session,
+        page,
+        final_url="https://example.com/app",
+        raw_html='<html><body><div id="root"></div></body></html>',
+        raw_word_count=0,
+    )
+    db_session.flush()
+
+    result = db_session.query(PageRenderResult).filter(PageRenderResult.page_id == page.id).one()
+    assert result.render_status == RenderStatus.ok
+    assert result.rendered_word_count == 7
+
+
+def test_maybe_render_page_records_a_failed_render(db_session, monkeypatch):
+    from app.crawler.render import RenderError
+    from app.models.page_render_result import PageRenderResult, RenderStatus
+
+    def fake_render_page(url):
+        raise RenderError("navigation timeout")
+
+    monkeypatch.setattr(orchestrator_module, "render_page", fake_render_page)
+
+    website = _make_website(db_session)
+    now = datetime.now(timezone.utc)
+    page = Page(
+        website_id=website.id,
+        canonical_url="https://example.com/app",
+        normalized_url="https://example.com/app",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    db_session.add(page)
+    db_session.flush()
+
+    orchestrator_module._maybe_render_page(
+        db_session,
+        page,
+        final_url="https://example.com/app",
+        raw_html='<html><body><div id="root"></div></body></html>',
+        raw_word_count=0,
+    )
+    db_session.flush()
+
+    result = db_session.query(PageRenderResult).filter(PageRenderResult.page_id == page.id).one()
+    assert result.render_status == RenderStatus.failed
+    assert result.rendered_word_count is None
+    assert "navigation timeout" in result.error_message

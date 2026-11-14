@@ -19,6 +19,7 @@ from app.models.page import Page
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
+from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.seo_rules.rules import (
     content,
     duplicates,
@@ -30,6 +31,7 @@ from app.seo_rules.rules import (
     links,
     metadata,
     pagination,
+    rendering,
     sitemap,
     structured_data,
 )
@@ -695,3 +697,51 @@ def test_heading_hierarchy_skip_positive_when_the_page_starts_below_h1():
     snapshot = _snapshot(heading_sequence_json=[2, 3])
     candidates = headings.check_hierarchy(uuid.uuid4(), snapshot)
     assert _rule_codes(candidates) == {"HEADING_HIERARCHY_SKIP"}
+
+
+def _render_result(**overrides) -> PageRenderResult:
+    defaults = dict(
+        render_status=RenderStatus.ok,
+        raw_word_count=10,
+        rendered_word_count=10,
+        error_message=None,
+    )
+    defaults.update(overrides)
+    return PageRenderResult(**defaults)
+
+
+def test_rendering_check_negative_when_no_render_was_attempted():
+    assert rendering.check(uuid.uuid4(), None) == []
+
+
+def test_render_failure_positive():
+    result = _render_result(render_status=RenderStatus.failed, rendered_word_count=None, error_message="boom")
+    candidates = rendering.check(uuid.uuid4(), result)
+    assert _rule_codes(candidates) == {"RENDER_FAILURE"}
+
+
+def test_js_rendering_content_gap_positive_when_rendered_reveals_much_more_content():
+    result = _render_result(raw_word_count=5, rendered_word_count=200)
+    candidates = rendering.check(uuid.uuid4(), result)
+    assert _rule_codes(candidates) == {"JS_RENDERING_CONTENT_GAP"}
+
+
+def test_js_rendering_content_gap_negative_when_raw_and_rendered_are_similar():
+    result = _render_result(raw_word_count=180, rendered_word_count=200)
+    candidates = rendering.check(uuid.uuid4(), result)
+    assert candidates == []
+
+
+def test_js_rendering_content_gap_negative_when_rendered_content_is_too_small_to_be_meaningful():
+    """A tiny rendered word count (e.g. an almost-empty error page) isn't
+    a meaningful "gap" even if the ratio looks large -- avoids a
+    fabricated-looking finding from noise on trivially small pages."""
+    result = _render_result(raw_word_count=1, rendered_word_count=10)
+    candidates = rendering.check(uuid.uuid4(), result)
+    assert candidates == []
+
+
+def test_js_rendering_content_gap_boundary_exactly_at_threshold_triggers():
+    result = _render_result(raw_word_count=20, rendered_word_count=40)
+    candidates = rendering.check(uuid.uuid4(), result)
+    assert _rule_codes(candidates) == {"JS_RENDERING_CONTENT_GAP"}
