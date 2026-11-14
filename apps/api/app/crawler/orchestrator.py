@@ -167,15 +167,21 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
     """Run one bounded crawl of `website` and persist pages/snapshots.
 
     If `crawl_job` is omitted, one is created here (convenient for direct,
-    synchronous calls such as tests). Caller owns the transaction:
-    commits/rolls back around this call.
+    synchronous calls such as tests). Caller owns the transaction overall
+    (commits/rolls back around this call once it returns), but this
+    function commits `crawl_job.status`/`pages_fetched`/`pages_requested`
+    as it goes -- without that, another request (the dashboard polling
+    for progress) would see this crawl as still "pending" with 0/0 pages
+    the entire time it runs, instead of "running" with live counts, since
+    nothing else would make those intermediate writes visible outside this
+    session until the whole crawl finished.
     """
     if crawl_job is None:
         crawl_job = create_crawl_job(db, website, trigger=trigger)
 
     crawl_job.status = CrawlStatus.running
     crawl_job.started_at = datetime.now(timezone.utc)
-    db.flush()
+    db.commit()
 
     try:
         _purge_non_crawlable_frontier_entries(db, website)
@@ -245,7 +251,9 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             if not robots_policy.can_fetch(frontier_entry.url, USER_AGENT):
                 frontier_entry.state = FrontierState.skipped
                 frontier_entry.next_fetch_at = datetime.now(timezone.utc)
-                db.flush()
+                crawl_job.pages_requested = pages_requested
+                crawl_job.pages_fetched = pages_fetched
+                db.commit()
                 continue
 
             try:
@@ -254,7 +262,9 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                 frontier_entry.state = FrontierState.error
                 frontier_entry.next_fetch_at = datetime.now(timezone.utc)
                 errors.append(f"{frontier_entry.url}: {exc}")
-                db.flush()
+                crawl_job.pages_requested = pages_requested
+                crawl_job.pages_fetched = pages_fetched
+                db.commit()
                 _throttle(robots_policy, USER_AGENT)
                 continue
 
@@ -302,7 +312,9 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                         priority=10,
                         discovered_from=frontier_entry.url,
                     )
-            db.flush()
+            crawl_job.pages_requested = pages_requested
+            crawl_job.pages_fetched = pages_fetched
+            db.commit()
             _throttle(robots_policy, USER_AGENT)
 
         crawl_job.status = CrawlStatus.cancelled if cancelled_reason else CrawlStatus.completed

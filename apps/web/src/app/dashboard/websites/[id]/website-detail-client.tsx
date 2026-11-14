@@ -263,6 +263,31 @@ export default function WebsiteDetailClient() {
     }
   }, [websiteId]);
 
+  // While a crawl is pending/running, poll its progress every few seconds
+  // (the backend now commits pages_fetched/pages_requested as it goes --
+  // app/crawler/orchestrator.py) instead of only finding out once the
+  // whole crawl has finished. Once no crawl is active anymore, do one
+  // full refresh to pick up whatever the crawl changed (findings,
+  // opportunities, and now auto-generated tasks).
+  useEffect(() => {
+    const hasActiveCrawl = crawls.some((c) => c.status === "pending" || c.status === "running");
+    if (!hasActiveCrawl) return;
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    const interval = setInterval(async () => {
+      try {
+        const latest = await listCrawls(token, orgId, websiteId);
+        setCrawls(latest);
+        const stillActive = latest.some((c) => c.status === "pending" || c.status === "running");
+        if (!stillActive) await refreshAll();
+      } catch {
+        // Transient polling error -- the next tick (or a manual refresh) will catch up.
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [crawls, websiteId, refreshAll]);
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -958,18 +983,30 @@ export default function WebsiteDetailClient() {
             {crawls.length === 0 && (
               <EmptyState title="No crawls yet" description="Run the first crawl to start discovering pages and issues." />
             )}
-            {crawls.map((crawl) => (
-              <div key={crawl.id} className={styles.row}>
-                <div className={styles.rowMain}>
-                  <span>{crawl.trigger} crawl</span>
-                  <span className={styles.rowMeta}>
-                    {crawl.pages_fetched}/{crawl.pages_requested} pages fetched
-                    {crawl.error_summary ? ` — ${crawl.error_summary}` : ""}
-                  </span>
+            {crawls.map((crawl) => {
+              const isActive = crawl.status === "pending" || crawl.status === "running";
+              const budget = website?.crawl_budget || 1;
+              const percent = Math.min(100, Math.round((crawl.pages_fetched / budget) * 100));
+              return (
+                <div key={crawl.id} className={styles.row} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                  <div className={styles.row} style={{ border: "none", padding: 0 }}>
+                    <div className={styles.rowMain}>
+                      <span>{crawl.trigger} crawl</span>
+                      <span className={styles.rowMeta}>
+                        {crawl.pages_fetched}/{crawl.pages_requested} pages fetched
+                        {crawl.error_summary ? ` — ${crawl.error_summary}` : ""}
+                      </span>
+                    </div>
+                    <StatusBadge value={crawl.status} />
+                  </div>
+                  {isActive && (
+                    <div className={styles.progressTrack}>
+                      <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+                    </div>
+                  )}
                 </div>
-                <StatusBadge value={crawl.status} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
