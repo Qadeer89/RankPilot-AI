@@ -378,3 +378,41 @@ def test_execute_task_happy_path_for_set_canonical(db_session, monkeypatch):
 
     assert change_record.validation_status == ValidationStatus.passed
     assert task.status == SEOTaskStatus.completed
+
+
+def test_execute_task_rolls_back_on_failed_validation_for_set_canonical(db_session, monkeypatch):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    _connect_wordpress(db_session, website, monkeypatch)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _canonical_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        if "/pages" in url and params:
+            return _FakeResponse(200, [{"id": 7}])
+        # The post-write validation re-fetch always reports the OLD
+        # canonical, as if the write landed but didn't actually take
+        # effect on the live page.
+        return _FakeResponse(200, {"id": 7, "meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/old-canonical"}})
+
+    def fake_post(url, auth=None, json=None, timeout=None):
+        # update_canonical()'s own write-time response reports success
+        # with the NEW value, so its silent-no-op check passes and
+        # execution reaches the separate post-write validation step
+        # above, which is what this test is about.
+        return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+
+    change_record = execution_service.execute_task(db_session, website, task)
+
+    assert change_record.validation_status == ValidationStatus.failed
+    assert task.status == SEOTaskStatus.failed
+
+    from app.models.rollback_record import RollbackRecord
+
+    rollback = db_session.query(RollbackRecord).filter(RollbackRecord.change_record_id == change_record.id).one()
+    assert rollback.status == RollbackStatus.completed
+    assert rollback.rollback_method == "wordpress.set_canonical"

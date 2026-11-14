@@ -409,3 +409,60 @@ def test_execute_task_via_github_inserts_schema_json_happy_path(db_session, monk
     assert change_record.validation_status == ValidationStatus.passed
     assert task.status == SEOTaskStatus.completed
     assert change_record.before_state_json["value"] == ""
+
+
+def test_execute_task_via_github_rolls_back_schema_json_on_failed_validation(db_session, monkeypatch):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    monkeypatch.setattr(github_pr, "verify_credentials", lambda credentials: {"id": 1})
+    conn.connect_github(db_session, website, "acme", "marketing-site", "main", "ghp_abc123")
+
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _schema_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
+
+    page_html = "<html><head><title>About</title></head><body>About</body></html>"
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/contents/about.html"):
+            # Validation re-fetch always reports no schema block, as if
+            # the commit silently failed to land on the branch.
+            return _FakeResponse(200, {"sha": "sha1", "content": base64.b64encode(page_html.encode()).decode()})
+        if url.endswith("/git/ref/heads/main"):
+            return _FakeResponse(200, {"object": {"sha": "base-sha"}})
+        if "/pulls/" in url:
+            return _FakeResponse(200, {"state": "open"})
+        return _FakeResponse(404, {})
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        if url.endswith("/git/refs"):
+            return _FakeResponse(201, {"ref": json["ref"]})
+        if url.endswith("/pulls"):
+            return _FakeResponse(201, {"number": 13, "html_url": "https://github.com/acme/marketing-site/pull/13"})
+        return _FakeResponse(400, {})
+
+    def fake_put(url, json=None, headers=None, timeout=None):
+        return _FakeResponse(200, {"commit": {"sha": "new-sha"}})
+
+    closed = {}
+
+    def fake_patch(url, json=None, headers=None, timeout=None):
+        closed["url"] = url
+        return _FakeResponse(200, {"number": 13, "state": "closed"})
+
+    monkeypatch.setattr(github_pr.httpx, "get", fake_get)
+    monkeypatch.setattr(github_pr.httpx, "post", fake_post)
+    monkeypatch.setattr(github_pr.httpx, "put", fake_put)
+    monkeypatch.setattr(github_pr.httpx, "patch", fake_patch)
+
+    change_record = execution_service.execute_task(db_session, website, task)
+
+    assert change_record.validation_status == ValidationStatus.failed
+    assert task.status == SEOTaskStatus.failed
+
+    from app.models.rollback_record import RollbackRecord
+
+    rollback = db_session.query(RollbackRecord).filter(RollbackRecord.change_record_id == change_record.id).one()
+    assert rollback.status == RollbackStatus.completed
+    assert rollback.rollback_method == "github.set_schema_json"
+    assert closed["url"].endswith("/pulls/13")
