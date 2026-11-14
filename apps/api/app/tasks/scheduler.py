@@ -12,7 +12,9 @@ import logging
 from app.celery_app import celery_app
 from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
 from app.db.session import SessionLocal
+from app.config import get_settings
 from app.integrations.ga4_sync import sync_ga4_metrics
+from app.integrations.performance_sync import sync_performance_metrics
 from app.integrations.search_console_sync import sync_search_performance
 from app.models.website import VerificationStatus, Website, WebsiteStatus
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
@@ -84,6 +86,38 @@ def daily_sync_search_signals_for_all_websites() -> int:
                 except Exception:
                     logger.exception("Failed to sync GA4 data for website %s", website.id)
                     db.rollback()
+        return synced
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scheduler.daily_sync_performance_metrics_for_all_websites")
+def daily_sync_performance_metrics_for_all_websites() -> int:
+    """Pull fresh Core Web Vitals (PageSpeed Insights) for every active,
+    verified website's pages. A no-op across the board when
+    RANKPILOT_PAGESPEED_API_KEY isn't configured -- performance_score
+    then simply stays unmeasured, never a crash.
+    """
+    settings = get_settings()
+    if not settings.pagespeed_api_key:
+        return 0
+
+    db = SessionLocal()
+    synced = 0
+    try:
+        websites = (
+            db.query(Website)
+            .filter(Website.status == WebsiteStatus.active, Website.verification_status == VerificationStatus.verified)
+            .all()
+        )
+        for website in websites:
+            try:
+                sync_performance_metrics(db, website)
+                db.commit()
+                synced += 1
+            except Exception:
+                logger.exception("Failed to sync performance metrics for website %s", website.id)
+                db.rollback()
         return synced
     finally:
         db.close()

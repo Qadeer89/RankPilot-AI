@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     # Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str | None = None
 
+    # Google PageSpeed Insights API (RankPilot AI Phase 4 "Core Web
+    # Vitals"). Optional: unset means performance_score simply stays
+    # unmeasured (None), never a crash and never a fabricated number.
+    pagespeed_api_key: str | None = None
+    pagespeed_request_timeout_seconds: float = 30.0
+    # Bounds one sync run's worth of PageSpeed API calls -- each call
+    # runs a real Lighthouse audit and takes several seconds, so this
+    # is a cost/latency cap, the same spirit as MAX_AUTO_TASKS_PER_CRAWL.
+    pagespeed_max_pages_per_sync: int = 10
+
     # Email notifications (RP-0804). All optional: unset means
     # notifications are recorded as skipped_not_configured, never a crash.
     smtp_host: str | None = None

@@ -48,4 +48,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.run_retention_cleanup",
         "schedule": crontab(hour=3, minute=0),
     },
+    "daily-sync-performance-metrics": {
+        "task": "app.tasks.scheduler.daily_sync_performance_metrics_for_all_websites",
+        "schedule": crontab(hour=2, minute=30),
+    },
 }

@@ -1,6 +1,8 @@
 from app.crawler.orchestrator import run_crawl
 from app.models.crawl_job import CrawlTrigger
 from app.models.organization import Organization
+from app.models.page import Page
+from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.models.site_health_score import SiteHealthScore
 from app.models.website import Website
 from app.opportunities.health_score import compute_health_score, get_score_history
@@ -87,3 +89,29 @@ def test_score_history_returns_most_recent_first(db_session, monkeypatch):
     assert len(history) == 2
     assert history[0].crawl_job_id == crawl_job_2.id
     assert history[1].crawl_job_id == crawl_job_1.id
+
+
+def test_compute_health_score_uses_real_performance_metrics_once_measured(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    db_session.flush()
+
+    pages = db_session.query(Page).filter(Page.website_id == website.id).all()
+    assert pages, "fixture crawl should have discovered at least one page"
+    for page in pages[:2]:
+        db_session.add(
+            PerformanceMetric(
+                page_id=page.id,
+                strategy=PerformanceStrategy.mobile,
+                lab_performance_score=80.0,
+            )
+        )
+    db_session.flush()
+
+    score = compute_health_score(db_session, website, crawl_job)
+    db_session.flush()
+
+    assert score.performance_score == 80.0

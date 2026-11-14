@@ -15,6 +15,7 @@ from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.models.page_snapshot import PageSnapshot
+from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.models.report import Report, ReportType
 from app.models.rollback_record import RollbackRecord, RollbackStatus
 from app.models.seo_finding import FindingSeverity, FindingStatus, SEOFinding
@@ -64,6 +65,8 @@ __all__ = [
     "PageRenderResult",
     "RenderStatus",
     "PageSnapshot",
+    "PerformanceMetric",
+    "PerformanceStrategy",
     "Report",
     "ReportType",
     "RollbackRecord",

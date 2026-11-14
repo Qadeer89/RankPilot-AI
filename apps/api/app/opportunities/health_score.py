@@ -6,12 +6,12 @@ engine produced -- no AI involvement, matching the "AI never decides
 whether a technical SEO condition passes" rule the rest of the rule
 engine already follows (app/seo_rules/engine.py docstring).
 
-A category this codebase has no data source for yet (performance) is
-left as None ("not measured"), never defaulted to a number, so a
-dashboard reading this can tell "unavailable" apart from "measured and
-perfect." content_score now has a real data source (thin-content and
-duplicate-body-content detection, app/seo_rules/rules/content.py) and
-is computed like the other categories.
+performance_score now has a real data source too (PageSpeed Insights
+lab scores, app/integrations/pagespeed.py) -- but only once the
+operator configures RANKPILOT_PAGESPEED_API_KEY and a sync has run at
+least once for this website's pages; until then it stays None, never
+a fabricated/default number, same principle as every other category
+here.
 """
 
 from __future__ import annotations
@@ -20,15 +20,14 @@ from sqlalchemy.orm import Session
 
 from app.models.crawl_job import CrawlJob
 from app.models.page import Page
+from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.models.seo_finding import FindingSeverity, FindingStatus, SEOFinding
 from app.models.site_health_score import SiteHealthScore
 from app.models.website import Website
 
 # Every rule_code the deterministic engine currently implements
 # (app/seo_rules/rules/*.py), split into the categories this codebase can
-# actually evaluate today. Performance (Core Web Vitals) has no data
-# source yet, so that category score stays None rather than being
-# computed from an empty/fabricated rule set.
+# actually evaluate today.
 TECHNICAL_RULE_CODES = frozenset(
     {
         "HTTP_ERROR_STATUS",
@@ -96,6 +95,28 @@ def _category_score(findings: list[SEOFinding], rule_codes: frozenset[str], page
     return max(0.0, 100.0 - min(penalty_per_page * PENALTY_SCALE, 100.0))
 
 
+def _performance_score(db: Session, website: Website) -> float | None:
+    """Average of each page's own lab performance score (already a
+    0-100 Lighthouse category score, not re-derived) across every page
+    with at least one PageSpeed Insights measurement. None when no
+    page has been measured yet -- never a default/fabricated value.
+    """
+    scores = (
+        db.query(PerformanceMetric.lab_performance_score)
+        .join(Page, Page.id == PerformanceMetric.page_id)
+        .filter(
+            Page.website_id == website.id,
+            PerformanceMetric.strategy == PerformanceStrategy.mobile,
+            PerformanceMetric.lab_performance_score.isnot(None),
+        )
+        .all()
+    )
+    values = [row[0] for row in scores]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
 def compute_health_score(db: Session, website: Website, crawl_job: CrawlJob) -> SiteHealthScore:
     page_count = db.query(Page).filter(Page.website_id == website.id).count()
     open_findings = (
@@ -107,7 +128,7 @@ def compute_health_score(db: Session, website: Website, crawl_job: CrawlJob) -> 
     technical_score = _category_score(open_findings, TECHNICAL_RULE_CODES, page_count)
     on_page_score = _category_score(open_findings, ON_PAGE_RULE_CODES, page_count)
     content_score = _category_score(open_findings, CONTENT_RULE_CODES, page_count)
-    performance_score: float | None = None  # not measured yet -- no Core Web Vitals integration
+    performance_score = _performance_score(db, website)
 
     available = [s for s in (technical_score, on_page_score, content_score, performance_score) if s is not None]
     overall_score = sum(available) / len(available) if available else None
