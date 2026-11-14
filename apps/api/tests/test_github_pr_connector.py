@@ -9,7 +9,9 @@ CREDENTIALS = github_pr.GitHubCredentials(
 
 PAGE_HTML = (
     "<html><head><title>Old Title</title>"
-    '<meta name="description" content="Old description"></head>'
+    '<meta name="description" content="Old description">'
+    '<link rel="canonical" href="https://example.com/old-canonical">'
+    "</head>"
     "<body>About us</body></html>"
 )
 
@@ -88,6 +90,23 @@ def test_get_current_value_extracts_title_and_description():
     target_ref = {"file_path": "about.html", "sha": "sha123", "content": PAGE_HTML}
     assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_title") == "Old Title"
     assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_meta_description") == "Old description"
+    assert github_pr.get_current_value(CREDENTIALS, target_ref, "set_canonical") == "https://example.com/old-canonical"
+
+
+def test_apply_change_replaces_canonical_tag():
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": PAGE_HTML}
+    new_content = github_pr._replace("set_canonical", target_ref["content"], "https://example.com/about")
+    assert 'href="https://example.com/about"' in new_content
+    assert "old-canonical" not in new_content
+
+
+def test_apply_change_raises_unsupported_operation_when_canonical_tag_missing():
+    target_ref = {"file_path": "about.html", "sha": "sha123", "content": "<html><body>No canonical here</body></html>"}
+    try:
+        github_pr.apply_change(CREDENTIALS, target_ref, "set_canonical", "https://example.com/about")
+        assert False, "expected UnsupportedOperation"
+    except UnsupportedOperation:
+        pass
 
 
 def test_apply_change_opens_branch_commit_and_pull_request(monkeypatch):

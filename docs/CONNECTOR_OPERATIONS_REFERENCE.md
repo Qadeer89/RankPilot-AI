@@ -26,10 +26,23 @@ logic doesn't need to know which connector it's talking to:
 
 `set_alt_text` (RankPilot AI Phase 2 "AI Alt Text Generation") targets an
 individual *image*, not a page, and is WordPress-only today — see that
-connector's section below. No connector supports any other operation
-(no delete, no permalink/URL changes, no template/theme changes, no
-robots/indexability changes, no bulk/mass operations) — consistent with
-`WEBSITE_CONNECTORS.md` #3's MVP restriction.
+connector's section below.
+
+`set_canonical` (RankPilot AI Phase 3 "Canonical Tag Automation") is
+WordPress and GitHub only — Shopify, Webflow, and Sanity have no
+verified, reliably REST-writable canonical-URL field as of this
+writing, so this platform does not offer it for them rather than
+guessing at an undocumented mechanism. Every `set_canonical` proposal
+is forced to risk tier 2 in code (`app/ai/schemas.py`
+`MIN_RISK_TIER_BY_OPERATION`), which always requires human approval
+with no auto-execute opt-in, regardless of the AI's own confidence —
+"never automatically change canonical URLs where the correct
+destination is uncertain."
+
+No connector supports any other operation (no delete, no permalink/URL
+changes, no template/theme changes, no robots/indexability changes, no
+bulk/mass operations) — consistent with `WEBSITE_CONNECTORS.md` #3's
+MVP restriction.
 
 ---
 
@@ -46,6 +59,7 @@ owner's main login). Credentials: `(site_url, username, application_password)`.
 | `set_title` | `POST /wp-json/wp/v2/{pages\|posts}/{id}` with `{"title": ...}` | Reliable — core WordPress REST field |
 | `set_meta_description` | Same endpoint, `{"meta": {"_yoast_wpseo_metadesc": ...}}` | **Best-effort** — raises `UnsupportedOperation` if the site doesn't expose a Yoast-SEO-compatible meta key, or if WordPress silently accepted but didn't persist the value |
 | `set_alt_text` | `POST /wp-json/wp/v2/media/{id}` with `{"alt_text": ...}` | Reliable — core WordPress REST field on every media attachment, no plugin required |
+| `set_canonical` | Same endpoint, `{"meta": {"_yoast_wpseo_canonical": ...}}` | **Best-effort**, same caveat as `set_meta_description` — raises `UnsupportedOperation` if not persisted |
 
 **Target resolution:** `find_post_by_url` matches the target URL's slug
 against `pages` then `posts` (first match wins). `set_alt_text`'s target
@@ -145,6 +159,7 @@ proposed change, for a human to review and merge.
 |---|---|---|
 | `set_title` | Regex-replaces the `<title>...</title>` block in the resolved source file, commits to a new branch, opens a PR | Only works if the file has an existing `<title>` tag; raises `UnsupportedOperation` otherwise |
 | `set_meta_description` | Regex-replaces the `<meta name="description" content="...">` tag, same commit/PR flow | Only works if the file has an existing meta description tag |
+| `set_canonical` | Regex-replaces the `<link rel="canonical" href="...">` tag, same commit/PR flow | Only works if the file has an existing canonical `<link>` tag; raises `UnsupportedOperation` otherwise |
 
 **Target resolution:** `find_target` tries a small set of conventional
 static-site paths derived from the URL (e.g. `/about/` → `about.html`,

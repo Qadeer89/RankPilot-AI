@@ -20,6 +20,7 @@ import httpx
 from app.connectors.errors import ConnectorError, safe_request
 
 YOAST_META_DESCRIPTION_KEY = "_yoast_wpseo_metadesc"
+YOAST_CANONICAL_KEY = "_yoast_wpseo_canonical"
 POST_TYPES_TO_SEARCH = ("pages", "posts")
 MEDIA_RESOURCE_TYPE = "media"
 REQUEST_TIMEOUT_SECONDS = 15.0
@@ -32,7 +33,10 @@ REQUEST_TIMEOUT_SECONDS = 15.0
 # -- other connectors get it only once their content model is checked to
 # actually support per-image alt text (RankPilot AI Phase 2 "AI Alt Text
 # Generation").
-SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description", "set_alt_text"})
+# set_canonical is best-effort via the same Yoast meta-key mechanism as
+# set_meta_description -- WordPress core has no canonical-URL REST
+# field of its own (RankPilot AI Phase 3 "Canonical Tag Automation").
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description", "set_alt_text", "set_canonical"})
 
 
 class WordPressConnectorError(ConnectorError):
@@ -161,6 +165,10 @@ def current_alt_text(resource: dict) -> str:
     return resource.get("alt_text", "")
 
 
+def current_canonical(resource: dict) -> str:
+    return resource.get("meta", {}).get(YOAST_CANONICAL_KEY, "")
+
+
 def update_title(credentials: WordPressCredentials, post_type: str, post_id: int, new_title: str) -> dict:
     response = safe_request(
         httpx.post,
@@ -202,6 +210,36 @@ def update_meta_description(
     if current_meta_description(body) != new_description:
         raise UnsupportedOperation(
             "WordPress accepted the request but did not persist the meta description; "
+            "this site likely doesn't support this field."
+        )
+    return body
+
+
+def update_canonical(
+    credentials: WordPressCredentials, post_type: str, post_id: int, new_canonical: str
+) -> dict:
+    response = safe_request(
+        httpx.post,
+        f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
+        auth=credentials.auth,
+        json={"meta": {YOAST_CANONICAL_KEY: new_canonical}},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+        error_cls=WordPressConnectorError,
+    )
+    if response.status_code == 400:
+        raise UnsupportedOperation(
+            "This WordPress site does not expose a REST-writable canonical URL field "
+            "(expected a Yoast SEO-compatible meta key)."
+        )
+    if response.status_code != 200:
+        raise WordPressConnectorError(
+            f"Failed to update canonical URL on {post_type}/{post_id}: "
+            f"HTTP {response.status_code} {response.text[:200]}"
+        )
+    body = response.json()
+    if current_canonical(body) != new_canonical:
+        raise UnsupportedOperation(
+            "WordPress accepted the request but did not persist the canonical URL; "
             "this site likely doesn't support this field."
         )
     return body

@@ -300,3 +300,81 @@ def test_execute_task_happy_path_for_set_alt_text(db_session, monkeypatch):
     assert change_record.validation_status == ValidationStatus.passed
     assert task.status == SEOTaskStatus.completed
     assert change_record.before_state_json["post_type"] == "media"
+
+
+def _canonical_proposal(opportunity_id, target_url="https://example.com/real-page"):
+    return OpportunityProposal(
+        opportunity_id=str(opportunity_id),
+        summary="Make this page canonical to itself.",
+        evidence=[{"page_url": target_url, "finding_code": "CANONICAL_MISSING"}],
+        proposed_actions=[{"operation": "set_canonical", "target_url": target_url, "value": target_url}],
+        risk_tier=2,
+        confidence=0.95,
+        requires_approval=True,
+        validation_plan=["Fetch page", "Verify canonical tag"],
+    )
+
+
+def test_canonical_proposal_at_a_low_risk_tier_is_rejected_before_any_task_exists():
+    """Defense in depth (app/ai/schemas.py MIN_RISK_TIER_BY_OPERATION): a
+    set_canonical proposal must never reach create_tasks_from_proposal at
+    all if something upstream (a bug, a tampered response) returned a
+    risk_tier below the enforced floor for this operation.
+    """
+    with pytest.raises(ValueError):
+        OpportunityProposal(
+            opportunity_id=str(uuid.uuid4()),
+            summary="Make this page canonical to itself.",
+            evidence=[{"page_url": "https://example.com/real-page", "finding_code": "CANONICAL_MISSING"}],
+            proposed_actions=[
+                {
+                    "operation": "set_canonical",
+                    "target_url": "https://example.com/real-page",
+                    "value": "https://example.com/real-page",
+                }
+            ],
+            risk_tier=1,
+            confidence=0.95,
+            requires_approval=False,
+            validation_plan=["Fetch page"],
+        ).validate_allowed_operations()
+
+
+def test_canonical_task_always_requires_approval_even_with_auto_execute_enabled(db_session):
+    """"Never automatically change canonical URLs where the correct
+    destination is uncertain" (Phase 3 spec) -- enforced by forcing tier
+    2, which policy.requires_approval() never lets auto-execute, even on
+    a website that has opted into tier-1 auto-execution generally.
+    """
+    website, opportunity = _make_website_and_opportunity(
+        db_session, automation_policy={"auto_execute_risk_tier_1": True}
+    )
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _canonical_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    assert task.approval_status == ApprovalStatus.pending
+
+
+def test_execute_task_happy_path_for_set_canonical(db_session, monkeypatch):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    _connect_wordpress(db_session, website, monkeypatch)
+    task = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _canonical_proposal(opportunity.id), requested_by=_make_user(db_session).id
+    )[0]
+    execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        if "/pages" in url and params:
+            return _FakeResponse(200, [{"id": 7}])
+        return _FakeResponse(200, {"id": 7, "meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/real-page"}})
+
+    def fake_post(url, auth=None, json=None, timeout=None):
+        return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
+
+    monkeypatch.setattr(wp.httpx, "get", fake_get)
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+
+    change_record = execution_service.execute_task(db_session, website, task)
+
+    assert change_record.validation_status == ValidationStatus.passed
+    assert task.status == SEOTaskStatus.completed

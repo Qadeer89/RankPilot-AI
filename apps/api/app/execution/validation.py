@@ -8,6 +8,7 @@ from __future__ import annotations
 from app.connectors.wordpress import (
     WordPressCredentials,
     current_alt_text,
+    current_canonical,
     current_meta_description,
     current_title,
     get_resource,
@@ -25,6 +26,8 @@ def validate_wordpress_change(
         actual_value = current_meta_description(resource)
     elif operation == "set_alt_text":
         actual_value = current_alt_text(resource)
+    elif operation == "set_canonical":
+        actual_value = current_canonical(resource)
     else:
         raise ValueError(f"Unknown operation: {operation}")
 

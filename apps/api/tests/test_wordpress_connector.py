@@ -157,3 +157,25 @@ def test_update_alt_text_detects_silent_no_op(monkeypatch):
     monkeypatch.setattr(wp.httpx, "post", lambda *a, **k: _FakeResponse(200, {"id": 7, "alt_text": ""}))
     with pytest.raises(wp.UnsupportedOperation):
         wp.update_alt_text(CREDENTIALS, 7, "A golden retriever on the beach")
+
+
+def test_update_canonical_success(monkeypatch):
+    def fake_post(url, auth=None, json=None, timeout=None):
+        assert json == {"meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/real-page"}}
+        return _FakeResponse(200, {"id": 42, "meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/real-page"}})
+
+    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    result = wp.update_canonical(CREDENTIALS, "pages", 42, "https://example.com/real-page")
+    assert wp.current_canonical(result) == "https://example.com/real-page"
+
+
+def test_update_canonical_rejects_unsupported_site(monkeypatch):
+    monkeypatch.setattr(wp.httpx, "post", lambda *a, **k: _FakeResponse(400, {"code": "rest_invalid_param"}))
+    with pytest.raises(wp.UnsupportedOperation):
+        wp.update_canonical(CREDENTIALS, "pages", 42, "https://example.com/real-page")
+
+
+def test_update_canonical_detects_silent_no_op(monkeypatch):
+    monkeypatch.setattr(wp.httpx, "post", lambda *a, **k: _FakeResponse(200, {"id": 42, "meta": {}}))
+    with pytest.raises(wp.UnsupportedOperation):
+        wp.update_canonical(CREDENTIALS, "pages", 42, "https://example.com/real-page")

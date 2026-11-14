@@ -8,7 +8,18 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text"}
+ALLOWED_OPERATIONS = {"set_title", "set_meta_description", "set_alt_text", "set_canonical"}
+
+# A canonical change can silently de-index a page or merge it into the
+# wrong one if the destination is wrong -- far less forgiving than a
+# title/meta-description typo. "Never automatically change canonical
+# URLs where the correct destination is uncertain" (Phase 3 spec) is
+# enforced here, in code, rather than trusted to the model's own
+# risk_tier/requires_approval judgment: every set_canonical action
+# forces tier >= 2, which policy.requires_approval() always gates on
+# approval with no auto-execute opt-in, regardless of what the model
+# itself returned.
+MIN_RISK_TIER_BY_OPERATION = {"set_canonical": 2}
 
 
 class EvidenceRef(BaseModel):
@@ -48,7 +59,8 @@ class OpportunityProposal(BaseModel):
     validation_plan: list[str]
 
     def validate_allowed_operations(self) -> None:
-        """Raise if the model proposed an operation outside the allowlist.
+        """Raise if the model proposed an operation outside the allowlist,
+        or at a risk tier below that operation's enforced floor.
 
         Schema validation alone can't express "only these string values
         are allowed actions" as strongly as this explicit check
@@ -58,6 +70,12 @@ class OpportunityProposal(BaseModel):
         for action in self.proposed_actions:
             if action.operation not in ALLOWED_OPERATIONS:
                 raise ValueError(f"Operation '{action.operation}' is not in the allowlist.")
+            min_tier = MIN_RISK_TIER_BY_OPERATION.get(action.operation)
+            if min_tier is not None and self.risk_tier < min_tier:
+                raise ValueError(
+                    f"Operation '{action.operation}' requires risk_tier >= {min_tier}, "
+                    f"got {self.risk_tier}."
+                )
 
 
 RESPONSE_JSON_SCHEMA = {

@@ -23,12 +23,14 @@ from app.connectors.wordpress import (
     UnsupportedOperation,
     WordPressConnectorError,
     current_alt_text,
+    current_canonical,
     current_meta_description,
     current_title,
     find_media_by_url,
     find_post_by_url,
     get_resource,
     update_alt_text,
+    update_canonical,
     update_meta_description,
     update_title,
 )
@@ -275,6 +277,8 @@ def dry_run_task(db: Session, website: Website, task: SEOTask) -> dict:
                 current_value = current_title(resource)
             elif operation == "set_meta_description":
                 current_value = current_meta_description(resource)
+            elif operation == "set_canonical":
+                current_value = current_canonical(resource)
             else:
                 current_value = current_alt_text(resource)
         except (WordPressConnectorError, UnsupportedOperation) as exc:
@@ -384,6 +388,8 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
                 before_value = current_meta_description(before)
             elif operation == "set_alt_text":
                 before_value = current_alt_text(before)
+            elif operation == "set_canonical":
+                before_value = current_canonical(before)
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
 
@@ -401,6 +407,8 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
                 update_meta_description(credentials, post_type, post_id, new_value)
             elif operation == "set_alt_text":
                 update_alt_text(credentials, post_id, new_value)
+            elif operation == "set_canonical":
+                update_canonical(credentials, post_type, post_id, new_value)
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
 
@@ -517,6 +525,8 @@ def rollback_change(
                 update_meta_description(credentials, post_type, post_id, before["value"])
             elif operation == "set_alt_text":
                 update_alt_text(credentials, post_id, before["value"])
+            elif operation == "set_canonical":
+                update_canonical(credentials, post_type, post_id, before["value"])
             else:
                 raise ValueError(f"No rollback method for operation: {operation}")
 

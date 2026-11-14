@@ -48,9 +48,16 @@ TITLE_RE = re.compile(r"(<title[^>]*>)(.*?)(</title>)", re.IGNORECASE | re.DOTAL
 META_DESCRIPTION_RE = re.compile(
     r'(<meta[^>]+name=["\']description["\'][^>]+content=["\'])(.*?)(["\'])', re.IGNORECASE
 )
+CANONICAL_RE = re.compile(
+    r'(<link[^>]+rel=["\']canonical["\'][^>]+href=["\'])(.*?)(["\'])', re.IGNORECASE
+)
 
 # Declared capability set (CW-001, addendum §4.3) — see wordpress.py.
-SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description"})
+# set_canonical is reliable here, unlike the CMS connectors: a direct
+# regex replace of the file's own <link rel="canonical"> tag, the same
+# mechanism set_title/set_meta_description already use (RankPilot AI
+# Phase 3 "Canonical Tag Automation").
+SUPPORTED_OPERATIONS = frozenset({"set_title", "set_meta_description", "set_canonical"})
 
 # Protected-path denylist (CW-012, addendum §4.2/§9: "Strictly allowlist
 # writable fields, file paths and change types", "No secret, environment,
@@ -160,6 +167,9 @@ def extract_value(operation: str, html: str) -> str:
     if operation == "set_meta_description":
         match = META_DESCRIPTION_RE.search(html)
         return match.group(2) if match else ""
+    if operation == "set_canonical":
+        match = CANONICAL_RE.search(html)
+        return match.group(2) if match else ""
     raise ValueError(f"Unsupported operation: {operation}")
 
 
@@ -176,6 +186,10 @@ def _replace(operation: str, content: str, new_value: str) -> str:
         if not META_DESCRIPTION_RE.search(content):
             raise UnsupportedOperation("No meta description tag found in this file.")
         return META_DESCRIPTION_RE.sub(lambda m: m.group(1) + new_value + m.group(3), content, count=1)
+    if operation == "set_canonical":
+        if not CANONICAL_RE.search(content):
+            raise UnsupportedOperation("No canonical <link> tag found in this file.")
+        return CANONICAL_RE.sub(lambda m: m.group(1) + new_value + m.group(3), content, count=1)
     raise ValueError(f"Unsupported operation: {operation}")
 
 
