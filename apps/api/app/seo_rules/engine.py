@@ -12,13 +12,24 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.crawler.orchestrator import normalize_frontier_url
 from app.models.crawl_frontier import CrawlFrontier
 from app.models.crawl_job import CrawlJob
 from app.models.page import Page
+from app.models.page_image import PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_finding import FindingStatus, SEOFinding
 from app.models.website import Website
-from app.seo_rules.rules import duplicates, http_status, indexability, links, metadata, sitemap, structured_data
+from app.seo_rules.rules import (
+    duplicates,
+    http_status,
+    images,
+    indexability,
+    links,
+    metadata,
+    sitemap,
+    structured_data,
+)
 from app.seo_rules.types import FindingCandidate
 
 
@@ -30,6 +41,16 @@ def _latest_snapshots_for_crawl(db: Session, crawl_job_id: UUID) -> dict[UUID, P
 def _all_pages_by_normalized_url(db: Session, website_id: UUID) -> dict[str, Page]:
     pages = db.query(Page).filter(Page.website_id == website_id).all()
     return {p.normalized_url: p for p in pages}
+
+
+def _page_images_by_page_id(db: Session, page_ids: set[UUID]) -> dict[UUID, list[PageImage]]:
+    if not page_ids:
+        return {}
+    rows = db.query(PageImage).filter(PageImage.page_id.in_(page_ids)).all()
+    grouped: dict[UUID, list[PageImage]] = {}
+    for row in rows:
+        grouped.setdefault(row.page_id, []).append(row)
+    return grouped
 
 
 def _sitemap_normalized_urls(db: Session, website_id: UUID) -> set[str]:
@@ -63,6 +84,11 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "DUPLICATE_TITLE",
     "DUPLICATE_META_DESCRIPTION",
     "BROKEN_INTERNAL_LINK",
+    "IMAGE_MISSING_SRC",
+    "IMAGE_MISSING_ALT",
+    "IMAGE_UNHELPFUL_ALT_TEXT",
+    "IMAGE_MISSING_DIMENSIONS",
+    "IMAGE_BROKEN",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -155,6 +181,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
     pages_by_normalized_url = _all_pages_by_normalized_url(db, website.id)
     pages_by_id = {p.id: p for p in pages_by_normalized_url.values()}
     sitemap_urls = _sitemap_normalized_urls(db, website.id)
+    page_images_by_page_id = _page_images_by_page_id(db, set(snapshots_by_page_id.keys()))
 
     candidates: list[FindingCandidate] = []
 
@@ -164,11 +191,17 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(indexability.check(page_id, page.canonical_url, snapshot))
         candidates.extend(metadata.check(page_id, snapshot))
         candidates.extend(structured_data.check(page_id, snapshot))
+        candidates.extend(images.check(page_id, page_images_by_page_id.get(page_id, [])))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(links.check_broken_links(pages_by_normalized_url, snapshots_by_page_id))
     candidates.extend(links.check_orphan_pages(sitemap_urls, pages_by_normalized_url, snapshots_by_page_id))
     candidates.extend(sitemap.check_sitemap_urls(sitemap_urls, pages_by_normalized_url))
+    candidates.extend(
+        images.check_broken_images(
+            pages_by_normalized_url, page_images_by_page_id, normalize_frontier_url
+        )
+    )
 
     snapshot_scope = set(snapshots_by_page_id.keys())
     sitemap_scope = {

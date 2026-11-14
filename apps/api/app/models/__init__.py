@@ -11,6 +11,7 @@ from app.models.notification import Notification, NotificationChannel, Notificat
 from app.models.oauth_connection import OAuthConnection, OAuthConnectionStatus, OAuthProvider
 from app.models.organization import Organization, OrganizationPlan, OrganizationStatus
 from app.models.page import IndexabilityState, Page
+from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.report import Report, ReportType
 from app.models.rollback_record import RollbackRecord, RollbackStatus
@@ -54,6 +55,8 @@ __all__ = [
     "OrganizationStatus",
     "IndexabilityState",
     "Page",
+    "ImageStatus",
+    "PageImage",
     "PageSnapshot",
     "Report",
     "ReportType",

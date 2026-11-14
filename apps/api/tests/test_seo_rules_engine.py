@@ -56,12 +56,17 @@ def test_rule_engine_flags_expected_issues(db_session, monkeypatch):
     assert "DUPLICATE_TITLE" in home_codes
     assert "TITLE_MISSING" not in home_codes
     assert "META_DESCRIPTION_MISSING" not in home_codes
+    assert "IMAGE_BROKEN" in home_codes
 
     about_codes = _rule_codes_for(db_session, website, "https://example.com/about")
     assert "DUPLICATE_TITLE" in about_codes
     assert "META_DESCRIPTION_MISSING" in about_codes
     assert "HEADING_H1_MISSING" in about_codes
     assert "STRUCTURED_DATA_PARSE_ERROR" in about_codes
+    assert "IMAGE_MISSING_SRC" in about_codes
+    assert "IMAGE_MISSING_ALT" in about_codes
+    assert "IMAGE_UNHELPFUL_ALT_TEXT" in about_codes
+    assert "IMAGE_MISSING_DIMENSIONS" in about_codes
 
     broken_codes = _rule_codes_for(db_session, website, "https://example.com/broken")
     assert "HTTP_ERROR_STATUS" in broken_codes

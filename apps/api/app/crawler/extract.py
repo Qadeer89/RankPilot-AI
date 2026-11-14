@@ -25,6 +25,15 @@ class StructuredDataBlock:
 
 
 @dataclass(frozen=True)
+class ImageExtraction:
+    src: str | None
+    alt_text: str | None
+    has_alt: bool
+    is_decorative: bool
+    has_dimensions: bool
+
+
+@dataclass(frozen=True)
 class PageExtraction:
     title: str | None
     meta_description: str | None
@@ -33,6 +42,7 @@ class PageExtraction:
     headings: dict[str, list[str]] = field(default_factory=dict)
     structured_data: list[StructuredDataBlock] = field(default_factory=list)
     internal_links: list[str] = field(default_factory=list)
+    images: list[ImageExtraction] = field(default_factory=list)
     content_fingerprint: str = ""
 
 
@@ -100,6 +110,24 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
             seen_links.add(normalized)
             internal_links.append(normalized)
 
+    images: list[ImageExtraction] = []
+    for img in soup.find_all("img"):
+        has_src = img.has_attr("src") and img["src"].strip()
+        src = urljoin(base_url, img["src"].strip()) if has_src else None
+        has_alt = img.has_attr("alt")
+        alt_text = img.get("alt", "").strip() if has_alt else None
+        is_decorative = has_alt and alt_text == ""
+        has_dimensions = bool(img.get("width")) and bool(img.get("height"))
+        images.append(
+            ImageExtraction(
+                src=src,
+                alt_text=alt_text or None,
+                has_alt=has_alt,
+                is_decorative=is_decorative,
+                has_dimensions=has_dimensions,
+            )
+        )
+
     visible_text = soup.get_text(separator=" ", strip=True)
     content_fingerprint = hashlib.sha256(visible_text.encode("utf-8")).hexdigest()
 
@@ -111,5 +139,6 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         headings=headings,
         structured_data=structured_data,
         internal_links=internal_links,
+        images=images,
         content_fingerprint=content_fingerprint,
     )

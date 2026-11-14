@@ -27,6 +27,7 @@ HOME_HTML = """
 <a href="/about">About</a>
 <a href="/missing-page">Missing</a>
 <a href="/blocked/secret">Secret</a>
+<img src="/broken" alt="References a URL this site crawled and knows returned an error">
 </body></html>
 """
 
@@ -36,6 +37,11 @@ ABOUT_HTML = """
 <script type="application/ld+json">{not valid json}</script>
 </head><body>
 <a href="/">Home</a>
+<img src="/team.jpg">
+<img src="" alt="this one has no src at all">
+<img src="/decorative.png" alt="">
+<img src="/photo.jpg" alt="IMG_1234" width="400" height="300">
+<img src="/founder.jpg" alt="Founder presenting at a product launch event" width="800" height="600">
 </body></html>
 """
 

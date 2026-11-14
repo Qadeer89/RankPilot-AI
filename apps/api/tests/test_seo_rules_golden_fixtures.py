@@ -16,8 +16,18 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models.page import Page
+from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
-from app.seo_rules.rules import duplicates, http_status, indexability, links, metadata, sitemap, structured_data
+from app.seo_rules.rules import (
+    duplicates,
+    http_status,
+    images,
+    indexability,
+    links,
+    metadata,
+    sitemap,
+    structured_data,
+)
 
 
 def _snapshot(**overrides) -> PageSnapshot:
@@ -374,5 +384,88 @@ def test_sitemap_url_error_boundary_400_triggers():
 def test_sitemap_url_error_negative_when_page_not_yet_crawled():
     candidates = sitemap.check_sitemap_urls(
         sitemap_normalized_urls={"https://example.com/unseen"}, pages_by_normalized_url={}
+    )
+    assert candidates == []
+
+
+def _page_image(**overrides) -> PageImage:
+    defaults = dict(
+        image_src="https://example.com/photo.jpg",
+        alt_text="A dog running on the beach",
+        has_alt=True,
+        is_decorative=False,
+        has_dimensions=True,
+        image_status=ImageStatus.ok,
+    )
+    defaults.update(overrides)
+    return PageImage(**defaults)
+
+
+def test_image_missing_src_positive():
+    candidates = images.check(uuid.uuid4(), [_page_image(image_src=None)])
+    assert "IMAGE_MISSING_SRC" in _rule_codes(candidates)
+
+
+def test_image_missing_src_negative():
+    candidates = images.check(uuid.uuid4(), [_page_image()])
+    assert "IMAGE_MISSING_SRC" not in _rule_codes(candidates)
+
+
+def test_image_missing_alt_positive_when_alt_attribute_absent():
+    candidates = images.check(uuid.uuid4(), [_page_image(has_alt=False, alt_text=None)])
+    assert "IMAGE_MISSING_ALT" in _rule_codes(candidates)
+
+
+def test_image_missing_alt_negative_for_intentionally_decorative_image():
+    candidates = images.check(
+        uuid.uuid4(), [_page_image(has_alt=True, alt_text=None, is_decorative=True)]
+    )
+    assert "IMAGE_MISSING_ALT" not in _rule_codes(candidates)
+
+
+def test_image_unhelpful_alt_text_positive_on_filename_like_alt():
+    candidates = images.check(uuid.uuid4(), [_page_image(alt_text="IMG_0042")])
+    assert "IMAGE_UNHELPFUL_ALT_TEXT" in _rule_codes(candidates)
+
+
+def test_image_unhelpful_alt_text_boundary_on_file_extension_suffix():
+    candidates = images.check(uuid.uuid4(), [_page_image(alt_text="team-photo.jpg")])
+    assert "IMAGE_UNHELPFUL_ALT_TEXT" in _rule_codes(candidates)
+
+
+def test_image_unhelpful_alt_text_negative_on_descriptive_alt():
+    candidates = images.check(
+        uuid.uuid4(), [_page_image(alt_text="Team celebrating the product launch on stage")]
+    )
+    assert "IMAGE_UNHELPFUL_ALT_TEXT" not in _rule_codes(candidates)
+
+
+def test_image_missing_dimensions_positive():
+    candidates = images.check(uuid.uuid4(), [_page_image(has_dimensions=False)])
+    assert "IMAGE_MISSING_DIMENSIONS" in _rule_codes(candidates)
+
+
+def test_image_missing_dimensions_negative():
+    candidates = images.check(uuid.uuid4(), [_page_image(has_dimensions=True)])
+    assert "IMAGE_MISSING_DIMENSIONS" not in _rule_codes(candidates)
+
+
+def test_image_broken_positive_when_src_matches_a_known_bad_page():
+    page_id = uuid.uuid4()
+    dead_page = _page("https://example.com/dead", last_status_code=404)
+    candidates = images.check_broken_images(
+        pages_by_normalized_url={"https://example.com/dead": dead_page},
+        page_images_by_page_id={page_id: [_page_image(image_src="https://example.com/dead")]},
+        normalize_url=lambda u: u,
+    )
+    assert _rule_codes(candidates) == {"IMAGE_BROKEN"}
+
+
+def test_image_broken_negative_when_src_is_unverifiable():
+    page_id = uuid.uuid4()
+    candidates = images.check_broken_images(
+        pages_by_normalized_url={},
+        page_images_by_page_id={page_id: [_page_image(image_src="https://cdn.example.com/x.jpg")]},
+        normalize_url=lambda u: u,
     )
     assert candidates == []

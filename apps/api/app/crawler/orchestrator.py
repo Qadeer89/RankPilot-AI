@@ -23,6 +23,7 @@ from app.crawler.sitemap import discover_sitemap_urls
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.page import IndexabilityState, Page
+from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.models.website import Website, WebsiteStatus
 
@@ -100,6 +101,28 @@ def _seed_frontier(db: Session, website: Website, robots_policy, known_urls: set
     for url in sitemap_urls:
         _add_frontier_entry(db, website, known_urls, url, priority=50, discovered_from="sitemap")
     db.flush()
+
+
+def _sync_page_images(db: Session, page: Page, images: list) -> None:
+    """Replace a page's PageImage rows with this crawl's fresh extraction.
+
+    PageImage reflects current HTML, not history (like Page itself), so a
+    page that's refetched gets its old rows discarded rather than
+    accumulating duplicates for images that no longer exist.
+    """
+    db.query(PageImage).filter(PageImage.page_id == page.id).delete()
+    for image in images:
+        db.add(
+            PageImage(
+                page_id=page.id,
+                image_src=image.src,
+                alt_text=image.alt_text,
+                has_alt=image.has_alt,
+                is_decorative=image.is_decorative,
+                has_dimensions=image.has_dimensions,
+                image_status=ImageStatus.ok if image.src else ImageStatus.missing_src,
+            )
+        )
 
 
 def _upsert_page(db: Session, website: Website, normalized_url: str, canonical_url: str) -> Page:
@@ -299,6 +322,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                     content_fingerprint=extraction.content_fingerprint,
                 )
             )
+            _sync_page_images(db, page, extraction.images)
             pages_fetched += 1
 
             remaining_budget = website.crawl_budget - pages_requested
@@ -325,7 +349,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
         crawl_job.completed_at = datetime.now(timezone.utc)
         db.flush()
         return crawl_job
-    except Exception as exc:  # noqa: BLE001 - surface any unexpected failure on the job record
+    except Exception as exc:
         logger.exception("Crawl failed for website %s", website.id)
         crawl_job.status = CrawlStatus.failed
         crawl_job.error_summary = str(exc)[:2000]

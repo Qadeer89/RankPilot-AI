@@ -14,12 +14,13 @@ number, so a dashboard reading this can tell "unavailable" apart from
 
 from __future__ import annotations
 
+from sqlalchemy.orm import Session
+
 from app.models.crawl_job import CrawlJob
 from app.models.page import Page
 from app.models.seo_finding import FindingSeverity, FindingStatus, SEOFinding
 from app.models.site_health_score import SiteHealthScore
 from app.models.website import Website
-from sqlalchemy.orm import Session
 
 # Every rule_code the deterministic engine currently implements
 # (app/seo_rules/rules/*.py), split into the two categories this
@@ -38,6 +39,8 @@ TECHNICAL_RULE_CODES = frozenset(
         "BROKEN_INTERNAL_LINK",
         "ORPHAN_PAGE_CANDIDATE",
         "SITEMAP_URL_ERROR",
+        "IMAGE_MISSING_SRC",
+        "IMAGE_BROKEN",
     }
 )
 ON_PAGE_RULE_CODES = frozenset(
@@ -51,6 +54,9 @@ ON_PAGE_RULE_CODES = frozenset(
         "HEADING_MULTIPLE_H1",
         "DUPLICATE_TITLE",
         "DUPLICATE_META_DESCRIPTION",
+        "IMAGE_MISSING_ALT",
+        "IMAGE_UNHELPFUL_ALT_TEXT",
+        "IMAGE_MISSING_DIMENSIONS",
     }
 )
 ALL_SCORED_RULE_CODES = TECHNICAL_RULE_CODES | ON_PAGE_RULE_CODES
