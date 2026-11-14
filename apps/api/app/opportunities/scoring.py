@@ -29,10 +29,13 @@ class OpportunityTemplate:
     risk_tier: int
 
 
-# Heuristic, length-based findings (TITLE_TOO_LONG, HEADING_MULTIPLE_H1,
-# NOINDEX_DIRECTIVE, etc.) deliberately have no entry here: they stay
-# visible as findings but are not promoted to actionable opportunities,
-# to keep the opportunity list high-precision (MASTER_SPEC.md #8/#9).
+# Other heuristic findings (HEADING_MULTIPLE_H1, NOINDEX_DIRECTIVE, etc.)
+# deliberately have no entry here: they stay visible as findings but are
+# not promoted to actionable opportunities, to keep the opportunity list
+# high-precision (MASTER_SPEC.md #8/#9). TITLE_TOO_LONG and
+# META_DESCRIPTION_TOO_LONG are promoted (lower risk tier, lower impact
+# than the "missing" variants) since shortening an overlong title/
+# description is a safe, well-defined edit an AI proposal can draft.
 RULE_OPPORTUNITY_TEMPLATES: dict[str, OpportunityTemplate] = {
     "TITLE_MISSING": OpportunityTemplate(
         category="metadata",
@@ -128,6 +131,22 @@ RULE_OPPORTUNITY_TEMPLATES: dict[str, OpportunityTemplate] = {
         rationale="This page is listed in the sitemap but returns an error status.",
         impact_estimate=0.5,
         effort_estimate=0.3,
+        risk_tier=1,
+    ),
+    "TITLE_TOO_LONG": OpportunityTemplate(
+        category="metadata",
+        title="Shorten an overlong page title",
+        rationale="This page's title is long enough that search engines may truncate it in the result snippet.",
+        impact_estimate=0.3,
+        effort_estimate=0.2,
+        risk_tier=1,
+    ),
+    "META_DESCRIPTION_TOO_LONG": OpportunityTemplate(
+        category="metadata",
+        title="Shorten an overlong meta description",
+        rationale="This page's meta description is long enough that search engines may truncate it in the result snippet.",
+        impact_estimate=0.2,
+        effort_estimate=0.2,
         risk_tier=1,
     ),
 }

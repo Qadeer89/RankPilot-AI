@@ -45,8 +45,6 @@ def test_opportunities_are_derived_from_open_findings(db_session, monkeypatch):
     scores = [o.score for o in opportunities]
     assert scores == sorted(scores, reverse=True)
 
-    # Heuristic-only findings (e.g. TITLE_TOO_LONG) never become opportunities.
-    assert "TITLE_TOO_LONG" not in [o.evidence_json.get("rule_code") for o in opportunities]
 
 
 def test_opportunity_completes_when_underlying_finding_resolves(db_session, monkeypatch):
