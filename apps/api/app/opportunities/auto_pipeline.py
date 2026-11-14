@@ -40,6 +40,7 @@ from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import ApprovalStatus, SEOTask
 from app.models.website import Website, WebsiteStatus
 from app.models.website_connection import ConnectorType
+from app.notifications.dispatch import notify_organization
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,9 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
     }
 
     processed = 0
+    auto_fixed_count = 0
+    auto_fix_failed_count = 0
+    pending_approval_count = 0
     for opportunity in opportunities:
         if opportunity.id in already_has_task:
             continue
@@ -190,9 +194,11 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
 
         for task in tasks:
             if task.approval_status != ApprovalStatus.not_required:
+                pending_approval_count += 1
                 continue
             try:
                 execute_task(db, website, task)
+                auto_fixed_count += 1
             except ExecutionBlocked as exc:
                 # execute_task already marks the task "failed" and flushes
                 # that (e.g. an operation the connector doesn't support for
@@ -203,4 +209,30 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
                 # rolling back would silently erase that "failed" write
                 # and leave the task looking "pending" forever.
                 logger.info("auto_pipeline: could not auto-execute task %s (%s)", task.id, exc)
+                auto_fix_failed_count += 1
             db.commit()
+
+    # A single end-of-run digest rather than one notification per task --
+    # a busy site auto-fixing dozens of titles in one crawl shouldn't send
+    # dozens of Slack messages (RankPilot AI Phase 7 "Notifications").
+    if auto_fixed_count or auto_fix_failed_count or pending_approval_count:
+        lines = [f"Automation summary for {website.display_name} ({website.canonical_url}):"]
+        if auto_fixed_count:
+            lines.append(f"- {auto_fixed_count} fix{'es' if auto_fixed_count != 1 else ''} auto-executed")
+        if auto_fix_failed_count:
+            lines.append(f"- {auto_fix_failed_count} auto-fix attempt{'s' if auto_fix_failed_count != 1 else ''} failed")
+        if pending_approval_count:
+            lines.append(f"- {pending_approval_count} task{'s' if pending_approval_count != 1 else ''} awaiting approval")
+        try:
+            notify_organization(
+                db,
+                website.organization,
+                website_id=website.id,
+                event_type="auto_pipeline_summary",
+                subject=f"Automation summary for {website.display_name}",
+                message="\n".join(lines),
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("auto_pipeline: summary notification failed for website %s", website.id)

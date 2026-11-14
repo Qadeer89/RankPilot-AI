@@ -283,3 +283,44 @@ def test_auto_pipeline_prefilter_resolves_image_opportunities_via_media_lookup_n
     assert ai_call_count["count"] == 0
     tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
     assert len(tasks) == 0
+
+
+def test_auto_pipeline_sends_a_digest_notification_for_pending_approvals(db_session, monkeypatch):
+    from app.models.notification import Notification
+    from app.notifications import slack as slack_module
+
+    patch_crawler_network(monkeypatch)
+    _stub_proposal(monkeypatch)
+    monkeypatch.setattr(slack_module, "_get_webhook_url", lambda organization: None)
+    website = _make_website(db_session)
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    notifications = (
+        db_session.query(Notification)
+        .filter(Notification.organization_id == website.organization_id, Notification.event_type == "auto_pipeline_summary")
+        .all()
+    )
+    assert len(notifications) == 1
+    assert "awaiting approval" in notifications[0].payload_json["message"]
+
+
+def test_auto_pipeline_sends_no_digest_when_nothing_happened(db_session, monkeypatch):
+    from app.models.notification import Notification
+
+    website = _make_website(db_session)
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    notifications = (
+        db_session.query(Notification)
+        .filter(Notification.organization_id == website.organization_id, Notification.event_type == "auto_pipeline_summary")
+        .all()
+    )
+    assert notifications == []

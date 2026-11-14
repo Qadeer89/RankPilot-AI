@@ -15,6 +15,8 @@ from app.crawler.orchestrator import run_crawl
 from app.db.session import SessionLocal
 from app.models.crawl_job import CrawlJob, CrawlStatus
 from app.models.website import Website
+from app.monitoring.regression_detection import detect_regressions
+from app.notifications.dispatch import notify_organization
 from app.opportunities.auto_pipeline import auto_generate_and_execute_tasks
 from app.opportunities.health_score import compute_health_score
 from app.opportunities.scoring import refresh_opportunities_for_website
@@ -87,6 +89,34 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
 
         compute_health_score(db, website, crawl_job)
         db.commit()
+
+        # Best-effort: a regression (new critical finding or a health-score
+        # category dropping sharply) is worth surfacing right away rather
+        # than only on the next manual dashboard visit
+        # (app/monitoring/regression_detection.py).
+        try:
+            regressions = detect_regressions(db, website, crawl_job)
+            if regressions.has_regressions:
+                lines = [f"SEO regression detected on {website.display_name} ({website.canonical_url}):"]
+                for f in regressions.new_critical_findings:
+                    lines.append(f"- New critical finding: {f.rule_code}")
+                for r in regressions.score_regressions:
+                    lines.append(
+                        f"- {r.category.replace('_', ' ')} dropped {r.drop:.0f} points "
+                        f"({r.previous_score:.0f} -> {r.current_score:.0f})"
+                    )
+                notify_organization(
+                    db,
+                    website.organization,
+                    website_id=website.id,
+                    event_type="seo_regression",
+                    subject=f"SEO regression detected on {website.display_name}",
+                    message="\n".join(lines),
+                )
+                db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("run_site_crawl: regression notification failed for website %s", website_id)
 
         # Folded into the same task for MVP simplicity rather than a
         # separate "opportunity_refresh" job (SYSTEM_ARCHITECTURE.md #5):
