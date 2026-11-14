@@ -19,6 +19,7 @@ from app.models.page import Page
 from app.models.page_image import ImageStatus, PageImage
 from app.models.page_snapshot import PageSnapshot
 from app.seo_rules.rules import (
+    content,
     duplicates,
     http_status,
     images,
@@ -45,6 +46,7 @@ def _snapshot(**overrides) -> PageSnapshot:
         schema_json=[],
         internal_links_json=[],
         content_fingerprint=None,
+        word_count=250,
     )
     defaults.update(overrides)
     return PageSnapshot(**defaults)
@@ -468,4 +470,74 @@ def test_image_broken_negative_when_src_is_unverifiable():
         page_images_by_page_id={page_id: [_page_image(image_src="https://cdn.example.com/x.jpg")]},
         normalize_url=lambda u: u,
     )
+    assert candidates == []
+
+
+def test_thin_content_positive_below_default_threshold():
+    snapshot = _snapshot(word_count=50, schema_json=[])
+    candidates = content.check_thin_content(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"THIN_CONTENT"}
+
+
+def test_thin_content_boundary_at_default_threshold_is_healthy():
+    snapshot = _snapshot(word_count=200, schema_json=[])
+    candidates = content.check_thin_content(uuid.uuid4(), snapshot)
+    assert candidates == []
+
+
+def test_thin_content_boundary_one_word_under_default_threshold_triggers():
+    snapshot = _snapshot(word_count=199, schema_json=[])
+    candidates = content.check_thin_content(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"THIN_CONTENT"}
+
+
+def test_thin_content_uses_the_product_threshold_when_schema_declares_it():
+    snapshot = _snapshot(
+        word_count=150, schema_json=[{"raw": "{}", "parsed": {"@type": "Product"}, "parse_error": None}]
+    )
+    candidates = content.check_thin_content(uuid.uuid4(), snapshot)
+    assert candidates == [], "150 words is above the Product threshold (100), unlike the default (200)"
+
+
+def test_thin_content_uses_the_article_threshold_when_schema_declares_it():
+    snapshot = _snapshot(
+        word_count=250, schema_json=[{"raw": "{}", "parsed": {"@type": "Article"}, "parse_error": None}]
+    )
+    candidates = content.check_thin_content(uuid.uuid4(), snapshot)
+    assert _rule_codes(candidates) == {"THIN_CONTENT"}, "250 words is below the Article threshold (300)"
+
+
+def test_duplicate_body_content_positive_on_two_matching_pages():
+    page_a, page_b = uuid.uuid4(), uuid.uuid4()
+    snapshots = {
+        page_a: _snapshot(content_fingerprint="abc123", word_count=250),
+        page_b: _snapshot(content_fingerprint="abc123", word_count=250),
+    }
+    candidates = content.check_duplicate_body_content(snapshots)
+    assert _rule_codes(candidates) == {"DUPLICATE_BODY_CONTENT"}
+    assert len(candidates) == 2
+
+
+def test_duplicate_body_content_negative_on_unique_content():
+    page_a, page_b = uuid.uuid4(), uuid.uuid4()
+    snapshots = {
+        page_a: _snapshot(content_fingerprint="abc123", word_count=250),
+        page_b: _snapshot(content_fingerprint="xyz789", word_count=250),
+    }
+    candidates = content.check_duplicate_body_content(snapshots)
+    assert candidates == []
+
+
+def test_duplicate_body_content_negative_when_both_near_empty():
+    """Two blank/placeholder pages that happen to hash the same shouldn't
+    generate a DUPLICATE_BODY_CONTENT finding on top of whatever already
+    flags them as thin -- there's no meaningful "duplicated content"
+    signal in two pages that have essentially no content at all.
+    """
+    page_a, page_b = uuid.uuid4(), uuid.uuid4()
+    snapshots = {
+        page_a: _snapshot(content_fingerprint="emptyhash", word_count=0),
+        page_b: _snapshot(content_fingerprint="emptyhash", word_count=0),
+    }
+    candidates = content.check_duplicate_body_content(snapshots)
     assert candidates == []

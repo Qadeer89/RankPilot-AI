@@ -37,12 +37,11 @@ def test_compute_health_score_produces_bounded_scores_and_real_counts(db_session
     db_session.flush()
 
     assert score.crawl_job_id == crawl_job.id
-    for value in (score.technical_score, score.on_page_score, score.overall_score):
+    for value in (score.technical_score, score.on_page_score, score.content_score, score.overall_score):
         assert value is not None
         assert 0.0 <= value <= 100.0
-    # Neither category exists yet in this codebase -- must stay None,
-    # never a fabricated/default number.
-    assert score.content_score is None
+    # Performance (Core Web Vitals) has no data source yet in this
+    # codebase -- must stay None, never a fabricated/default number.
     assert score.performance_score is None
     assert score.critical_count + score.warning_count + score.info_count > 0, (
         "fixture crawl should produce at least one open finding"

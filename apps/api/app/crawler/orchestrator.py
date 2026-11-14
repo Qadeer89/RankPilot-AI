@@ -320,6 +320,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                     ],
                     internal_links_json=extraction.internal_links,
                     content_fingerprint=extraction.content_fingerprint,
+                    word_count=extraction.word_count,
                 )
             )
             _sync_page_images(db, page, extraction.images)

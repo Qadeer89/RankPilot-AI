@@ -6,10 +6,12 @@ engine produced -- no AI involvement, matching the "AI never decides
 whether a technical SEO condition passes" rule the rest of the rule
 engine already follows (app/seo_rules/engine.py docstring).
 
-A category this codebase has no data source for yet (content quality,
-performance) is left as None ("not measured"), never defaulted to a
-number, so a dashboard reading this can tell "unavailable" apart from
-"measured and perfect."
+A category this codebase has no data source for yet (performance) is
+left as None ("not measured"), never defaulted to a number, so a
+dashboard reading this can tell "unavailable" apart from "measured and
+perfect." content_score now has a real data source (thin-content and
+duplicate-body-content detection, app/seo_rules/rules/content.py) and
+is computed like the other categories.
 """
 
 from __future__ import annotations
@@ -23,10 +25,9 @@ from app.models.site_health_score import SiteHealthScore
 from app.models.website import Website
 
 # Every rule_code the deterministic engine currently implements
-# (app/seo_rules/rules/*.py), split into the two categories this
-# codebase can actually evaluate today. Content-quality and performance
-# checks (thin content, duplicate body text, Core Web Vitals) don't
-# exist yet, so those two category scores stay None rather than being
+# (app/seo_rules/rules/*.py), split into the categories this codebase can
+# actually evaluate today. Performance (Core Web Vitals) has no data
+# source yet, so that category score stays None rather than being
 # computed from an empty/fabricated rule set.
 TECHNICAL_RULE_CODES = frozenset(
     {
@@ -59,7 +60,8 @@ ON_PAGE_RULE_CODES = frozenset(
         "IMAGE_MISSING_DIMENSIONS",
     }
 )
-ALL_SCORED_RULE_CODES = TECHNICAL_RULE_CODES | ON_PAGE_RULE_CODES
+CONTENT_RULE_CODES = frozenset({"THIN_CONTENT", "DUPLICATE_BODY_CONTENT"})
+ALL_SCORED_RULE_CODES = TECHNICAL_RULE_CODES | ON_PAGE_RULE_CODES | CONTENT_RULE_CODES
 
 # A deliberate, documented judgment call, not a fabricated metric: the
 # inputs (which rule fired, on how many pages, at what severity) are all
@@ -96,7 +98,7 @@ def compute_health_score(db: Session, website: Website, crawl_job: CrawlJob) -> 
 
     technical_score = _category_score(open_findings, TECHNICAL_RULE_CODES, page_count)
     on_page_score = _category_score(open_findings, ON_PAGE_RULE_CODES, page_count)
-    content_score: float | None = None  # not measured yet -- no thin/duplicate-content detection
+    content_score = _category_score(open_findings, CONTENT_RULE_CODES, page_count)
     performance_score: float | None = None  # not measured yet -- no Core Web Vitals integration
 
     available = [s for s in (technical_score, on_page_score, content_score, performance_score) if s is not None]

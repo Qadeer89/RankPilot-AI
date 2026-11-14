@@ -44,6 +44,7 @@ class PageExtraction:
     internal_links: list[str] = field(default_factory=list)
     images: list[ImageExtraction] = field(default_factory=list)
     content_fingerprint: str = ""
+    word_count: int = 0
 
 
 def _normalize_link(href: str, base_url: str, site_hostname: str) -> str | None:
@@ -128,8 +129,18 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
             )
         )
 
-    visible_text = soup.get_text(separator=" ", strip=True)
+    # Measure "content" from <body> only, with script/style text
+    # stripped first -- otherwise the <title> (already compared
+    # separately via DUPLICATE_TITLE) would bleed into the fingerprint,
+    # and a shared analytics snippet or CSS block would inflate the word
+    # count, either way undermining thin-content and duplicate-body-
+    # content detection's whole point (app/seo_rules/rules/content.py).
+    content_root = soup.body or soup
+    for tag in content_root.find_all(("script", "style")):
+        tag.decompose()
+    visible_text = content_root.get_text(separator=" ", strip=True)
     content_fingerprint = hashlib.sha256(visible_text.encode("utf-8")).hexdigest()
+    word_count = len(visible_text.split())
 
     return PageExtraction(
         title=title,
@@ -141,4 +152,5 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         internal_links=internal_links,
         images=images,
         content_fingerprint=content_fingerprint,
+        word_count=word_count,
     )

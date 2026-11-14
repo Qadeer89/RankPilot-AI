@@ -67,3 +67,34 @@ def test_image_extraction_distinguishes_missing_src_decorative_and_dimensions():
 
     blank_src = images[4]
     assert blank_src.src is None
+
+
+def test_word_count_excludes_script_and_style_text():
+    html = """
+    <html><head><title>Page</title>
+    <style>.hidden { display: none; }</style>
+    </head><body>
+    <script>var analyticsId = "UA-123-456"; trackPageview();</script>
+    <p>Four real words here</p>
+    </body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.word_count == 4
+
+
+def test_content_fingerprint_matches_for_identical_body_text_despite_different_scripts():
+    html_a = """
+    <html><head><title>A</title></head><body>
+    <script>var a = 1;</script>
+    <p>Exactly the same body copy on both pages.</p>
+    </body></html>
+    """
+    html_b = """
+    <html><head><title>B</title></head><body>
+    <script>var b = 2; doSomethingElse();</script>
+    <p>Exactly the same body copy on both pages.</p>
+    </body></html>
+    """
+    extraction_a = extract_page(html_a, base_url="https://example.com/a", site_hostname="example.com")
+    extraction_b = extract_page(html_b, base_url="https://example.com/b", site_hostname="example.com")
+    assert extraction_a.content_fingerprint == extraction_b.content_fingerprint

@@ -21,6 +21,7 @@ from app.models.page_snapshot import PageSnapshot
 from app.models.seo_finding import FindingStatus, SEOFinding
 from app.models.website import Website
 from app.seo_rules.rules import (
+    content,
     duplicates,
     http_status,
     images,
@@ -89,6 +90,8 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "IMAGE_UNHELPFUL_ALT_TEXT",
     "IMAGE_MISSING_DIMENSIONS",
     "IMAGE_BROKEN",
+    "THIN_CONTENT",
+    "DUPLICATE_BODY_CONTENT",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -192,8 +195,10 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(metadata.check(page_id, snapshot))
         candidates.extend(structured_data.check(page_id, snapshot))
         candidates.extend(images.check(page_id, page_images_by_page_id.get(page_id, [])))
+        candidates.extend(content.check_thin_content(page_id, snapshot))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
+    candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))
     candidates.extend(links.check_broken_links(pages_by_normalized_url, snapshots_by_page_id))
     candidates.extend(links.check_orphan_pages(sitemap_urls, pages_by_normalized_url, snapshots_by_page_id))
     candidates.extend(sitemap.check_sitemap_urls(sitemap_urls, pages_by_normalized_url))

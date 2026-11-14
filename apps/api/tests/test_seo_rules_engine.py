@@ -57,6 +57,7 @@ def test_rule_engine_flags_expected_issues(db_session, monkeypatch):
     assert "TITLE_MISSING" not in home_codes
     assert "META_DESCRIPTION_MISSING" not in home_codes
     assert "IMAGE_BROKEN" in home_codes
+    assert "THIN_CONTENT" in home_codes, "fixture pages are all well under the default word-count threshold"
 
     about_codes = _rule_codes_for(db_session, website, "https://example.com/about")
     assert "DUPLICATE_TITLE" in about_codes

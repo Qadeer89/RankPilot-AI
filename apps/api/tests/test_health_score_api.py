@@ -58,7 +58,7 @@ def test_health_score_endpoint_returns_most_recent_first(client, monkeypatch, db
     scores = response.json()
     assert len(scores) == 1
     assert scores[0]["crawl_job_id"] == str(crawl_job.id)
-    assert scores[0]["content_score"] is None
+    assert scores[0]["content_score"] is not None
     assert scores[0]["performance_score"] is None
 
 

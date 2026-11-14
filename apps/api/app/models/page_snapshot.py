@@ -37,6 +37,7 @@ class PageSnapshot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     schema_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     internal_links_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     content_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    word_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     page: Mapped["Page"] = relationship(back_populates="snapshots")
     crawl_job: Mapped["CrawlJob"] = relationship()
