@@ -59,7 +59,7 @@ import base64
 import re
 import uuid
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -553,7 +553,7 @@ def _replace(operation: str, content: str, new_value: str) -> str:
 def _get_branch_head_sha(credentials: GitHubCredentials, branch: str) -> str:
     response = safe_request(
         httpx.get,
-        f"{_repo_api_base(credentials)}/git/ref/heads/{branch}",
+        f"{_repo_api_base(credentials)}/git/ref/heads/{quote(branch, safe='')}",
         headers=credentials.headers,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
@@ -671,7 +671,12 @@ def _get_commit_status_state(credentials: GitHubCredentials, ref: str) -> str:
     `_get_check_runs_state` for that."""
     response = safe_request(
         httpx.get,
-        f"{_repo_api_base(credentials)}/commits/{ref}/status",
+        # `ref` is usually a branch name like "rankpilot/set_title-abc123"
+        # -- quote it (slashes included) so GitHub's router sees one path
+        # segment, not two; an unencoded "/" here silently 404s and this
+        # would always read back as "no_checks" regardless of CI's real
+        # state.
+        f"{_repo_api_base(credentials)}/commits/{quote(ref, safe='')}/status",
         headers=credentials.headers,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
@@ -690,7 +695,7 @@ def _get_check_runs_state(credentials: GitHubCredentials, ref: str) -> str:
     `"no_checks"` here regardless of whether it passed."""
     response = safe_request(
         httpx.get,
-        f"{_repo_api_base(credentials)}/commits/{ref}/check-runs",
+        f"{_repo_api_base(credentials)}/commits/{quote(ref, safe='')}/check-runs",
         headers=credentials.headers,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )

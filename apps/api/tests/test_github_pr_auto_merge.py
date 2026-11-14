@@ -74,6 +74,27 @@ def test_combined_status_pending_while_check_run_still_running(monkeypatch):
     assert github_pr.get_combined_status(CREDENTIALS, "abc123") == "pending"
 
 
+def test_combined_status_url_encodes_branch_name_slashes(monkeypatch):
+    # Real branch names look like "rankpilot/set_title-abc123" -- an
+    # unencoded "/" here turns into an extra URL path segment, which
+    # GitHub 404s (silently misread as "no_checks" regardless of CI's
+    # actual state). Every call this connector makes with a branch-name
+    # ref must URL-encode it.
+    requested_urls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        requested_urls.append(url)
+        return _FakeResponse(200, {"total_count": 0})
+
+    monkeypatch.setattr(github_pr.httpx, "get", fake_get)
+    github_pr.get_combined_status(CREDENTIALS, "rankpilot/set_title-abc123")
+
+    assert requested_urls, "expected at least one request"
+    for url in requested_urls:
+        assert "rankpilot/set_title-abc123" not in url
+        assert "rankpilot%2Fset_title-abc123" in url
+
+
 def test_combined_status_legacy_failure_still_works(monkeypatch):
     monkeypatch.setattr(
         github_pr.httpx,
@@ -107,6 +128,20 @@ def test_merge_pull_request_success(monkeypatch):
     monkeypatch.setattr(github_pr.httpx, "put", lambda *a, **k: _FakeResponse(200, {"merged": True, "sha": "abc"}))
     result = github_pr.merge_pull_request(CREDENTIALS, 5)
     assert result["merged"] is True
+
+
+def test_get_branch_head_sha_url_encodes_branch_name_slashes(monkeypatch):
+    requested_urls = []
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        requested_urls.append(url)
+        return _FakeResponse(200, {"object": {"sha": "abc123"}})
+
+    monkeypatch.setattr(github_pr.httpx, "get", fake_get)
+    sha = github_pr._get_branch_head_sha(CREDENTIALS, "release/v2")
+
+    assert sha == "abc123"
+    assert requested_urls == [f"{github_pr._repo_api_base(CREDENTIALS)}/git/ref/heads/release%2Fv2"]
 
 
 def test_merge_pull_request_raises_on_failure(monkeypatch):
