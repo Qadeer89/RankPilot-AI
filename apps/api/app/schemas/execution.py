@@ -32,6 +32,10 @@ class GitHubConnectRequest(BaseModel):
     access_token: str = Field(min_length=1, max_length=512)
 
 
+class GitHubAutoMergeRequest(BaseModel):
+    auto_merge_on_ci_success: bool
+
+
 class WebsiteConnectionResponse(BaseModel):
     id: uuid.UUID
     website_id: uuid.UUID

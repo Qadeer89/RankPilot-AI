@@ -698,6 +698,22 @@ export function disconnectGitHub(token: string, organizationId: string, websiteI
   );
 }
 
+export function setGitHubAutoMerge(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  autoMergeOnCiSuccess: boolean
+) {
+  return request<WebsiteConnection>(
+    `/organizations/${organizationId}/websites/${websiteId}/connections/github/settings`,
+    {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ auto_merge_on_ci_success: autoMergeOnCiSuccess }),
+    }
+  );
+}
+
 // --- Sanity CMS connector ---
 
 export function connectSanity(

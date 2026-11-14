@@ -237,13 +237,27 @@ def connect_github(
     except ConnectorError as exc:
         raise ValueError(f"Could not verify GitHub credentials: {exc}") from exc
 
+    # Reconnecting (e.g. to rotate the token) shouldn't silently reset a
+    # user's auto-merge opt-in -- carry it over from whatever's there now.
+    existing = (
+        db.query(WebsiteConnection)
+        .filter(WebsiteConnection.website_id == website.id, WebsiteConnection.connector_type == ConnectorType.github)
+        .one_or_none()
+    )
+    auto_merge = bool(existing.config_json.get("auto_merge_on_ci_success", False)) if existing else False
+
     encrypted = encrypt_text(json.dumps({"access_token": access_token}))
     return _upsert_connection(
         db,
         website,
         ConnectorType.github,
         encrypted_secret=encrypted,
-        config={"owner": owner, "repo": repo, "base_branch": base_branch},
+        config={
+            "owner": owner,
+            "repo": repo,
+            "base_branch": base_branch,
+            "auto_merge_on_ci_success": auto_merge,
+        },
         granted_scopes=["contents:write", "pull_requests:write"],
     )
 
@@ -262,6 +276,22 @@ def get_github_credentials(db: Session, website: Website) -> GitHubCredentials:
 
 def disconnect_github(db: Session, website: Website) -> None:
     _disconnect(db, website, ConnectorType.github)
+
+
+def set_github_auto_merge(db: Session, website: Website, enabled: bool) -> WebsiteConnection:
+    """Opt a website's GitHub connector into (or out of) automatically
+    merging RankPilot AI's own PRs once CI reports success -- never on
+    failure, and never when the repo has no CI configured at all (see
+    `github_pr.get_combined_status`'s `"no_checks"` case and
+    `app.tasks.scheduler.poll_and_merge_github_prs`, which enforces
+    that). Does not touch the stored credentials, so no re-verification
+    or token re-entry is needed just to flip this."""
+    connection = _get_connection_or_raise(db, website, ConnectorType.github)
+    config = dict(connection.config_json)
+    config["auto_merge_on_ci_success"] = enabled
+    connection.config_json = config
+    db.flush()
+    return connection
 
 
 def connect_sanity(

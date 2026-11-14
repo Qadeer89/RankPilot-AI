@@ -54,6 +54,13 @@ class ChangeRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     validation_status: Mapped[ValidationStatus] = mapped_column(
         Enum(ValidationStatus, name="validation_status"), default=ValidationStatus.pending, nullable=False
     )
+    # Set only when a website opted into GitHub "auto-merge on CI
+    # success" and the scheduled poller (app.tasks.scheduler.
+    # poll_and_merge_github_prs) actually merged this record's PR. NULL
+    # for every other connector, and for a github PR a human merged
+    # themselves or that's still open -- the poller re-checks a record's
+    # live PR state each run rather than relying on a second flag here.
+    auto_merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     website: Mapped["Website"] = relationship()
     seo_task: Mapped["SEOTask"] = relationship()

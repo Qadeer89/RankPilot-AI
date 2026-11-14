@@ -26,6 +26,7 @@ import {
   WebsiteOverview,
   approveTask,
   connectGitHub,
+  setGitHubAutoMerge,
   connectSanity,
   connectShopify,
   connectWebflow,
@@ -806,6 +807,19 @@ export default function WebsiteDetailClient() {
         }
       }
     );
+  }
+
+  async function handleToggleGithubAutoMerge(enabled: boolean) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      await setGitHubAutoMerge(token, orgId, websiteId, enabled);
+      setConnections(await listConnections(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to update auto-merge setting.");
+    }
   }
 
   async function handleConnectGa4() {
@@ -2223,6 +2237,15 @@ export default function WebsiteDetailClient() {
                           {String(connection.config_json.base_branch ?? "")}) · last verified{" "}
                           {connection.last_verified_at ?? "never"}
                         </span>
+                        <label className={styles.rowMeta} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(connection.config_json.auto_merge_on_ci_success)}
+                            onChange={(e) => handleToggleGithubAutoMerge(e.target.checked)}
+                          />
+                          Auto-merge RankPilot&apos;s PRs once CI reports success (never on failure, and never if
+                          this repo has no CI configured)
+                        </label>
                       </div>
                       <div className={styles.actions}>
                         <StatusBadge value={connection.status} />

@@ -59,4 +59,11 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.daily_sync_url_inspection_for_all_websites",
         "schedule": crontab(hour=1, minute=45),
     },
+    "poll-and-merge-github-prs": {
+        # Short interval -- this is specifically for websites that
+        # opted into auto-merge-on-CI-success, so a merge should land
+        # soon after CI actually finishes, not hours later.
+        "task": "app.tasks.scheduler.poll_and_merge_github_prs",
+        "schedule": crontab(minute="*/10"),
+    },
 }

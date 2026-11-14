@@ -648,21 +648,11 @@ def apply_change(credentials: GitHubCredentials, target_ref: dict, operation: st
     }
 
 
-def get_combined_status(credentials: GitHubCredentials, ref: str) -> str:
-    """The repo's configured CI/build/lint/type-check result for `ref`
-    (CW-013, addendum §4.2 "Read CI status"): `"success"`, `"failure"`,
-    `"pending"`, or `"no_checks"` if nothing reports status yet -- either
-    the repo has no CI configured, or checks haven't started running yet.
-
-    This is a single snapshot, not a wait-for-completion poll: CI
-    typically hasn't finished (often hasn't started) by the moment this
-    connector opens the PR and calls validate_change() right after, so
-    `"pending"`/`"no_checks"` do not by themselves fail validation here --
-    only an already-reported `"failure"` does. Waiting for CI to actually
-    finish before reporting final validation needs an async follow-up
-    (e.g. a scheduled re-check), which is not implemented yet; treat a
-    `"pending"`/`"no_checks"` result as "not yet proven safe", not as "safe".
-    """
+def _get_commit_status_state(credentials: GitHubCredentials, ref: str) -> str:
+    """The repo's legacy Commit Status API result for `ref` -- what
+    third-party CI services (and anything posting via `POST
+    .../statuses`) report. Does NOT cover GitHub Actions; see
+    `_get_check_runs_state` for that."""
     response = safe_request(
         httpx.get,
         f"{_repo_api_base(credentials)}/commits/{ref}/status",
@@ -675,6 +665,85 @@ def get_combined_status(credentials: GitHubCredentials, ref: str) -> str:
     if body.get("total_count", 0) == 0:
         return "no_checks"
     return body.get("state", "pending")
+
+
+def _get_check_runs_state(credentials: GitHubCredentials, ref: str) -> str:
+    """GitHub Actions (and GitHub Apps) report via the separate Check
+    Runs API, not the legacy Commit Status API -- a repo whose only CI
+    is a GitHub Actions workflow would otherwise always read as
+    `"no_checks"` here regardless of whether it passed."""
+    response = safe_request(
+        httpx.get,
+        f"{_repo_api_base(credentials)}/commits/{ref}/check-runs",
+        headers=credentials.headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if response.status_code != 200:
+        return "no_checks"
+    runs = response.json().get("check_runs", [])
+    if not runs:
+        return "no_checks"
+    if any(run.get("conclusion") in ("failure", "timed_out", "cancelled", "action_required") for run in runs):
+        return "failure"
+    if any(run.get("status") != "completed" for run in runs):
+        return "pending"
+    return "success"
+
+
+def get_combined_status(credentials: GitHubCredentials, ref: str) -> str:
+    """The repo's configured CI/build/lint/type-check result for `ref`
+    (CW-013, addendum §4.2 "Read CI status"): `"success"`, `"failure"`,
+    `"pending"`, or `"no_checks"` if nothing reports status yet -- either
+    the repo has no CI configured, or checks haven't started running yet.
+    Folds together the legacy Commit Status API and the separate Check
+    Runs API (what GitHub Actions actually reports through) since a repo
+    can use either, or neither -- a failure from either source wins, a
+    pending from either (with no failure) wins, and both sources must be
+    `"no_checks"` for this to report `"no_checks"`.
+
+    This is a single snapshot, not a wait-for-completion poll: CI
+    typically hasn't finished (often hasn't started) by the moment this
+    connector opens the PR and calls validate_change() right after, so
+    `"pending"`/`"no_checks"` do not by themselves fail validation here --
+    only an already-reported `"failure"` does. Waiting for CI to actually
+    finish before reporting final validation (or before auto-merging, for
+    a website with that opted in) is handled by a scheduled re-check --
+    see `app.tasks.scheduler.poll_and_merge_github_prs` -- which treats a
+    `"pending"`/`"no_checks"` result as "not yet proven safe", not as
+    "safe", exactly like this snapshot does.
+    """
+    states = {_get_commit_status_state(credentials, ref), _get_check_runs_state(credentials, ref)}
+    if "failure" in states:
+        return "failure"
+    if "pending" in states:
+        return "pending"
+    if "success" in states:
+        return "success"
+    return "no_checks"
+
+
+def get_pull_request(credentials: GitHubCredentials, pr_number: int) -> dict:
+    response = safe_request(
+        httpx.get,
+        f"{_repo_api_base(credentials)}/pulls/{pr_number}",
+        headers=credentials.headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if response.status_code != 200:
+        raise ConnectorError(f"Could not fetch pull request #{pr_number}: HTTP {response.status_code} {response.text[:200]}")
+    return response.json()
+
+
+def merge_pull_request(credentials: GitHubCredentials, pr_number: int) -> dict:
+    response = safe_request(
+        httpx.put,
+        f"{_repo_api_base(credentials)}/pulls/{pr_number}/merge",
+        headers=credentials.headers,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    if response.status_code not in (200, 201):
+        raise ConnectorError(f"Could not merge pull request #{pr_number}: HTTP {response.status_code} {response.text[:200]}")
+    return response.json()
 
 
 def validate_change(

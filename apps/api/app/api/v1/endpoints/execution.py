@@ -18,6 +18,7 @@ from app.execution.connections import (
     disconnect_shopify,
     disconnect_webflow,
     disconnect_wordpress,
+    set_github_auto_merge,
 )
 from app.execution.service import (
     ExecutionBlocked,
@@ -42,6 +43,7 @@ from app.schemas.execution import (
     ChangeRecordResponse,
     DeploymentVerificationResponse,
     DryRunResponse,
+    GitHubAutoMergeRequest,
     GitHubConnectRequest,
     RollbackRecordResponse,
     SanityConnectRequest,
@@ -256,6 +258,40 @@ def disconnect_github_connector(
     website = get_website_or_404(db, organization_id, website_id)
     disconnect_github(db, website)
     db.commit()
+
+
+@router.patch(
+    "/organizations/{organization_id}/websites/{website_id}/connections/github/settings",
+    response_model=WebsiteConnectionResponse,
+)
+def update_github_connector_settings(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    payload: GitHubAutoMergeRequest,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> WebsiteConnectionResponse:
+    """Flips the connector's auto-merge-on-CI-success opt-in without
+    touching the stored credentials -- no token re-entry or
+    re-verification needed just to toggle this."""
+    website = get_website_or_404(db, organization_id, website_id)
+    try:
+        connection = set_github_auto_merge(db, website, payload.auto_merge_on_ci_success)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="connector.github.settings_update",
+            resource_type="website_connection",
+            resource_id=str(connection.id),
+            metadata_json={"auto_merge_on_ci_success": payload.auto_merge_on_ci_success},
+        )
+    )
+    db.commit()
+    return WebsiteConnectionResponse.model_validate(connection)
 
 
 @router.post(

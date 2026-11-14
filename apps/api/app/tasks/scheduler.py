@@ -11,15 +11,20 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.celery_app import celery_app
+from app.connectors import github_pr
+from app.connectors.errors import ConnectorError
 from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
 from app.db.session import SessionLocal
 from app.config import get_settings
+from app.execution.connections import get_github_credentials
 from app.integrations.ga4_sync import sync_ga4_metrics
 from app.integrations.performance_sync import sync_performance_metrics
 from app.integrations.search_console_sync import sync_search_performance
 from app.integrations.url_inspection_sync import sync_url_inspection_status
+from app.models.change_record import ChangeRecord
 from app.models.crawl_job import CrawlJob, CrawlStatus
 from app.models.website import VerificationStatus, Website, WebsiteStatus
+from app.models.website_connection import ConnectorType, WebsiteConnection, WebsiteConnectionStatus
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.reporting.weekly_report import generate_weekly_report
 from app.tasks.retention import cleanup_old_data
@@ -234,5 +239,89 @@ def run_retention_cleanup() -> dict[str, int]:
         logger.exception("Retention cleanup failed")
         db.rollback()
         raise
+    finally:
+        db.close()
+
+
+# How far back to keep re-checking an open PR before giving up on it --
+# bounds the query below without needing a separate "gave up" flag; a
+# human can always merge it manually, this just stops polling it.
+_AUTO_MERGE_POLL_WINDOW = timedelta(days=7)
+
+
+@celery_app.task(name="app.tasks.scheduler.poll_and_merge_github_prs")
+def poll_and_merge_github_prs() -> int:
+    """For websites that opted into GitHub "auto-merge on CI success"
+    (PATCH .../connections/github/settings, config_json
+    `auto_merge_on_ci_success`), re-checks each still-open
+    RankPilot-authored PR's live CI status and merges it once CI
+    reports a clean `"success"` -- never on `"failure"`, `"pending"`, or
+    `"no_checks"` (a repo with no CI configured at all stays manually
+    reviewed; see `github_pr.get_combined_status`'s docstring, which
+    this task is the "scheduled re-check" it describes). A website
+    without the opt-in is untouched no matter how long its PRs sit
+    open.
+    """
+    db = SessionLocal()
+    merged = 0
+    try:
+        cutoff = datetime.now(timezone.utc) - _AUTO_MERGE_POLL_WINDOW
+        candidates = (
+            db.query(ChangeRecord)
+            .filter(
+                ChangeRecord.connector_type == ConnectorType.github,
+                ChangeRecord.auto_merged_at.is_(None),
+                ChangeRecord.executed_at >= cutoff,
+            )
+            .all()
+        )
+        for record in candidates:
+            pr_info = (record.after_state_json or {}).get("apply_result") or {}
+            pr_number = pr_info.get("pr_number")
+            if pr_number is None:
+                continue
+
+            website = db.get(Website, record.website_id)
+            if website is None:
+                continue
+
+            connection = (
+                db.query(WebsiteConnection)
+                .filter(
+                    WebsiteConnection.website_id == website.id,
+                    WebsiteConnection.connector_type == ConnectorType.github,
+                    WebsiteConnection.status == WebsiteConnectionStatus.connected,
+                )
+                .one_or_none()
+            )
+            if connection is None or not connection.config_json.get("auto_merge_on_ci_success"):
+                continue
+
+            try:
+                credentials = get_github_credentials(db, website)
+                pull_request = github_pr.get_pull_request(credentials, pr_number)
+                if pull_request.get("state") != "open":
+                    # Already merged (by a human, or an earlier run of
+                    # this task) or closed outright -- either way,
+                    # nothing left for this task to do; stop polling it.
+                    if pull_request.get("merged"):
+                        record.auto_merged_at = datetime.now(timezone.utc)
+                        db.commit()
+                    continue
+
+                ci_status = github_pr.get_combined_status(credentials, pull_request["head"]["ref"])
+                if ci_status != "success":
+                    continue
+
+                github_pr.merge_pull_request(credentials, pr_number)
+                record.auto_merged_at = datetime.now(timezone.utc)
+                db.commit()
+                merged += 1
+            except (ConnectorError, LookupError):
+                logger.exception(
+                    "Auto-merge check failed for change_record %s (PR #%s)", record.id, pr_number
+                )
+                db.rollback()
+        return merged
     finally:
         db.close()
