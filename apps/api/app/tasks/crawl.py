@@ -16,6 +16,7 @@ from app.db.session import SessionLocal
 from app.models.crawl_job import CrawlJob, CrawlStatus
 from app.models.website import Website
 from app.opportunities.auto_pipeline import auto_generate_and_execute_tasks
+from app.opportunities.health_score import compute_health_score
 from app.opportunities.scoring import refresh_opportunities_for_website
 from app.seo_rules.engine import run_rules_for_crawl
 
@@ -82,6 +83,9 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         db.commit()
 
         run_rules_for_crawl(db, website, crawl_job)
+        db.commit()
+
+        compute_health_score(db, website, crawl_job)
         db.commit()
 
         # Folded into the same task for MVP simplicity rather than a

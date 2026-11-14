@@ -31,6 +31,24 @@ class PageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SiteHealthScoreResponse(BaseModel):
+    id: uuid.UUID
+    website_id: uuid.UUID
+    crawl_job_id: uuid.UUID
+    overall_score: float | None
+    technical_score: float | None
+    on_page_score: float | None
+    content_score: float | None
+    performance_score: float | None
+    critical_count: int
+    warning_count: int
+    info_count: int
+    passed_count: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class SEOFindingResponse(BaseModel):
     id: uuid.UUID
     website_id: uuid.UUID

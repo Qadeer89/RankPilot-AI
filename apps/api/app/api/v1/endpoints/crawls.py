@@ -13,7 +13,8 @@ from app.models.membership import Membership, MembershipRole
 from app.models.page import Page
 from app.models.seo_finding import SEOFinding
 from app.models.website import WebsiteStatus
-from app.schemas.crawl import CrawlJobResponse, PageResponse, SEOFindingResponse
+from app.opportunities.health_score import get_score_history
+from app.schemas.crawl import CrawlJobResponse, PageResponse, SEOFindingResponse, SiteHealthScoreResponse
 from app.tasks.crawl import run_site_crawl
 
 router = APIRouter(tags=["crawls"])
@@ -181,3 +182,22 @@ def list_findings(
         query = query.filter(SEOFinding.status == status_filter)
     findings = query.order_by(SEOFinding.last_detected_at.desc()).all()
     return [SEOFindingResponse.model_validate(f) for f in findings]
+
+
+@router.get(
+    "/organizations/{organization_id}/websites/{website_id}/health-score",
+    response_model=list[SiteHealthScoreResponse],
+)
+def list_health_scores(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
+) -> list[SiteHealthScoreResponse]:
+    """Most recent first (app/opportunities/health_score.py computes one
+    row per crawl), so index 0 is "current" and the rest is history for
+    a score-over-time chart."""
+    website = get_website_or_404(db, organization_id, website_id)
+    scores = get_score_history(db, website, limit=min(limit, 100))
+    return [SiteHealthScoreResponse.model_validate(s) for s in scores]

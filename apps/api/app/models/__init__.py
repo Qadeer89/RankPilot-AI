@@ -15,6 +15,7 @@ from app.models.page_snapshot import PageSnapshot
 from app.models.report import Report, ReportType
 from app.models.rollback_record import RollbackRecord, RollbackStatus
 from app.models.seo_finding import FindingSeverity, FindingStatus, SEOFinding
+from app.models.site_health_score import SiteHealthScore
 from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import ApprovalStatus, SEOTask, SEOTaskStatus
 from app.models.usage_record import UsageRecord
@@ -61,6 +62,7 @@ __all__ = [
     "FindingSeverity",
     "FindingStatus",
     "SEOFinding",
+    "SiteHealthScore",
     "OpportunityStatus",
     "SEOOpportunity",
     "ApprovalStatus",
