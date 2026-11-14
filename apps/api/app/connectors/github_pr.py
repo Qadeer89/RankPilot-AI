@@ -393,7 +393,23 @@ def _resolve_tsx_target(credentials: GitHubCredentials, target_ref: dict, operat
     if field_key is None:
         raise UnsupportedOperation(f"Operation {operation} is not supported for Next.js source files.")
 
-    block_span = _find_metadata_block(target_ref["content"])
+    try:
+        block_span = _find_metadata_block(target_ref["content"])
+    except UnsupportedOperation:
+        # A page with no `export const metadata` of its own always
+        # inherits one from an ancestor `layout.tsx` (App Router
+        # requires the root layout to provide a default) -- RankPilot
+        # AI won't edit that automatically, since it's shared with
+        # every other page that also doesn't set its own, not specific
+        # to this one.
+        raise UnsupportedOperation(
+            f"{target_ref['file_path']} has no `export const metadata` of its own -- its title/"
+            "description are inherited from a parent `layout.tsx`'s shared metadata. RankPilot AI "
+            "won't edit that automatically, since it would also change every other page that "
+            "doesn't set its own title/description. Add a page-specific `export const metadata` "
+            "to this file to make it editable here, or edit the layout's metadata by hand if the "
+            "change really should be site-wide."
+        ) from None
     found = _find_field_in_block(target_ref["content"], block_span, field_key)
     if found is None:
         raise UnsupportedOperation(

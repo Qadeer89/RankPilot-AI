@@ -388,6 +388,20 @@ def test_raises_when_no_metadata_export_found():
         github_pr.get_current_value(CREDENTIALS, target_ref, "set_title")
 
 
+def test_raises_explains_inherited_layout_metadata_rather_than_a_bare_not_found():
+    # Mirrors a real homepage (app/page.tsx with no metadata export of
+    # its own, relying entirely on the root layout.tsx's shared
+    # default) -- the error must say WHY, not just that nothing was
+    # found, and must not attempt to resolve/edit the layout file.
+    target_ref = {
+        "file_path": "app/page.tsx",
+        "sha": "sha1",
+        "content": "export default function Home() { return <div>Welcome</div>; }",
+    }
+    with pytest.raises(UnsupportedOperation, match="inherited from a parent `layout.tsx`"):
+        github_pr.get_current_value(CREDENTIALS, target_ref, "set_meta_description")
+
+
 def test_raises_when_metadata_field_absent():
     target_ref = {
         "file_path": "app/about/page.tsx",
