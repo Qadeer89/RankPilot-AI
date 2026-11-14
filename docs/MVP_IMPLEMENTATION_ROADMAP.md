@@ -1,5 +1,18 @@
 # RankPilot AI --- MVP Implementation Roadmap
 
+> **Note on phase numbering:** this document's Phase 0-6 numbering is
+> this roadmap's own, independent of the later "RankPilot AI – Complete
+> Product Roadmap (Phase 4 to Final Release)" master prompt, whose
+> Phase 4 ("Advanced Crawling & Performance Intelligence") through
+> Phase 8 ("Autopilot Controls & Production Readiness") is now fully
+> implemented. The two numbering schemes do not align (this document's
+> own "Phase 5", for instance, is "Daily operations and reporting", not
+> Google Search Intelligence). See `docs/DEPLOYMENT_GUIDE.md` and
+> `docs/USER_ONBOARDING.md` for the current, post-Phase-8 state of the
+> product, and `docs/CONNECTOR_OPERATIONS_REFERENCE.md` /
+> `SECURITY_SPECIFICATION.md` for what each connector and security
+> control actually does today.
+
 ## 1. Delivery strategy
 
 Build a useful end-to-end product in increments. Use founder-owned
