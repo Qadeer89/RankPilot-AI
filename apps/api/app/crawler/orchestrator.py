@@ -387,6 +387,8 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
                     internal_links_json=extraction.internal_links,
                     content_fingerprint=extraction.content_fingerprint,
                     word_count=extraction.word_count,
+                    rel_next_url=extraction.rel_next_url,
+                    rel_prev_url=extraction.rel_prev_url,
                 )
             )
             _sync_page_images(db, page, extraction.images)

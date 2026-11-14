@@ -54,6 +54,8 @@ class PageExtraction:
     images: list[ImageExtraction] = field(default_factory=list)
     content_fingerprint: str = ""
     word_count: int = 0
+    rel_next_url: str | None = None
+    rel_prev_url: str | None = None
 
 
 def _absolute_http_url(href: str, base_url: str) -> str | None:
@@ -103,6 +105,20 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
     robots_tag = soup.find("meta", attrs={"name": "robots"})
     robots_content = robots_tag.get("content", "") if robots_tag else ""
     meta_robots_directives = [d.strip().lower() for d in robots_content.split(",") if d.strip()]
+
+    # rel=next/prev (app/seo_rules/rules/pagination.py). Deprecated by
+    # Google for ranking purposes in 2019 but still a widely-used,
+    # legitimate signal many CMS/theme pagination templates emit, and a
+    # real, parseable fact about the page either way -- this module only
+    # records what's declared, never invents a pagination relationship
+    # the HTML didn't actually state.
+    rel_next_tag = soup.find("link", attrs={"rel": "next"})
+    rel_next_url = rel_next_tag.get("href", "").strip() if rel_next_tag else ""
+    rel_next_url = urljoin(base_url, rel_next_url) if rel_next_url else None
+
+    rel_prev_tag = soup.find("link", attrs={"rel": "prev"}) or soup.find("link", attrs={"rel": "previous"})
+    rel_prev_url = rel_prev_tag.get("href", "").strip() if rel_prev_tag else ""
+    rel_prev_url = urljoin(base_url, rel_prev_url) if rel_prev_url else None
 
     headings: dict[str, list[str]] = {}
     for level in range(1, 7):
@@ -200,4 +216,6 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
         images=images,
         content_fingerprint=content_fingerprint,
         word_count=word_count,
+        rel_next_url=rel_next_url,
+        rel_prev_url=rel_prev_url,
     )

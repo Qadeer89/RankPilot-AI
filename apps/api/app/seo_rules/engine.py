@@ -30,6 +30,7 @@ from app.seo_rules.rules import (
     indexability,
     links,
     metadata,
+    pagination,
     sitemap,
     structured_data,
 )
@@ -106,6 +107,8 @@ SNAPSHOT_SCOPED_RULE_CODES = {
     "DUPLICATE_BODY_CONTENT",
     "EXTERNAL_LINK_BROKEN",
     "EXTERNAL_LINK_REDIRECT",
+    "PAGINATION_CANONICAL_CONFLICT",
+    "PAGINATION_LINK_BROKEN",
 }
 
 # Rule codes derived from persistent Page/sitemap state rather than this
@@ -212,6 +215,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
         candidates.extend(images.check(page_id, page_images_by_page_id.get(page_id, [])))
         candidates.extend(content.check_thin_content(page_id, snapshot))
         candidates.extend(external_links.check(page_id, page_external_links_by_page_id.get(page_id, [])))
+        candidates.extend(pagination.check(page_id, page.canonical_url, snapshot))
 
     candidates.extend(duplicates.check_site(snapshots_by_page_id))
     candidates.extend(content.check_duplicate_body_content(snapshots_by_page_id))
@@ -223,6 +227,7 @@ def run_rules_for_crawl(db: Session, website: Website, crawl_job: CrawlJob) -> l
             pages_by_normalized_url, page_images_by_page_id, normalize_frontier_url
         )
     )
+    candidates.extend(pagination.check_broken_pagination_links(pages_by_normalized_url, snapshots_by_page_id))
 
     snapshot_scope = set(snapshots_by_page_id.keys())
     sitemap_scope = {

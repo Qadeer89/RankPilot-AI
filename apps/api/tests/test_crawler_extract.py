@@ -136,6 +136,36 @@ def test_external_links_are_deduplicated():
     assert len(extraction.external_links) == 1
 
 
+def test_rel_next_prev_pagination_links_are_extracted():
+    html = """
+    <html><head>
+    <title>Page 2</title>
+    <link rel="next" href="/products?page=3">
+    <link rel="prev" href="/products?page=1">
+    </head><body></body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/products?page=2", site_hostname="example.com")
+    assert extraction.rel_next_url == "https://example.com/products?page=3"
+    assert extraction.rel_prev_url == "https://example.com/products?page=1"
+
+
+def test_rel_previous_is_accepted_as_an_alias_for_rel_prev():
+    html = """
+    <html><head>
+    <link rel="previous" href="/products?page=1">
+    </head><body></body></html>
+    """
+    extraction = extract_page(html, base_url="https://example.com/products?page=2", site_hostname="example.com")
+    assert extraction.rel_prev_url == "https://example.com/products?page=1"
+
+
+def test_pagination_links_default_to_none_when_absent():
+    html = "<html><head><title>Plain page</title></head><body></body></html>"
+    extraction = extract_page(html, base_url="https://example.com/", site_hostname="example.com")
+    assert extraction.rel_next_url is None
+    assert extraction.rel_prev_url is None
+
+
 def test_content_fingerprint_matches_for_identical_body_text_despite_different_scripts():
     html_a = """
     <html><head><title>A</title></head><body>

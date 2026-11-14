@@ -28,6 +28,7 @@ from app.seo_rules.rules import (
     indexability,
     links,
     metadata,
+    pagination,
     sitemap,
     structured_data,
 )
@@ -578,3 +579,61 @@ def test_external_link_broken_negative_when_unchecked():
 def test_external_link_redirect_positive():
     candidates = external_links.check(uuid.uuid4(), [_external_link(link_status=ExternalLinkStatus.redirect)])
     assert _rule_codes(candidates) == {"EXTERNAL_LINK_REDIRECT"}
+
+
+def test_pagination_canonical_conflict_positive_when_not_self_referential():
+    snapshot = _snapshot(
+        canonical_url="https://example.com/products",
+        rel_prev_url="https://example.com/products?page=1",
+    )
+    candidates = pagination.check(uuid.uuid4(), "https://example.com/products?page=2", snapshot)
+    assert _rule_codes(candidates) == {"PAGINATION_CANONICAL_CONFLICT"}
+
+
+def test_pagination_canonical_conflict_negative_when_self_referential():
+    snapshot = _snapshot(
+        canonical_url="https://example.com/products?page=2",
+        rel_prev_url="https://example.com/products?page=1",
+    )
+    candidates = pagination.check(uuid.uuid4(), "https://example.com/products?page=2", snapshot)
+    assert candidates == []
+
+
+def test_pagination_canonical_conflict_negative_on_the_first_page():
+    """A page with no rel_prev is page 1 of its own series -- a
+    self-referential or even absent canonical here is unremarkable and
+    must not be flagged as a pagination conflict."""
+    snapshot = _snapshot(canonical_url="https://example.com/products", rel_prev_url=None)
+    candidates = pagination.check(uuid.uuid4(), "https://example.com/products", snapshot)
+    assert candidates == []
+
+
+def test_pagination_link_broken_positive_when_next_target_is_known_bad():
+    page_id = uuid.uuid4()
+    dead_page = _page("https://example.com/products?page=3", last_status_code=500)
+    snapshot = _snapshot(rel_next_url="https://example.com/products?page=3")
+    candidates = pagination.check_broken_pagination_links(
+        pages_by_normalized_url={"https://example.com/products?page=3": dead_page},
+        snapshots_by_page_id={page_id: snapshot},
+    )
+    assert _rule_codes(candidates) == {"PAGINATION_LINK_BROKEN"}
+
+
+def test_pagination_link_broken_negative_when_target_is_healthy():
+    page_id = uuid.uuid4()
+    healthy_page = _page("https://example.com/products?page=3", last_status_code=200)
+    snapshot = _snapshot(rel_next_url="https://example.com/products?page=3")
+    candidates = pagination.check_broken_pagination_links(
+        pages_by_normalized_url={"https://example.com/products?page=3": healthy_page},
+        snapshots_by_page_id={page_id: snapshot},
+    )
+    assert candidates == []
+
+
+def test_pagination_link_broken_negative_when_no_pagination_declared():
+    page_id = uuid.uuid4()
+    snapshot = _snapshot(rel_next_url=None, rel_prev_url=None)
+    candidates = pagination.check_broken_pagination_links(
+        pages_by_normalized_url={}, snapshots_by_page_id={page_id: snapshot}
+    )
+    assert candidates == []

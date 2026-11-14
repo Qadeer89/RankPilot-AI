@@ -38,6 +38,9 @@ ABOUT_HTML = """
 <html><head>
 <title>Home - Example</title>
 <script type="application/ld+json">{not valid json}</script>
+<link rel="canonical" href="https://example.com/">
+<link rel="prev" href="/">
+<link rel="next" href="/missing-page">
 </head><body>
 <a href="/">Home</a>
 <img src="/team.jpg">

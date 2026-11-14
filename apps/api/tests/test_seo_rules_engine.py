@@ -70,6 +70,8 @@ def test_rule_engine_flags_expected_issues(db_session, monkeypatch):
     assert "IMAGE_MISSING_ALT" in about_codes
     assert "IMAGE_UNHELPFUL_ALT_TEXT" in about_codes
     assert "IMAGE_MISSING_DIMENSIONS" in about_codes
+    assert "PAGINATION_CANONICAL_CONFLICT" in about_codes, "about declares rel=prev but canonicalizes elsewhere"
+    assert "PAGINATION_LINK_BROKEN" in about_codes, "about's rel=next points at a page that 404s"
 
     broken_codes = _rule_codes_for(db_session, website, "https://example.com/broken")
     assert "HTTP_ERROR_STATUS" in broken_codes
