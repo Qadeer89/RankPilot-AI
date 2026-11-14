@@ -21,6 +21,7 @@ fast crawler's own protection, which is unchanged.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from playwright.sync_api import Error as PlaywrightError
@@ -29,7 +30,14 @@ from playwright.sync_api import sync_playwright
 from app.core.url_safety import UnsafeUrlError, validate_public_url
 
 RENDER_TIMEOUT_MS = 15_000
-CHROMIUM_EXECUTABLE_PATH = "/opt/pw-browsers/chromium"
+
+# A pre-provisioned Chromium binary, when one exists at this well-known
+# path (true in this project's cloud dev sandbox) -- reused to avoid a
+# redundant download. On a host without one (e.g. the production VPS),
+# this stays None and Playwright falls back to its own bundled browser
+# (installed via `playwright install chromium`, under ~/.cache/ms-playwright).
+_SANDBOX_CHROMIUM_PATH = "/opt/pw-browsers/chromium"
+CHROMIUM_EXECUTABLE_PATH = _SANDBOX_CHROMIUM_PATH if os.path.exists(_SANDBOX_CHROMIUM_PATH) else None
 
 # A page is a reasonable rendering candidate only when its raw HTML
 # strongly suggests client-side rendering: very little visible text
@@ -69,11 +77,13 @@ def render_page(url: str, *, timeout_ms: int = RENDER_TIMEOUT_MS) -> RenderResul
     except UnsafeUrlError as exc:
         raise RenderError(f"unsafe_url: {exc}") from exc
 
+    launch_kwargs = {"headless": True, "args": ["--no-sandbox"]}
+    if CHROMIUM_EXECUTABLE_PATH is not None:
+        launch_kwargs["executable_path"] = CHROMIUM_EXECUTABLE_PATH
+
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                executable_path=CHROMIUM_EXECUTABLE_PATH, headless=True, args=["--no-sandbox"]
-            )
+            browser = playwright.chromium.launch(**launch_kwargs)
             try:
                 page = browser.new_page()
                 page.goto(url, timeout=timeout_ms, wait_until="networkidle")
