@@ -26,7 +26,23 @@ logic doesn't need to know which connector it's talking to:
 
 `set_alt_text` (RankPilot AI Phase 2 "AI Alt Text Generation") targets an
 individual *image*, not a page, and is WordPress-only today — see that
-connector's section below.
+connector's section below. Verified (Phase 3) and confirmed to stay
+WordPress-only: WordPress's Media Library has a real search-by-filename
+endpoint (`find_media_by_url`, below) to resolve an arbitrary image URL
+back to a specific media item; Shopify, Webflow, and Sanity have no
+equivalent store-wide "find this image" endpoint (Shopify images are
+only listable per-product, for example), so there is no reliable way to
+resolve a crawled image URL to a resource on those platforms without
+already knowing which page/product it belongs to. Extending this
+operation to them is not implemented, not merely deferred — it would
+require guessing at a mechanism that doesn't actually exist. The AI
+agent behind this operation also now uses real vision analysis (the
+actual image, not just surrounding text) whenever an opportunity
+affects exactly one image, attaching it directly to the model call
+(`app/ai/runner.py`); with more than one affected image on the same
+opportunity there's no reliable way to tell the model which attached
+image maps to which URL, so those stay on the original, context-only
+prompt.
 
 `set_canonical` (RankPilot AI Phase 3 "Canonical Tag Automation") is
 WordPress and GitHub only — Shopify, Webflow, and Sanity have no

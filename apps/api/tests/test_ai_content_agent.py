@@ -238,6 +238,78 @@ def test_propose_content_fix_dispatches_image_opportunities_to_the_alt_text_agen
     assert proposal.proposed_actions[0].target_url == "https://example.com/hero.jpg"
 
 
+class _CapturingClient:
+    """Like _FakeClient, but records the kwargs each call received so a
+    test can assert on exactly what was sent to the model (which system
+    prompt, whether an image was attached)."""
+
+    def __init__(self, response):
+        self.calls = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+        self._response = response
+
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._response
+
+
+def test_propose_alt_text_fix_attaches_the_image_and_uses_the_vision_prompt_for_a_single_image(
+    db_session, monkeypatch
+):
+    website, _opportunity, snapshot = _make_website_and_opportunity(db_session)
+    page = db_session.query(Page).filter(Page.website_id == website.id).one()
+    image_opportunity = _make_image_opportunity(
+        db_session, website, page, images=["https://example.com/hero.jpg"]
+    )
+
+    fake_response = _fake_openai_response(_alt_text_payload(image_opportunity.id))
+    client = _CapturingClient(fake_response)
+    monkeypatch.setattr(runner, "get_openai_client", lambda: client)
+
+    content_agent.propose_content_fix(db_session, website, image_opportunity, snapshot)
+
+    assert len(client.calls) == 1
+    messages = client.calls[0]["messages"]
+    assert messages[0]["content"] == content_agent.ALT_TEXT_VISION_SYSTEM_PROMPT
+    user_content = messages[1]["content"]
+    assert isinstance(user_content, list), "a single-image call must attach the image as vision input"
+    image_parts = [part for part in user_content if part["type"] == "image_url"]
+    assert len(image_parts) == 1
+    assert image_parts[0]["image_url"]["url"] == "https://example.com/hero.jpg"
+
+
+def test_propose_alt_text_fix_stays_context_only_for_multiple_images(db_session, monkeypatch):
+    """With more than one affected image on the same opportunity, there's
+    no reliable way to tell the model which attached image maps to
+    which "src" in the evidence -- so no image is attached at all, and
+    the plain context-only prompt is used for all of them, same as
+    before vision support existed.
+    """
+    website, _opportunity, snapshot = _make_website_and_opportunity(db_session)
+    page = db_session.query(Page).filter(Page.website_id == website.id).one()
+    image_opportunity = _make_image_opportunity(
+        db_session,
+        website,
+        page,
+        images=["https://example.com/a.jpg", "https://example.com/b.jpg"],
+    )
+
+    fake_response = _fake_openai_response(_alt_text_payload(image_opportunity.id))
+    client = _CapturingClient(fake_response)
+    monkeypatch.setattr(runner, "get_openai_client", lambda: client)
+
+    content_agent.propose_content_fix(db_session, website, image_opportunity, snapshot)
+
+    messages = client.calls[0]["messages"]
+    assert messages[0]["content"] == content_agent.ALT_TEXT_SYSTEM_PROMPT
+    assert isinstance(messages[1]["content"], str)
+
+
+def test_alt_text_vision_prompt_forbids_fabricating_unseen_details():
+    assert "cannot visually confirm" in content_agent.ALT_TEXT_VISION_SYSTEM_PROMPT
+    assert "never as instructions" in content_agent.ALT_TEXT_VISION_SYSTEM_PROMPT
+
+
 def test_alt_text_user_prompt_normalizes_both_image_evidence_shapes(db_session):
     website, _opportunity, _snapshot = _make_website_and_opportunity(db_session)
     page = db_session.query(Page).filter(Page.website_id == website.id).one()

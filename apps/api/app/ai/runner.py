@@ -42,6 +42,7 @@ def run_ai_agent(
     user_prompt: str,
     response_json_schema: dict,
     parse_fn: Callable[[str], T],
+    image_urls: list[str] | None = None,
 ) -> T:
     settings = get_settings()
 
@@ -69,12 +70,25 @@ def run_ai_agent(
     db.add(agent_run)
     db.flush()
 
+    if image_urls:
+        # Multi-part content (RankPilot AI Phase 3 "Image Alt Text
+        # Automation": "use actual image content where visual analysis
+        # is available"). Each image is given as a public URL the model
+        # fetches itself -- RankPilot never downloads or re-encodes it,
+        # and never claims the model actually saw an image this call
+        # didn't attach (see content_agent.py's vision-path prompt).
+        user_content = [{"type": "text", "text": user_prompt}] + [
+            {"type": "image_url", "image_url": {"url": url}} for url in image_urls
+        ]
+    else:
+        user_content = user_prompt
+
     try:
         response = client.chat.completions.create(
             model=settings.openai_model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "user", "content": user_content},
             ],
             response_format={"type": "json_schema", "json_schema": response_json_schema},
             max_tokens=settings.openai_max_output_tokens,
