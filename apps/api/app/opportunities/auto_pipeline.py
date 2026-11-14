@@ -20,13 +20,74 @@ from app.ai.budget import BudgetExceeded
 from app.ai.client import AINotConfigured
 from app.ai.content_agent import propose_content_fix
 from app.ai.runner import PromptTooLarge
-from app.execution.service import ExecutionBlocked, create_tasks_from_proposal, execute_task
+from app.connectors.errors import ConnectorError
+from app.connectors.wordpress import UnsupportedOperation, WordPressConnectorError, find_post_by_url
+from app.execution.connections import get_connected_content_connector, get_connector_credentials, get_wordpress_credentials
+from app.execution.service import (
+    GENERIC_CONNECTOR_MODULES,
+    ExecutionBlocked,
+    create_tasks_from_proposal,
+    execute_task,
+)
+from app.models.page import Page
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
 from app.models.seo_task import ApprovalStatus, SEOTask
-from app.models.website import Website
+from app.models.website import Website, WebsiteStatus
+from app.models.website_connection import ConnectorType
 
 logger = logging.getLogger(__name__)
+
+
+def _target_url_for(db: Session, opportunity: SEOOpportunity) -> str | None:
+    if opportunity.page_id is None:
+        return None
+    page = db.get(Page, opportunity.page_id)
+    return page.canonical_url if page is not None else None
+
+
+def _connector_can_write(db: Session, website: Website, target_url: str | None) -> tuple[bool, str | None]:
+    """Best-effort pre-check, before any AI call: can the connected
+    connector actually find/write this specific URL right now?
+
+    Only ever returns a hard "no" when we've just confirmed the write
+    would fail (e.g. Sanity's `find_target` can't resolve a URL whose
+    document type the connected dataset doesn't expose SEO fields for --
+    app/connectors/sanity.py). Returns "yes" (not a block) for every case
+    that isn't a confirmed failure right now -- no connector connected yet,
+    a site-wide opportunity with no single target page, or a connector
+    this check doesn't special-case -- since those can still resolve once
+    a connector is connected or at execution time; this pre-filter exists
+    only to avoid spending an AI call on a write we already know will fail.
+    """
+    if target_url is None or website.status != WebsiteStatus.active:
+        return True, None
+    connector_type = get_connected_content_connector(db, website)
+    if connector_type is None:
+        return True, None
+
+    if connector_type == ConnectorType.wordpress:
+        try:
+            credentials = get_wordpress_credentials(db, website)
+            find_post_by_url(credentials, target_url)
+            return True, None
+        except LookupError as exc:
+            return False, str(exc)
+        except (WordPressConnectorError, UnsupportedOperation) as exc:
+            return False, str(exc)
+
+    module = GENERIC_CONNECTOR_MODULES.get(connector_type)
+    if module is None:
+        return True, None
+    try:
+        credentials = get_connector_credentials(db, website, connector_type)
+    except LookupError as exc:
+        return False, str(exc)
+    try:
+        module.find_target(credentials, target_url)
+        return True, None
+    except ConnectorError as exc:
+        return False, str(exc)
 
 # Bounds one crawl's worth of AI calls so a site with hundreds of open
 # opportunities (e.g. many long blog-post titles) can't turn a single
@@ -59,6 +120,17 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
             continue
         if processed >= MAX_AUTO_TASKS_PER_CRAWL:
             break
+
+        target_url = _target_url_for(db, opportunity)
+        writable, skip_reason = _connector_can_write(db, website, target_url)
+        if not writable:
+            logger.info(
+                "auto_pipeline: skipping opportunity %s, target not writable by the connected connector (%s)",
+                opportunity.id,
+                skip_reason,
+            )
+            continue
+
         processed += 1
 
         snapshot = None

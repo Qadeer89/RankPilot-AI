@@ -1,5 +1,8 @@
 from app.ai.schemas import OpportunityProposal
+from app.connectors import sanity
+from app.connectors.errors import ConnectorError
 from app.crawler.orchestrator import run_crawl
+from app.execution.connections import connect_sanity
 from app.execution.service import ExecutionBlocked
 from app.models.crawl_job import CrawlTrigger
 from app.models.organization import Organization
@@ -150,3 +153,53 @@ def test_auto_pipeline_persists_a_failed_status_from_execute_task_instead_of_rev
     not_required_tasks = [t for t in tasks if t.approval_status == ApprovalStatus.not_required]
     assert not_required_tasks, "fixture should produce at least one tier-1 not_required task"
     assert all(t.status == SEOTaskStatus.failed for t in not_required_tasks)
+
+
+def test_auto_pipeline_prefilter_skips_unwritable_targets_without_spending_an_ai_call(db_session, monkeypatch):
+    """Regression test for the live Gulsrehab incident: a Sanity dataset
+    whose connected document type doesn't cover a given page's content
+    (find_target raises ConnectorError for every URL in this test, same
+    shape as "No Sanity 'blog' document found matching URL: ..."). The
+    pre-filter must catch this before propose_content_fix is ever called,
+    not just before create_tasks_from_proposal.
+    """
+    patch_crawler_network(monkeypatch)
+    monkeypatch.setattr(sanity, "verify_credentials", lambda credentials: {"ok": True})
+    monkeypatch.setattr(sanity, "find_target", lambda credentials, target_url: (_ for _ in ()).throw(ConnectorError("no match")))
+
+    ai_call_count = {"count": 0}
+
+    def fake_propose(db, website, opportunity, snapshot):
+        ai_call_count["count"] += 1
+        return OpportunityProposal(
+            opportunity_id=str(opportunity.id),
+            summary="Automated fix.",
+            evidence=[{"page_url": website.canonical_url, "finding_code": "TEST"}],
+            proposed_actions=[
+                {"operation": "set_title", "target_url": website.canonical_url, "value": "Fixed title"}
+            ],
+            risk_tier=1,
+            confidence=0.8,
+            requires_approval=True,
+            validation_plan=["Recrawl the page"],
+        )
+
+    monkeypatch.setattr(auto_pipeline, "propose_content_fix", fake_propose)
+
+    website = _make_website(db_session)
+    connect_sanity(db_session, website, "proj", "production", "tok")
+    db_session.flush()
+
+    crawl_job = run_crawl(db_session, website, trigger=CrawlTrigger.manual)
+    run_rules_for_crawl(db_session, website, crawl_job)
+    opportunities = refresh_opportunities_for_website(db_session, website)
+    db_session.flush()
+    page_opportunities = [o for o in opportunities if o.page_id is not None and o.status == OpportunityStatus.open]
+    assert page_opportunities, "fixture should produce at least one page-scoped open opportunity"
+
+    auto_pipeline.auto_generate_and_execute_tasks(db_session, website)
+    db_session.flush()
+
+    assert ai_call_count["count"] == 0, "AI should never be called for a target the connector just confirmed it can't write"
+    tasks = db_session.query(SEOTask).filter(SEOTask.website_id == website.id).all()
+    assert len(tasks) == 0
