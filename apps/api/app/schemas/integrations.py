@@ -29,6 +29,7 @@ class SearchPerformanceRow(BaseModel):
     average_position: float
     country: str | None = None
     device: str | None = None
+    page_id: uuid.UUID | None = None
 
 
 class SearchPerformanceResponse(BaseModel):

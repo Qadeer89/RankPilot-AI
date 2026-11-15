@@ -184,6 +184,7 @@ def get_search_performance(
             average_position=o.average_position,
             country=o.country,
             device=o.device,
+            page_id=o.page_id,
         )
         for o in observations
     ]
