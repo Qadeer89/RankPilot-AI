@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (
     ai_agents,
     analytics,
     auth,
+    chat,
     crawls,
     deploy_webhook,
     execution,
@@ -30,3 +31,4 @@ api_router.include_router(execution.router)
 api_router.include_router(reporting.router)
 api_router.include_router(ai_agents.router)
 api_router.include_router(onboarding.router)
+api_router.include_router(chat.router)

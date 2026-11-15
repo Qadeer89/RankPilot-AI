@@ -100,6 +100,20 @@ class Settings(BaseSettings):
     smtp_from_email: str = "no-reply@rankpilot.ai"
     smtp_use_tls: bool = True
 
+    # AI Knowledge Assistant (Part 4-7): seed corpus is this repo's own
+    # docs/*.md, re-ingested into knowledge_documents/knowledge_chunks.
+    # No pgvector in this environment -- see KnowledgeChunk's docstring.
+    openai_embedding_model: str = "text-embedding-3-small"
+    knowledge_seed_docs_dir: str | None = None
+    knowledge_chunk_size_chars: int = 1200
+    knowledge_chunk_overlap_chars: int = 150
+    knowledge_retrieval_top_k: int = 5
+    # Below this cosine similarity, retrieved context is considered too
+    # weak to answer from -- the assistant gives the no-hallucination
+    # fallback instead of guessing from a barely-related chunk.
+    knowledge_similarity_threshold: float = 0.2
+    chat_history_max_messages: int = 12
+
     # Retention (RP-0807, SECURITY_SPECIFICATION.md #8). Point-in-time
     # defaults for the founder pilot; make these plan-specific before
     # onboarding external customers.
