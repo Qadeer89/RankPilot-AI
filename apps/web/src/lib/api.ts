@@ -1053,3 +1053,68 @@ export function completeOnboarding(token: string, organizationId: string) {
     headers: authHeaders(token),
   });
 }
+
+// --- AI Knowledge Assistant chat ---
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  created_at: string;
+}
+
+export interface ChatSource {
+  document_id: string;
+  title: string;
+  category: string;
+  suggested_path: string;
+}
+
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: ChatRole;
+  content: string;
+  sources: ChatSource[];
+  created_at: string;
+}
+
+export function listChatConversations(token: string, organizationId: string) {
+  return request<ChatConversation[]>(`/organizations/${organizationId}/chat/conversations`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function listChatMessages(token: string, organizationId: string, conversationId: string) {
+  return request<ChatMessage[]>(`/organizations/${organizationId}/chat/conversations/${conversationId}/messages`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function askAssistant(
+  token: string,
+  organizationId: string,
+  question: string,
+  conversationId: string | null,
+  context?: Record<string, unknown>
+) {
+  return request<ChatMessage>(`/organizations/${organizationId}/chat/messages`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ question, conversation_id: conversationId, context }),
+  });
+}
+
+export function submitChatFeedback(
+  token: string,
+  organizationId: string,
+  messageId: string,
+  rating: "up" | "down"
+) {
+  return request<void>(`/organizations/${organizationId}/chat/messages/${messageId}/feedback`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ rating }),
+  });
+}

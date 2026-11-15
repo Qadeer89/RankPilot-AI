@@ -1,0 +1,41 @@
+.form {
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rp-border);
+}
+
+.input {
+  flex: 1;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 9px 12px;
+  font-size: 14px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+}
+
+.input:focus {
+  outline: 2px solid var(--rp-primary);
+  outline-offset: 1px;
+}
+
+.send {
+  padding: 9px 16px;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+}
+
+.send:hover {
+  background: var(--rp-primary-hover);
+}
+
+.send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

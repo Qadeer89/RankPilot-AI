@@ -5,9 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MeResponse, getMe } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
+import ChatLauncher from "@/components/chat/ChatLauncher";
 import styles from "./AppShell.module.css";
 
-const NAV_ITEMS = [{ href: "/dashboard", label: "Websites" }];
+const NAV_ITEMS = [
+  { href: "/dashboard", label: "Websites" },
+  { href: "/dashboard/assistant", label: "AI Assistant" },
+];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -103,6 +107,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <div className={styles.content}>{children}</div>
       </div>
+
+      {pathname !== "/dashboard/assistant" && <ChatLauncher organizationId={me?.organizations[0]?.id ?? null} />}
     </div>
   );
 }

@@ -1,0 +1,144 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.empty {
+  color: var(--rp-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.row {
+  display: flex;
+}
+
+.rowUser {
+  justify-content: flex-end;
+}
+
+.rowAssistant {
+  justify-content: flex-start;
+}
+
+.bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.bubbleUser {
+  background: var(--rp-primary);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.bubbleAssistant {
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  color: var(--rp-ink);
+  border-bottom-left-radius: 3px;
+}
+
+.assistantColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 85%;
+}
+
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sourceChip {
+  font-size: 11px;
+  color: var(--rp-primary);
+  background: var(--rp-primary-soft);
+  border-radius: var(--rp-radius-pill);
+  padding: 3px 10px;
+  text-decoration: none;
+}
+
+.sourceChip:hover {
+  background: var(--rp-primary);
+  color: #fff;
+}
+
+.feedbackRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feedbackButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--rp-muted);
+}
+
+.feedbackButton:hover {
+  background: var(--rp-bg);
+  color: var(--rp-ink);
+}
+
+.feedbackButtonActive {
+  color: var(--rp-primary);
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-bg);
+  border: 1px solid var(--rp-border);
+  width: fit-content;
+}
+
+.thinkingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rp-muted);
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+.thinkingDot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinkingDot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.error {
+  color: var(--rp-danger);
+  font-size: 13px;
+  background: var(--rp-danger-soft);
+  padding: 8px 12px;
+  border-radius: var(--rp-radius-control);
+}

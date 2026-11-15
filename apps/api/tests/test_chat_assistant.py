@@ -71,6 +71,24 @@ def test_ask_falls_back_when_nothing_relevant_is_retrieved(db_session, monkeypat
     assert message.sources_json == []
 
 
+def test_ask_degrades_gracefully_when_embedding_call_fails(db_session, monkeypatch):
+    from openai import APIConnectionError
+
+    org = _make_org(db_session)
+
+    def _raise(_q):
+        raise APIConnectionError(request=SimpleNamespace())
+
+    monkeypatch.setattr(chat_service, "embed_text", _raise)
+
+    message = chat_service.ask(
+        db_session, organization_id=org.id, user_id=_make_user(db_session).id, conversation_id=None, question="Anything"
+    )
+
+    assert message.content == chat_service.ASSISTANT_UNAVAILABLE_MESSAGE
+    assert message.sources_json == []
+
+
 def test_ask_answers_from_retrieved_knowledge_with_sources(db_session, monkeypatch):
     org = _make_org(db_session)
     user_id = _make_user(db_session).id

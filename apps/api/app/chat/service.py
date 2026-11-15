@@ -5,20 +5,28 @@ retrieved context doesn't actually cover the question.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
+from openai import OpenAIError
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.ai.budget import BudgetExceeded, today_global_spend_usd
-from app.ai.client import get_openai_client
+from app.ai.client import AINotConfigured, get_openai_client
 from app.ai.embeddings import embed_text
 from app.config import get_settings
 from app.knowledge.retrieval import RetrievedChunk, retrieve_relevant_chunks
 from app.knowledge.seed_sources import CATEGORY_DASHBOARD_PATH
 from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, ChatMessage, ChatRole
 
+logger = logging.getLogger(__name__)
+
 NO_ANSWER_FALLBACK = "I don't have verified information about this particular functionality yet."
+ASSISTANT_UNAVAILABLE_MESSAGE = (
+    "The AI assistant is temporarily unavailable. Please try again in a moment, or browse the "
+    "in-app documentation directly."
+)
 
 _SYSTEM_PROMPT_TEMPLATE = """You are the RankPilot AI Knowledge Assistant, embedded in the RankPilot AI \
 product dashboard. You help users understand and use RankPilot AI.
@@ -148,12 +156,17 @@ def ask(
     if conversation.title == "New conversation":
         conversation.title = question[:80]
 
-    query_embedding = embed_text(question)
-    retrieved = retrieve_relevant_chunks(db, query_embedding)
-
     sources: list[dict] = []
+    try:
+        query_embedding = embed_text(question)
+    except (OpenAIError, AINotConfigured):
+        logger.exception("Embedding call failed for chat question in org %s", organization_id)
+        query_embedding = None
+
+    retrieved = retrieve_relevant_chunks(db, query_embedding) if query_embedding is not None else []
+
     if not retrieved:
-        answer_text = NO_ANSWER_FALLBACK
+        answer_text = NO_ANSWER_FALLBACK if query_embedding is not None else ASSISTANT_UNAVAILABLE_MESSAGE
     else:
         try:
             _enforce_global_ai_availability(db)
@@ -163,8 +176,6 @@ def ask(
                 "or browse the in-app documentation directly."
             )
         else:
-            client = get_openai_client()
-
             history = (
                 db.query(ChatMessage)
                 .filter(ChatMessage.conversation_id == conversation.id, ChatMessage.id != user_message.id)
@@ -186,13 +197,18 @@ def ask(
                 messages.append({"role": past.role.value, "content": past.content})
             messages.append({"role": "user", "content": question})
 
-            response = client.chat.completions.create(
-                model=settings.openai_model,
-                messages=messages,
-                max_tokens=settings.openai_max_output_tokens,
-            )
-            answer_text = (response.choices[0].message.content or "").strip() or NO_ANSWER_FALLBACK
-            sources = [] if answer_text == NO_ANSWER_FALLBACK else _sources_payload(retrieved)
+            try:
+                client = get_openai_client()
+                response = client.chat.completions.create(
+                    model=settings.openai_model,
+                    messages=messages,
+                    max_tokens=settings.openai_max_output_tokens,
+                )
+                answer_text = (response.choices[0].message.content or "").strip() or NO_ANSWER_FALLBACK
+                sources = [] if answer_text == NO_ANSWER_FALLBACK else _sources_payload(retrieved)
+            except (OpenAIError, AINotConfigured):
+                logger.exception("Chat completion call failed for org %s", organization_id)
+                answer_text = ASSISTANT_UNAVAILABLE_MESSAGE
 
     assistant_message = ChatMessage(
         conversation_id=conversation.id, role=ChatRole.assistant, content=answer_text, sources_json=sources
