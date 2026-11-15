@@ -63,7 +63,7 @@ def test_full_execution_flow_requires_approval_then_executes(client, monkeypatch
     headers = {"Authorization": f"Bearer {token}"}
 
     # Connect WordPress.
-    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+    monkeypatch.setattr(wp, "pinned_request", lambda *a, **k: _FakeResponse(200, {"id": 1}))
     connect_response = client.post(
         f"/api/v1/organizations/{org_id}/websites/{website_id}/connections/wordpress",
         json={"username": "rankpilot", "application_password": "app-pass-123"},
@@ -115,16 +115,14 @@ def test_full_execution_flow_requires_approval_then_executes(client, monkeypatch
     assert approve_response.status_code == 200
     assert approve_response.json()["approval_status"] == "approved"
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         return _FakeResponse(200, {"id": 7, "title": {"rendered": "New Title"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     execute_response = client.post(
         f"/api/v1/organizations/{org_id}/websites/{website_id}/tasks/{task['id']}/execute", headers=headers
@@ -157,7 +155,7 @@ def test_list_change_records_returns_fix_history_for_the_website(client, monkeyp
     website_id = _create_website(client, token, org_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+    monkeypatch.setattr(wp, "pinned_request", lambda *a, **k: _FakeResponse(200, {"id": 1}))
     client.post(
         f"/api/v1/organizations/{org_id}/websites/{website_id}/connections/wordpress",
         json={"username": "rankpilot", "application_password": "app-pass-123"},
@@ -194,16 +192,14 @@ def test_list_change_records_returns_fix_history_for_the_website(client, monkeyp
         headers=headers,
     )
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         return _FakeResponse(200, {"id": 7, "title": {"rendered": "New Title"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
     client.post(
         f"/api/v1/organizations/{org_id}/websites/{website_id}/tasks/{task['id']}/execute", headers=headers
     )

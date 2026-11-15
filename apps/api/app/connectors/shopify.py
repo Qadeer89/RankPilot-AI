@@ -19,9 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-import httpx
-
 from app.connectors.errors import ConnectorError, safe_request
+from app.core.url_safety import pinned_request
 
 API_VERSION = "2024-01"
 REQUEST_TIMEOUT_SECONDS = 15.0
@@ -48,7 +47,8 @@ def _api_base(shop_domain: str) -> str:
 
 def verify_credentials(credentials: ShopifyCredentials) -> dict:
     response = safe_request(
-        httpx.get,
+        pinned_request,
+        "GET",
         f"{_api_base(credentials.shop_domain)}/shop.json",
         headers=credentials.headers,
         timeout=REQUEST_TIMEOUT_SECONDS,
@@ -72,7 +72,8 @@ def find_target(credentials: ShopifyCredentials, target_url: str) -> dict:
     handle = _handle_from_url(target_url)
     for resource_type in RESOURCE_TYPES_TO_SEARCH:
         response = safe_request(
-            httpx.get,
+            pinned_request,
+            "GET",
             f"{_api_base(credentials.shop_domain)}/{resource_type}.json",
             params={"handle": handle},
             headers=credentials.headers,
@@ -87,7 +88,8 @@ def find_target(credentials: ShopifyCredentials, target_url: str) -> dict:
 
 def _find_metafield(credentials: ShopifyCredentials, resource_type: str, resource_id: int, key: str) -> dict | None:
     response = safe_request(
-        httpx.get,
+        pinned_request,
+        "GET",
         f"{_api_base(credentials.shop_domain)}/{resource_type}/{resource_id}/metafields.json",
         params={"namespace": "global", "key": key},
         headers=credentials.headers,
@@ -118,7 +120,8 @@ def apply_change(credentials: ShopifyCredentials, target_ref: dict, operation: s
 
     if existing is not None:
         response = safe_request(
-            httpx.put,
+            pinned_request,
+            "PUT",
             f"{_api_base(credentials.shop_domain)}/metafields/{existing['id']}.json",
             json=payload,
             headers=credentials.headers,
@@ -126,7 +129,8 @@ def apply_change(credentials: ShopifyCredentials, target_ref: dict, operation: s
         )
     else:
         response = safe_request(
-            httpx.post,
+            pinned_request,
+            "POST",
             f"{_api_base(credentials.shop_domain)}/{resource_type}/{resource_id}/metafields.json",
             json=payload,
             headers=credentials.headers,

@@ -235,7 +235,7 @@ def test_auto_pipeline_prefilter_resolves_image_opportunities_via_media_lookup_n
         def json(self):
             return self._payload
 
-    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+    monkeypatch.setattr(wp, "pinned_request", lambda *a, **k: _FakeResponse(200, {"id": 1}))
 
     website = _make_website(db_session)
     connect_wordpress(db_session, website, "rankpilot", "app-pass-123")

@@ -42,7 +42,7 @@ def _create_website(client, token, org_id):
 
 
 def test_connect_and_disconnect_shopify(client, monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
+    monkeypatch.setattr(shopify, "pinned_request", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
     _stub_dns(monkeypatch)
     token, org_id = _register_with_org(client, "shopify-conn@example.com", "Shopify Org")
     website_id = _create_website(client, token, org_id)
@@ -67,7 +67,7 @@ def test_connect_and_disconnect_shopify(client, monkeypatch):
 
 
 def test_connect_shopify_rejects_bad_credentials(client, monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(401, {}))
+    monkeypatch.setattr(shopify, "pinned_request", lambda *a, **k: _FakeResponse(401, {}))
     _stub_dns(monkeypatch)
     token, org_id = _register_with_org(client, "shopify-bad@example.com", "Shopify Bad Org")
     website_id = _create_website(client, token, org_id)
@@ -87,7 +87,7 @@ def test_connect_shopify_network_failure_returns_400_not_500(client, monkeypatch
     def fake_get(*a, **k):
         raise httpx.ConnectError("DNS resolution failed")
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
+    monkeypatch.setattr(shopify, "pinned_request", fake_get)
     _stub_dns(monkeypatch)
     token, org_id = _register_with_org(client, "shopify-network-fail@example.com", "Shopify Network Fail Org")
     website_id = _create_website(client, token, org_id)
@@ -204,7 +204,7 @@ def test_github_auto_merge_setting_404_when_not_connected(client, monkeypatch):
 
 
 def test_connector_endpoints_are_tenant_scoped(client, monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
+    monkeypatch.setattr(shopify, "pinned_request", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
     _stub_dns(monkeypatch)
     token_a, org_a = _register_with_org(client, "conn-tenant-a@example.com", "Conn Tenant A")
     token_b, _org_b = _register_with_org(client, "conn-tenant-b@example.com", "Conn Tenant B")

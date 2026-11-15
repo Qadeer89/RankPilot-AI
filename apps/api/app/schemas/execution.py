@@ -10,7 +10,13 @@ class WordPressConnectRequest(BaseModel):
 
 
 class ShopifyConnectRequest(BaseModel):
-    shop_domain: str = Field(min_length=1, max_length=255)
+    # Restricted to valid hostname characters (RP13-followup: an
+    # unrestricted domain here is spliced straight into the connector's
+    # outbound request URL -- see app.connectors.shopify -- so anything
+    # beyond letters/digits/dot/hyphen is rejected before it ever gets
+    # that far, in addition to the SSRF check the connector itself does
+    # at request time via app.core.url_safety.pinned_request).
+    shop_domain: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9.-]+$")
     access_token: str = Field(min_length=1, max_length=512)
 
 
@@ -20,8 +26,13 @@ class WebflowConnectRequest(BaseModel):
 
 
 class SanityConnectRequest(BaseModel):
-    project_id: str = Field(min_length=1, max_length=64)
-    dataset: str = Field(min_length=1, max_length=64)
+    # Sanity project IDs are lowercase alphanumeric + hyphen. Restricting
+    # this prevents host injection: project_id is spliced directly into
+    # a URL as a subdomain label (app.connectors.sanity), so an
+    # unvalidated value containing e.g. ":" or "/" could redirect the
+    # request to an entirely different host.
+    project_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
+    dataset: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     token: str = Field(min_length=1, max_length=512)
 
 

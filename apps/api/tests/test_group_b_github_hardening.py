@@ -312,18 +312,16 @@ def test_verify_github_deployment_rejects_a_non_github_change_record(db_session,
         db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
     )[0]
 
-    def fake_get(url, params=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(201, {"metafield": {"id": 1, "value": json["metafield"]["value"]}})
         if "/pages.json" in url:
             return _FakeResponse(200, {"pages": [{"id": 1}]})
         if "/metafields.json" in url:
             return _FakeResponse(200, {"metafields": []})
         return _FakeResponse(200, {})
 
-    def fake_post(url, json=None, headers=None, timeout=None):
-        return _FakeResponse(201, {"metafield": {"id": 1, "value": json["metafield"]["value"]}})
-
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
-    monkeypatch.setattr(shopify.httpx, "post", fake_post)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
     change_record = execution_service.execute_task(db_session, website, task)
     assert change_record.connector_type == ConnectorType.shopify
 

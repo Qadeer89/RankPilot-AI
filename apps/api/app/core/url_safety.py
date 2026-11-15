@@ -13,6 +13,8 @@ import socket
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
+import httpx
+
 from app.config import get_settings
 
 settings = get_settings()
@@ -122,3 +124,26 @@ def build_pinned_url(safe_url: SafeUrl) -> str:
     host_literal = f"[{safe_url.resolved_ip}]" if ":" in safe_url.resolved_ip else safe_url.resolved_ip
     netloc = f"{host_literal}:{parts.port}" if parts.port else host_literal
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
+
+
+def pinned_request(method: str, raw_url: str, *, headers: dict | None = None, auth=None, timeout=None, **kwargs):
+    """A drop-in replacement for `httpx.get`/`httpx.post`/`httpx.put` that
+    validates `raw_url` for SSRF safety (RP13-007) and connects to the
+    pinned, already-validated IP rather than letting the underlying
+    transport re-resolve the hostname -- the same protection the
+    crawler's own fetch path uses (app/crawler/fetch.py), extended to
+    connector modules that call out to a user-supplied domain
+    (Shopify's shop_domain, WordPress's site_url) on every task
+    execution, not just once at connect time.
+
+    Raises UnsafeUrlError if the URL fails validation. Returns an
+    httpx.Response otherwise, just like the functions it replaces.
+    """
+    safe_url = validate_public_url(raw_url)
+    pinned_url = build_pinned_url(safe_url)
+    request_headers = dict(headers or {})
+    request_headers.setdefault("Host", safe_url.hostname)
+    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+        request = client.build_request(method, pinned_url, headers=request_headers, **kwargs)
+        request.extensions["sni_hostname"] = safe_url.hostname
+        return client.send(request, auth=auth)

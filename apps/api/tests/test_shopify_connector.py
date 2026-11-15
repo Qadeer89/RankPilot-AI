@@ -16,13 +16,13 @@ CREDENTIALS = shopify.ShopifyCredentials(shop_domain="rankpilot-test.myshopify.c
 
 
 def test_verify_credentials_success(monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
+    monkeypatch.setattr(shopify, "pinned_request", lambda *a, **k: _FakeResponse(200, {"shop": {"id": 1}}))
     result = shopify.verify_credentials(CREDENTIALS)
     assert result["shop"]["id"] == 1
 
 
 def test_verify_credentials_failure_raises(monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(401, {"errors": "Unauthorized"}))
+    monkeypatch.setattr(shopify, "pinned_request", lambda *a, **k: _FakeResponse(401, {"errors": "Unauthorized"}))
     try:
         shopify.verify_credentials(CREDENTIALS)
         assert False, "expected ConnectorError"
@@ -33,10 +33,10 @@ def test_verify_credentials_failure_raises(monkeypatch):
 def test_verify_credentials_network_failure_raises_connector_error_not_httpx_error(monkeypatch):
     import httpx
 
-    def fake_get(*a, **k):
+    def fake_pinned_request(*a, **k):
         raise httpx.ConnectError("DNS resolution failed")
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
     try:
         shopify.verify_credentials(CREDENTIALS)
         assert False, "expected ConnectorError"
@@ -46,30 +46,49 @@ def test_verify_credentials_network_failure_raises_connector_error_not_httpx_err
         assert False, "network-level httpx errors must be wrapped as ConnectorError, not leak through"
 
 
+def test_verify_credentials_unsafe_url_raises_connector_error(monkeypatch):
+    # RP13-007 extended to connectors: a shop_domain pointed at an
+    # internal/private address must surface as a connector error, not
+    # an unhandled UnsafeUrlError.
+    from app.core.url_safety import UnsafeUrlError
+
+    def fake_pinned_request(*a, **k):
+        raise UnsafeUrlError("URL host is a private, loopback, or otherwise disallowed address.")
+
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
+    try:
+        shopify.verify_credentials(CREDENTIALS)
+        assert False, "expected ConnectorError"
+    except ConnectorError:
+        pass
+
+
 def test_find_target_matches_page_by_handle(monkeypatch):
-    def fake_get(url, params=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, headers=None, timeout=None):
         if "/pages.json" in url:
             return _FakeResponse(200, {"pages": [{"id": 55}]})
         return _FakeResponse(200, {"products": []})
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
     target = shopify.find_target(CREDENTIALS, "https://rankpilot-test.myshopify.com/pages/about-us")
     assert target == {"resource_type": "pages", "resource_id": 55}
 
 
 def test_find_target_falls_back_to_products(monkeypatch):
-    def fake_get(url, params=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, headers=None, timeout=None):
         if "/pages.json" in url:
             return _FakeResponse(200, {"pages": []})
         return _FakeResponse(200, {"products": [{"id": 99}]})
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
     target = shopify.find_target(CREDENTIALS, "https://rankpilot-test.myshopify.com/products/widget")
     assert target == {"resource_type": "products", "resource_id": 99}
 
 
 def test_find_target_raises_when_nothing_matches(monkeypatch):
-    monkeypatch.setattr(shopify.httpx, "get", lambda *a, **k: _FakeResponse(200, {"pages": [], "products": []}))
+    monkeypatch.setattr(
+        shopify, "pinned_request", lambda *a, **k: _FakeResponse(200, {"pages": [], "products": []})
+    )
     try:
         shopify.find_target(CREDENTIALS, "https://rankpilot-test.myshopify.com/nothing")
         assert False, "expected ConnectorError"
@@ -80,16 +99,14 @@ def test_find_target_raises_when_nothing_matches(monkeypatch):
 def test_apply_change_creates_metafield_when_none_exists(monkeypatch):
     created = {}
 
-    def fake_get(url, params=None, headers=None, timeout=None):
-        return _FakeResponse(200, {"metafields": []})
-
-    def fake_post(url, json=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+        if method == "GET":
+            return _FakeResponse(200, {"metafields": []})
         created["url"] = url
         created["json"] = json
         return _FakeResponse(201, {"metafield": {"id": 1, "value": json["metafield"]["value"]}})
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
-    monkeypatch.setattr(shopify.httpx, "post", fake_post)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
 
     target_ref = {"resource_type": "pages", "resource_id": 55}
     shopify.apply_change(CREDENTIALS, target_ref, "set_title", "New SEO Title")
@@ -102,16 +119,14 @@ def test_apply_change_creates_metafield_when_none_exists(monkeypatch):
 def test_apply_change_updates_existing_metafield(monkeypatch):
     updated = {}
 
-    def fake_get(url, params=None, headers=None, timeout=None):
-        return _FakeResponse(200, {"metafields": [{"id": 42, "value": "Old description"}]})
-
-    def fake_put(url, json=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+        if method == "GET":
+            return _FakeResponse(200, {"metafields": [{"id": 42, "value": "Old description"}]})
         updated["url"] = url
         updated["json"] = json
         return _FakeResponse(200, {"metafield": {"id": 42, "value": json["metafield"]["value"]}})
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
-    monkeypatch.setattr(shopify.httpx, "put", fake_put)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
 
     target_ref = {"resource_type": "products", "resource_id": 99}
     shopify.apply_change(CREDENTIALS, target_ref, "set_meta_description", "New description")
@@ -122,7 +137,9 @@ def test_apply_change_updates_existing_metafield(monkeypatch):
 
 def test_validate_change_compares_current_value(monkeypatch):
     monkeypatch.setattr(
-        shopify.httpx, "get", lambda *a, **k: _FakeResponse(200, {"metafields": [{"id": 1, "value": "New Title"}]})
+        shopify,
+        "pinned_request",
+        lambda *a, **k: _FakeResponse(200, {"metafields": [{"id": 1, "value": "New Title"}]}),
     )
     passed, evidence = shopify.validate_change(
         CREDENTIALS, {"resource_type": "pages", "resource_id": 55}, "set_title", "New Title", {}
@@ -134,15 +151,13 @@ def test_validate_change_compares_current_value(monkeypatch):
 def test_rollback_restores_before_value(monkeypatch):
     restored = {}
 
-    def fake_get(url, params=None, headers=None, timeout=None):
-        return _FakeResponse(200, {"metafields": [{"id": 1, "value": "New Title"}]})
-
-    def fake_put(url, json=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+        if method == "GET":
+            return _FakeResponse(200, {"metafields": [{"id": 1, "value": "New Title"}]})
         restored["value"] = json["metafield"]["value"]
         return _FakeResponse(200, {"metafield": {"id": 1, "value": json["metafield"]["value"]}})
 
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
-    monkeypatch.setattr(shopify.httpx, "put", fake_put)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
 
     shopify.rollback(CREDENTIALS, {"resource_type": "pages", "resource_id": 55}, "set_title", "Old Title", {})
     assert restored["value"] == "Old Title"

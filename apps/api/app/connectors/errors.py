@@ -11,6 +11,8 @@ from typing import Callable, TypeVar
 
 import httpx
 
+from app.core.url_safety import UnsafeUrlError
+
 T = TypeVar("T")
 
 
@@ -38,3 +40,5 @@ def safe_request(fn: Callable[..., T], *args, error_cls: type[ConnectorError] = 
         return fn(*args, **kwargs)
     except httpx.RequestError as exc:
         raise error_cls(f"Network error calling connector API: {exc}") from exc
+    except UnsafeUrlError as exc:
+        raise error_cls(f"Refusing to connect to an unsafe URL: {exc}") from exc

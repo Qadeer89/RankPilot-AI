@@ -77,7 +77,7 @@ def _proposal(opportunity_id, risk_tier=1, target_url="https://example.com/"):
 
 
 def _connect_wordpress(db_session, website, monkeypatch):
-    monkeypatch.setattr(wp.httpx, "get", lambda *a, **k: _FakeResponse(200, {"id": 1}))
+    monkeypatch.setattr(wp, "pinned_request", lambda *a, **k: _FakeResponse(200, {"id": 1}))
     wp_connections.connect_wordpress(db_session, website, "rankpilot", "app-pass-123")
 
 
@@ -207,16 +207,14 @@ def test_execute_task_happy_path_creates_passing_change_record(db_session, monke
         db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
     )[0]
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         return _FakeResponse(200, {"id": 7, "title": {"rendered": "New Title"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "title": {"rendered": json["title"]}})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     change_record = execution_service.execute_task(db_session, website, task)
 
@@ -234,18 +232,16 @@ def test_execute_task_rolls_back_on_failed_validation(db_session, monkeypatch):
         db_session, website, opportunity, _proposal(opportunity.id), requested_by=_make_user(db_session).id
     )[0]
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "title": {"rendered": "Old Title"}})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         # Validation re-fetch always reports the OLD title, as if the
         # write silently failed to stick.
         return _FakeResponse(200, {"id": 7, "title": {"rendered": "Old Title"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "title": {"rendered": "Old Title"}})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     change_record = execution_service.execute_task(db_session, website, task)
 
@@ -284,16 +280,14 @@ def test_execute_task_happy_path_for_set_alt_text(db_session, monkeypatch):
         db_session, website, opportunity, _alt_text_proposal(opportunity.id), requested_by=_make_user(db_session).id
     )[0]
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "alt_text": json["alt_text"]})
         if "/media" in url and params:
             return _FakeResponse(200, [{"id": 7, "source_url": "https://example.com/hero.jpg"}])
         return _FakeResponse(200, {"id": 7, "alt_text": "A sunrise over the hero banner"})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "alt_text": json["alt_text"]})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     change_record = execution_service.execute_task(db_session, website, task)
 
@@ -363,16 +357,14 @@ def test_execute_task_happy_path_for_set_canonical(db_session, monkeypatch):
     )[0]
     execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         return _FakeResponse(200, {"id": 7, "meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/real-page"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     change_record = execution_service.execute_task(db_session, website, task)
 
@@ -388,7 +380,13 @@ def test_execute_task_rolls_back_on_failed_validation_for_set_canonical(db_sessi
     )[0]
     execution_service.approve_task(db_session, task, decided_by=_make_user(db_session).id)
 
-    def fake_get(url, params=None, auth=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, auth=None, json=None, timeout=None):
+        if method == "POST":
+            # update_canonical()'s own write-time response reports success
+            # with the NEW value, so its silent-no-op check passes and
+            # execution reaches the separate post-write validation step
+            # above, which is what this test is about.
+            return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
         if "/pages" in url and params:
             return _FakeResponse(200, [{"id": 7}])
         # The post-write validation re-fetch always reports the OLD
@@ -396,15 +394,7 @@ def test_execute_task_rolls_back_on_failed_validation_for_set_canonical(db_sessi
         # effect on the live page.
         return _FakeResponse(200, {"id": 7, "meta": {wp.YOAST_CANONICAL_KEY: "https://example.com/old-canonical"}})
 
-    def fake_post(url, auth=None, json=None, timeout=None):
-        # update_canonical()'s own write-time response reports success
-        # with the NEW value, so its silent-no-op check passes and
-        # execution reaches the separate post-write validation step
-        # above, which is what this test is about.
-        return _FakeResponse(200, {"id": 7, "meta": json["meta"]})
-
-    monkeypatch.setattr(wp.httpx, "get", fake_get)
-    monkeypatch.setattr(wp.httpx, "post", fake_post)
+    monkeypatch.setattr(wp, "pinned_request", fake_pinned_request)
 
     change_record = execution_service.execute_task(db_session, website, task)
 

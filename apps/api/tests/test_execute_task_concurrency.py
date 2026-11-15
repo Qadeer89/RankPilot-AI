@@ -109,7 +109,13 @@ def test_execute_task_is_serialized_against_concurrent_execution_of_the_same_tas
         stored_metafield: dict = {"id": 1, "value": "Old Title"}
         state_lock = threading.Lock()
 
-        def fake_get(url, params=None, headers=None, timeout=None):
+        def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+            if method == "PUT":
+                with state_lock:
+                    stored_metafield["id"] = 1
+                    stored_metafield["value"] = json["metafield"]["value"]
+                    result = dict(stored_metafield)
+                return _FakeResponse(200, {"metafield": result})
             if "/pages.json" in url:
                 return _FakeResponse(200, {"pages": [{"id": 1}]})
             if "/metafields.json" in url:
@@ -118,15 +124,7 @@ def test_execute_task_is_serialized_against_concurrent_execution_of_the_same_tas
                 return _FakeResponse(200, {"metafields": metafields})
             return _FakeResponse(200, {})
 
-        def fake_put(url, json=None, headers=None, timeout=None):
-            with state_lock:
-                stored_metafield["id"] = 1
-                stored_metafield["value"] = json["metafield"]["value"]
-                result = dict(stored_metafield)
-            return _FakeResponse(200, {"metafield": result})
-
-        monkeypatch.setattr(shopify.httpx, "get", fake_get)
-        monkeypatch.setattr(shopify.httpx, "put", fake_put)
+        monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
 
         results: dict[str, tuple[str, str]] = {}
         start_barrier = threading.Barrier(2)

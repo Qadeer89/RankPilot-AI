@@ -15,9 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-import httpx
-
 from app.connectors.errors import ConnectorError, safe_request
+from app.core.url_safety import pinned_request
 
 YOAST_META_DESCRIPTION_KEY = "_yoast_wpseo_metadesc"
 YOAST_CANONICAL_KEY = "_yoast_wpseo_canonical"
@@ -68,7 +67,8 @@ def verify_credentials(credentials: WordPressCredentials) -> dict:
     authenticates as. Raises WordPressConnectorError on any failure.
     """
     response = safe_request(
-        httpx.get,
+        pinned_request,
+        "GET",
         f"{_api_base(credentials.site_url)}/users/me",
         auth=credentials.auth,
         timeout=REQUEST_TIMEOUT_SECONDS,
@@ -90,7 +90,8 @@ def find_post_by_url(credentials: WordPressCredentials, target_url: str) -> tupl
 
     for post_type in POST_TYPES_TO_SEARCH:
         response = safe_request(
-            httpx.get,
+            pinned_request,
+            "GET",
             f"{_api_base(credentials.site_url)}/{post_type}",
             params={"slug": slug},
             auth=credentials.auth,
@@ -118,7 +119,8 @@ def find_media_by_url(credentials: WordPressCredentials, image_url: str) -> int:
         raise WordPressConnectorError(f"Could not derive a filename from image URL: {image_url}")
 
     response = safe_request(
-        httpx.get,
+        pinned_request,
+        "GET",
         f"{_api_base(credentials.site_url)}/{MEDIA_RESOURCE_TYPE}",
         params={"search": stem},
         auth=credentials.auth,
@@ -140,7 +142,8 @@ def find_media_by_url(credentials: WordPressCredentials, image_url: str) -> int:
 
 def get_resource(credentials: WordPressCredentials, post_type: str, post_id: int) -> dict:
     response = safe_request(
-        httpx.get,
+        pinned_request,
+        "GET",
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         timeout=REQUEST_TIMEOUT_SECONDS,
@@ -171,7 +174,8 @@ def current_canonical(resource: dict) -> str:
 
 def update_title(credentials: WordPressCredentials, post_type: str, post_id: int, new_title: str) -> dict:
     response = safe_request(
-        httpx.post,
+        pinned_request,
+        "POST",
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         json={"title": new_title},
@@ -189,7 +193,8 @@ def update_meta_description(
     credentials: WordPressCredentials, post_type: str, post_id: int, new_description: str
 ) -> dict:
     response = safe_request(
-        httpx.post,
+        pinned_request,
+        "POST",
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         json={"meta": {YOAST_META_DESCRIPTION_KEY: new_description}},
@@ -219,7 +224,8 @@ def update_canonical(
     credentials: WordPressCredentials, post_type: str, post_id: int, new_canonical: str
 ) -> dict:
     response = safe_request(
-        httpx.post,
+        pinned_request,
+        "POST",
         f"{_api_base(credentials.site_url)}/{post_type}/{post_id}",
         auth=credentials.auth,
         json={"meta": {YOAST_CANONICAL_KEY: new_canonical}},
@@ -247,7 +253,8 @@ def update_canonical(
 
 def update_alt_text(credentials: WordPressCredentials, media_id: int, new_alt_text: str) -> dict:
     response = safe_request(
-        httpx.post,
+        pinned_request,
+        "POST",
         f"{_api_base(credentials.site_url)}/{MEDIA_RESOURCE_TYPE}/{media_id}",
         auth=credentials.auth,
         json={"alt_text": new_alt_text},

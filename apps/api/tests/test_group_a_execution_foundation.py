@@ -92,19 +92,17 @@ def _connect_shopify(db_session, website, monkeypatch):
 def _patch_shopify_happy_path(monkeypatch, current_value="Old Title"):
     stored_metafield = {"id": 1, "value": current_value}
 
-    def fake_get(url, params=None, headers=None, timeout=None):
+    def fake_pinned_request(method, url, params=None, json=None, headers=None, timeout=None):
+        if method == "PUT":
+            stored_metafield["value"] = json["metafield"]["value"]
+            return _FakeResponse(200, {"metafield": dict(stored_metafield)})
         if "/pages.json" in url:
             return _FakeResponse(200, {"pages": [{"id": 1}]})
         if "/metafields.json" in url:
             return _FakeResponse(200, {"metafields": [stored_metafield]})
         return _FakeResponse(200, {})
 
-    def fake_put(url, json=None, headers=None, timeout=None):
-        stored_metafield["value"] = json["metafield"]["value"]
-        return _FakeResponse(200, {"metafield": dict(stored_metafield)})
-
-    monkeypatch.setattr(shopify.httpx, "get", fake_get)
-    monkeypatch.setattr(shopify.httpx, "put", fake_put)
+    monkeypatch.setattr(shopify, "pinned_request", fake_pinned_request)
     return stored_metafield
 
 
@@ -163,8 +161,14 @@ def test_dry_run_reads_current_value_without_writing(db_session, monkeypatch):
 
     write_calls = []
     stored_metafield = _patch_shopify_happy_path(monkeypatch, current_value="Old Title")
-    original_put = shopify.httpx.put
-    monkeypatch.setattr(shopify.httpx, "put", lambda *a, **k: write_calls.append(1) or original_put(*a, **k))
+    original_pinned_request = shopify.pinned_request
+
+    def tracking_pinned_request(method, *a, **k):
+        if method == "PUT":
+            write_calls.append(1)
+        return original_pinned_request(method, *a, **k)
+
+    monkeypatch.setattr(shopify, "pinned_request", tracking_pinned_request)
 
     diff = execution_service.dry_run_task(db_session, website, task)
 
