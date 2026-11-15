@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     deploy_webhook,
     execution,
     health,
+    keyword_ideas,
     onboarding,
     opportunities,
     organizations,
@@ -34,3 +35,4 @@ api_router.include_router(ai_agents.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(chat.router)
 api_router.include_router(admin_knowledge.router)
+api_router.include_router(keyword_ideas.router)

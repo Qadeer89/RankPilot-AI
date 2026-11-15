@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -113,6 +113,11 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     additional_target_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     target_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     target_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Short user-provided description of the business/products/services
+    # (SEO Growth Engine spec section 4A "seed keyword generation") --
+    # used only as AI prompt context, never surfaced as a fact about
+    # the business RankPilot itself verified.
+    business_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="websites")
     verifications: Mapped[list["WebsiteVerification"]] = relationship(

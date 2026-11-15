@@ -17,6 +17,8 @@ class AgentType(str, enum.Enum):
     post_change_qa = "post_change_qa"
     seo_strategy = "seo_strategy"
     internal_linking = "internal_linking"
+    keyword_discovery = "keyword_discovery"
+    competitor_content_analysis = "competitor_content_analysis"
 
 
 class AgentRunStatus(str, enum.Enum):
