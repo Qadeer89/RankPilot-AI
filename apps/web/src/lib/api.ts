@@ -1392,3 +1392,62 @@ export function listAdminChatFeedback(token: string, unansweredOnly: boolean) {
     headers: authHeaders(token),
   });
 }
+
+// --- Growth recommendations ---
+
+export type RecommendationStatus = "open" | "approved" | "rejected" | "done";
+
+export interface GrowthRecommendation {
+  id: string;
+  recommendation_type: string;
+  title: string;
+  page_id: string | null;
+  proposed_url: string | null;
+  target_country: string | null;
+  keyword: string | null;
+  data_source: string;
+  problem: string;
+  recommended_action: string;
+  expected_benefit: string;
+  priority: "low" | "medium" | "high";
+  difficulty: "low" | "medium" | "high";
+  automation_available: boolean;
+  requires_approval: boolean;
+  validation_method: string;
+  evidence_json: Record<string, unknown>;
+  status: RecommendationStatus;
+  updated_at: string;
+}
+
+export function listGrowthRecommendations(token: string, organizationId: string, websiteId: string) {
+  return request<GrowthRecommendation[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function generateGrowthRecommendations(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  country?: string
+) {
+  const query = country ? `?country=${encodeURIComponent(country)}` : "";
+  return request<GrowthRecommendation[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/generate${query}`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export function updateGrowthRecommendationStatus(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  recommendationId: string,
+  status: RecommendationStatus
+) {
+  return request<GrowthRecommendation>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}`,
+    { method: "PATCH", headers: authHeaders(token), body: JSON.stringify({ status }) }
+  );
+}

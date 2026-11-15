@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     crawls,
     deploy_webhook,
     execution,
+    growth_recommendations,
     health,
     keyword_ideas,
     onboarding,
@@ -38,3 +39,4 @@ api_router.include_router(chat.router)
 api_router.include_router(admin_knowledge.router)
 api_router.include_router(keyword_ideas.router)
 api_router.include_router(competitors.router)
+api_router.include_router(growth_recommendations.router)

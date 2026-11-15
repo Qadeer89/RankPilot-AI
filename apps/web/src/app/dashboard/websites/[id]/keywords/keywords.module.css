@@ -258,3 +258,15 @@
   display: flex;
   gap: 8px;
 }
+
+.recCard {
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--rp-ink);
+  overflow-wrap: anywhere;
+}

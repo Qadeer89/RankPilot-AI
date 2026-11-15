@@ -7,6 +7,8 @@ import Link from "next/link";
 import {
   ApiError,
   CompetitorDomain,
+  GrowthRecommendation,
+  RecommendationStatus,
   KeywordIdea,
   MeResponse,
   SearchPerformance,
@@ -15,6 +17,9 @@ import {
   addCompetitor,
   analyzeCompetitor,
   deleteCompetitor,
+  generateGrowthRecommendations,
+  listGrowthRecommendations,
+  updateGrowthRecommendationStatus,
   getMe,
   getSearchPerformance,
   getSearchPerformanceIntelligence,
@@ -27,7 +32,7 @@ import {
 import { getToken } from "@/lib/auth";
 import styles from "./keywords.module.css";
 
-type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities";
+type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -37,6 +42,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "clusters", label: "Intent & Clusters" },
   { key: "competitors", label: "Competitor Gaps" },
   { key: "opportunities", label: "Opportunities & Mapping" },
+  { key: "recommendations", label: "Recommendations" },
 ];
 
 function classificationBadgeClass(classification: string): string {
@@ -88,6 +94,8 @@ export default function KeywordWorkspacePage() {
   const [competitors, setCompetitors] = useState<CompetitorDomain[]>([]);
   const [newCompetitorDomain, setNewCompetitorDomain] = useState("");
   const [discovering, setDiscovering] = useState(false);
+  const [recommendations, setRecommendations] = useState<GrowthRecommendation[]>([]);
+  const [generating, setGenerating] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   const token = getToken();
@@ -116,12 +124,14 @@ export default function KeywordWorkspacePage() {
     if (!token || !orgId) return;
     setError(null);
     try {
-      const [perf, intel, keywordIdeas, competitorList] = await Promise.all([
+      const [perf, intel, keywordIdeas, competitorList, recs] = await Promise.all([
         getSearchPerformance(token, orgId, websiteId),
         getSearchPerformanceIntelligence(token, orgId, websiteId, country || undefined),
         listKeywordIdeas(token, orgId, websiteId),
         listCompetitors(token, orgId, websiteId),
+        listGrowthRecommendations(token, orgId, websiteId),
       ]);
+      setRecommendations(recs);
       setPerformance(perf);
       setIntelligence(intel);
       setIdeas(keywordIdeas);
@@ -149,6 +159,30 @@ export default function KeywordWorkspacePage() {
       setError(err instanceof ApiError ? err.message : "Keyword discovery failed.");
     } finally {
       setDiscovering(false);
+    }
+  }
+
+  async function handleGenerateRecommendations() {
+    if (!token || !orgId) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      await generateGrowthRecommendations(token, orgId, websiteId, country || undefined);
+      setRecommendations(await listGrowthRecommendations(token, orgId, websiteId));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not generate recommendations.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleRecommendationStatus(id: string, status: RecommendationStatus) {
+    if (!token || !orgId) return;
+    try {
+      const updated = await updateGrowthRecommendationStatus(token, orgId, websiteId, id, status);
+      setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update recommendation.");
     }
   }
 
@@ -632,6 +666,87 @@ export default function KeywordWorkspacePage() {
                     ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        )}
+
+        {tab === "recommendations" && (
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2>Growth Recommendations</h2>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={handleGenerateRecommendations}
+                disabled={generating}
+              >
+                {generating ? "Generating..." : "Generate from current data"}
+              </button>
+            </div>
+            <p className={styles.freshnessNote}>
+              Built from your Search Console data and stored keyword ideas. Nothing here is a promise of a
+              ranking or traffic result, and each change needs your approval.
+            </p>
+            {recommendations.length === 0 ? (
+              <p className={styles.empty}>No recommendations yet.</p>
+            ) : (
+              recommendations.map((rec) => (
+                <div key={rec.id} className={styles.recCard}>
+                  <div className={styles.cardHeader}>
+                    <strong>{rec.title}</strong>
+                    <span className={styles.badge}>
+                      {rec.status} · {rec.priority} priority · {rec.difficulty} effort
+                    </span>
+                  </div>
+                  <p>
+                    <strong>Why:</strong> {rec.problem}
+                  </p>
+                  <p>
+                    <strong>Do:</strong> {rec.recommended_action}
+                  </p>
+                  <p>
+                    <strong>Expected benefit:</strong> {rec.expected_benefit}
+                  </p>
+                  <p>
+                    <strong>How to check:</strong> {rec.validation_method}
+                  </p>
+                  <p className={styles.subtitle}>
+                    Source: {rec.data_source.replaceAll("_", " ")}
+                    {rec.target_country ? ` · Country: ${rec.target_country}` : ""} ·{" "}
+                    {rec.automation_available ? "Can be applied automatically" : "Manual change"} · Evidence:{" "}
+                    {JSON.stringify(rec.evidence_json)}
+                  </p>
+                  {rec.status === "open" && (
+                    <div className={styles.domainActions}>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        onClick={() => handleRecommendationStatus(rec.id, "approved")}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => handleRecommendationStatus(rec.id, "rejected")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                  {rec.status === "approved" && (
+                    <div className={styles.domainActions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => handleRecommendationStatus(rec.id, "done")}
+                      >
+                        Mark as done
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
             )}
           </div>
         )}
