@@ -35,6 +35,7 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr
+    is_platform_admin: bool
 
     model_config = {"from_attributes": True}
 

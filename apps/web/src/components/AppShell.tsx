@@ -75,6 +75,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               Agency overview
             </Link>
           )}
+
+          {me?.user.is_platform_admin && (
+            <>
+              <p className={styles.navGroupLabel}>Platform admin</p>
+              <Link
+                href="/dashboard/admin/knowledge"
+                className={`${styles.navLink} ${pathname === "/dashboard/admin/knowledge" ? styles.navLinkActive : ""}`}
+                aria-current={pathname === "/dashboard/admin/knowledge" ? "page" : undefined}
+                onClick={() => setDrawerOpen(false)}
+              >
+                Knowledge Base
+              </Link>
+            </>
+          )}
         </nav>
 
         {me && (

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin_knowledge,
     ai_agents,
     analytics,
     auth,
@@ -32,3 +33,4 @@ api_router.include_router(reporting.router)
 api_router.include_router(ai_agents.router)
 api_router.include_router(onboarding.router)
 api_router.include_router(chat.router)
+api_router.include_router(admin_knowledge.router)

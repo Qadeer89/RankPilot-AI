@@ -53,6 +53,16 @@ def get_membership(organization_id: uuid.UUID, db: Session, user: User) -> Membe
     return membership
 
 
+def require_platform_admin(user: User = Depends(get_current_user)) -> User:
+    """Platform-level admin gate for the AI Knowledge Assistant's admin
+    surface (Part 6) -- distinct from org-scoped RequireRole, since
+    knowledge documents aren't tenant data.
+    """
+    if not user.is_platform_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
+    return user
+
+
 class RequireRole:
     """FastAPI dependency factory: `Depends(RequireRole(MembershipRole.editor))`.
 

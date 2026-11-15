@@ -52,7 +52,7 @@ export interface OrganizationSummary {
 }
 
 export interface MeResponse {
-  user: { id: string; email: string };
+  user: { id: string; email: string; is_platform_admin: boolean };
   organizations: OrganizationSummary[];
 }
 
@@ -1116,5 +1116,84 @@ export function submitChatFeedback(
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ rating }),
+  });
+}
+
+// --- Admin: knowledge base management (platform admins only) ---
+
+export interface AdminKnowledgeDocument {
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  source_type: "seed_docs" | "admin_authored";
+  source_key: string;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeIngestionJob {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  documents_processed: number;
+  chunks_created: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface AdminChatFeedback {
+  id: string;
+  message_id: string;
+  rating: "up" | "down";
+  note: string | null;
+  question: string;
+  answer: string;
+  created_at: string;
+}
+
+export function listAdminKnowledgeDocuments(token: string) {
+  return request<AdminKnowledgeDocument[]>("/admin/knowledge/documents", { headers: authHeaders(token) });
+}
+
+export function createAdminKnowledgeDocument(
+  token: string,
+  payload: { title: string; category: string; content: string }
+) {
+  return request<AdminKnowledgeDocument>("/admin/knowledge/documents", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateAdminKnowledgeDocument(
+  token: string,
+  documentId: string,
+  payload: { title?: string; category?: string; content?: string; is_active?: boolean }
+) {
+  return request<AdminKnowledgeDocument>(`/admin/knowledge/documents/${documentId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runKnowledgeReindex(token: string) {
+  return request<KnowledgeIngestionJob>("/admin/knowledge/reindex", {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function listKnowledgeIngestionJobs(token: string) {
+  return request<KnowledgeIngestionJob[]>("/admin/knowledge/ingestion-jobs", { headers: authHeaders(token) });
+}
+
+export function listAdminChatFeedback(token: string, unansweredOnly: boolean) {
+  return request<AdminChatFeedback[]>(`/admin/knowledge/feedback?unanswered_only=${unansweredOnly}`, {
+    headers: authHeaders(token),
   });
 }
