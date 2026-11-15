@@ -999,3 +999,57 @@ export function rotateDeployWebhookSecret(token: string, organizationId: string,
     { method: "POST", headers: authHeaders(token) }
   );
 }
+
+// --- Guided onboarding ---
+
+export interface OnboardingStep {
+  key: string;
+  title: string;
+  mandatory: boolean;
+  completed: boolean;
+  skipped: boolean;
+  detail: string;
+}
+
+export interface OnboardingStatus {
+  steps: OnboardingStep[];
+  welcomed_at: string | null;
+  completed_at: string | null;
+  all_mandatory_complete: boolean;
+}
+
+export function getOnboardingStatus(token: string, organizationId: string) {
+  return request<OnboardingStatus>(`/organizations/${organizationId}/onboarding`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function dismissOnboardingWelcome(token: string, organizationId: string) {
+  return request<OnboardingStatus>(`/organizations/${organizationId}/onboarding/dismiss-welcome`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function skipOnboardingStep(token: string, organizationId: string, stepKey: string) {
+  return request<OnboardingStatus>(`/organizations/${organizationId}/onboarding/skip`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ step_key: stepKey }),
+  });
+}
+
+export function unskipOnboardingStep(token: string, organizationId: string, stepKey: string) {
+  return request<OnboardingStatus>(`/organizations/${organizationId}/onboarding/unskip`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ step_key: stepKey }),
+  });
+}
+
+export function completeOnboarding(token: string, organizationId: string) {
+  return request<OnboardingStatus>(`/organizations/${organizationId}/onboarding/complete`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}

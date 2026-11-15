@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { clearToken, getToken } from "@/lib/auth";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import OnboardingChecklist from "@/components/OnboardingChecklist";
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./dashboard.module.css";
 
@@ -147,6 +148,8 @@ export default function DashboardPage() {
         </div>
 
         {error && <p className={styles.error} role="alert">{error}</p>}
+
+        {organization && getToken() && <OnboardingChecklist token={getToken()!} organizationId={organization.id} />}
 
         <div className={styles.card}>
           <h2>Add a website</h2>

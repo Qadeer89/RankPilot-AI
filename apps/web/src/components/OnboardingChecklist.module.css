@@ -1,0 +1,90 @@
+.card {
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-card);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rp-ink);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--rp-muted);
+  margin-top: 2px;
+}
+
+.dismiss {
+  background: none;
+  border: none;
+  color: var(--rp-muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dismiss:hover {
+  color: var(--rp-ink);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--rp-ink);
+}
+
+.dotDone,
+.dotPending {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotDone {
+  background: var(--rp-success);
+}
+
+.dotPending {
+  background: var(--rp-border);
+  border: 1px solid var(--rp-muted);
+}
+
+.textDone {
+  color: var(--rp-muted);
+  text-decoration: line-through;
+}
+
+.continueLink {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rp-primary);
+}
+
+.continueLink:hover {
+  color: var(--rp-primary-hover);
+}
