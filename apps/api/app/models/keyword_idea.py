@@ -35,6 +35,9 @@ class KeywordIdeaSource(str, enum.Enum):
     seed = "seed"
     ai_generated = "ai_generated"
     public_suggestion = "public_suggestion"
+    # A content-gap idea produced by comparing this site's own topics
+    # against a competitor's publicly crawled pages (spec section 4D).
+    competitor_gap = "competitor_gap"
 
 
 class KeywordDataClassification(str, enum.Enum):

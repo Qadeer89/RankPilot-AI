@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     analytics,
     auth,
     chat,
+    competitors,
     crawls,
     deploy_webhook,
     execution,
@@ -36,3 +37,4 @@ api_router.include_router(onboarding.router)
 api_router.include_router(chat.router)
 api_router.include_router(admin_knowledge.router)
 api_router.include_router(keyword_ideas.router)
+api_router.include_router(competitors.router)

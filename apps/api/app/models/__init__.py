@@ -2,6 +2,7 @@ from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
+from app.models.competitor import CompetitorDomain, CompetitorPageSnapshot
 from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, ChatMessage, ChatRole
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
@@ -55,6 +56,8 @@ __all__ = [
     "AuditEvent",
     "ChangeActorType",
     "ChangeRecord",
+    "CompetitorDomain",
+    "CompetitorPageSnapshot",
     "ValidationStatus",
     "ChatConversation",
     "ChatFeedback",
