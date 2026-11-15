@@ -119,8 +119,24 @@ export default function OnboardingPage() {
       setStatus(result);
       if (result.completed_at) {
         router.push("/dashboard");
+        return;
+      }
+      const firstIncomplete = result.steps.findIndex((s) => s.mandatory && !s.completed);
+      if (firstIncomplete !== -1) {
+        setActiveIndex(firstIncomplete);
+        setError(`"${result.steps[firstIncomplete].title}" still isn't complete -- see below.`);
       }
     });
+  }
+
+  function handlePrimaryActionClick() {
+    if (activeStep.key === "welcome" && !activeStep.completed) {
+      // Starting setup is itself an acknowledgement of the welcome
+      // screen -- don't make the user come back and press "Got it"
+      // separately, or they can reach the end of the wizard with
+      // "welcome" silently still incomplete and Finish never firing.
+      handleDismissWelcome();
+    }
   }
 
   const isLast = activeIndex === steps.length - 1;
@@ -181,7 +197,7 @@ export default function OnboardingPage() {
             </p>
 
             <div className={styles.actions}>
-              <Link href={content.actionHref} className={styles.primaryAction}>
+              <Link href={content.actionHref} className={styles.primaryAction} onClick={handlePrimaryActionClick}>
                 {content.actionLabel}
               </Link>
               {!activeStep.mandatory && !activeStep.skipped && (
