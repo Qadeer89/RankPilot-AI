@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
 from app.db.session import get_db
+from app.growth.execution import NotExecutable, send_to_execution, sync_completed
 from app.growth.service import generate_growth_recommendations
 from app.models.audit_event import AuditEvent
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationStatus
@@ -48,7 +49,12 @@ def list_recommendations(
     query = db.query(GrowthRecommendation).filter(GrowthRecommendation.website_id == website_id)
     if status_filter is not None:
         query = query.filter(GrowthRecommendation.status == status_filter)
-    return _sorted(query.limit(500).all())
+    rows = query.limit(500).all()
+    sync_completed(db, rows)
+    db.commit()
+    if status_filter is not None:
+        rows = [r for r in rows if r.status == status_filter]
+    return _sorted(rows)
 
 
 @router.patch(f"{_BASE}/{{recommendation_id}}", response_model=GrowthRecommendationResponse)
@@ -77,6 +83,41 @@ def update_recommendation(
             resource_type="growth_recommendation",
             resource_id=str(row.id),
             metadata_json={"title": row.title},
+        )
+    )
+    db.commit()
+    db.refresh(row)
+    return GrowthRecommendationResponse.model_validate(row)
+
+
+@router.post(f"{_BASE}/{{recommendation_id}}/send-to-execution", response_model=GrowthRecommendationResponse)
+def send_recommendation_to_execution(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    recommendation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.editor)),
+) -> GrowthRecommendationResponse:
+    website = get_website_or_404(db, organization_id, website_id)
+    row = (
+        db.query(GrowthRecommendation)
+        .filter(GrowthRecommendation.id == recommendation_id, GrowthRecommendation.website_id == website_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Recommendation not found")
+    try:
+        opportunity = send_to_execution(db, website, row)
+    except NotExecutable as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="growth_recommendation.sent_to_execution",
+            resource_type="growth_recommendation",
+            resource_id=str(row.id),
+            metadata_json={"opportunity_id": str(opportunity.id)},
         )
     )
     db.commit()

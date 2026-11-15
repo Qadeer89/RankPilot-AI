@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.execution.connections import get_connected_content_connector
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationLevel, RecommendationStatus
 from app.models.keyword_idea import KeywordIdea, KeywordIdeaSource, KeywordIdeaStatus
 from app.models.website import Website
@@ -53,6 +54,7 @@ def generate_growth_recommendations(
         for r in db.query(GrowthRecommendation).filter(GrowthRecommendation.website_id == website.id).all()
     }
     scope = country or "all"
+    has_connector = get_connected_content_connector(db, website) is not None
     touched: list[GrowthRecommendation] = []
 
     for opp in detect_ranking_improvement_opportunities(db, website, country=country):
@@ -77,7 +79,7 @@ def generate_growth_recommendations(
                 expected_benefit="Could improve visibility for a query that already shows real demand. Not guaranteed.",
                 priority=RecommendationLevel.high if opp.impressions >= HIGH_IMPRESSIONS else RecommendationLevel.medium,
                 difficulty=RecommendationLevel.medium,
-                automation_available=False,
+                automation_available=has_connector and opp.page_id is not None,
                 requires_approval=True,
                 validation_method=GSC_VALIDATION,
                 evidence_json={"impressions": opp.impressions, "average_position": round(opp.average_position, 1), "window_days": 28},

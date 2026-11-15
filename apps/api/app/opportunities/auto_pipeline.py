@@ -129,7 +129,13 @@ def auto_generate_and_execute_tasks(db: Session, website: Website) -> None:
 
     opportunities = (
         db.query(SEOOpportunity)
-        .filter(SEOOpportunity.website_id == website.id, SEOOpportunity.status == OpportunityStatus.open)
+        .filter(
+            SEOOpportunity.website_id == website.id,
+            SEOOpportunity.status == OpportunityStatus.open,
+            # A growth recommendation a person sent for an AI draft is
+            # theirs to drive; the crawl pipeline never picks it up.
+            SEOOpportunity.category != "growth",
+        )
         .order_by(SEOOpportunity.id)
         .all()
     )

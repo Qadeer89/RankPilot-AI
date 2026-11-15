@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ApiError,
+  AiUsage,
   CompetitorDomain,
+  PerformanceTimeline,
   GrowthRecommendation,
   RecommendationStatus,
   KeywordIdea,
@@ -18,6 +20,10 @@ import {
   analyzeCompetitor,
   deleteCompetitor,
   generateGrowthRecommendations,
+  getPerformanceTimeline,
+  getWebsiteAiUsage,
+  sendGrowthRecommendationToExecution,
+  updateWebsiteSettings,
   listGrowthRecommendations,
   updateGrowthRecommendationStatus,
   getMe,
@@ -32,7 +38,7 @@ import {
 import { getToken } from "@/lib/auth";
 import styles from "./keywords.module.css";
 
-type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations";
+type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations" | "performance";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -43,6 +49,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "competitors", label: "Competitor Gaps" },
   { key: "opportunities", label: "Opportunities & Mapping" },
   { key: "recommendations", label: "Recommendations" },
+  { key: "performance", label: "Performance" },
 ];
 
 function classificationBadgeClass(classification: string): string {
@@ -86,6 +93,8 @@ export default function KeywordWorkspacePage() {
   const [website, setWebsite] = useState<Website | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
+  // Search Console reports countries as three-letter codes ("usa"); the
+  // website's target country is two-letter ("US"), so it is not prefilled.
   const [country, setCountry] = useState<string>("");
 
   const [performance, setPerformance] = useState<SearchPerformance | null>(null);
@@ -96,6 +105,11 @@ export default function KeywordWorkspacePage() {
   const [discovering, setDiscovering] = useState(false);
   const [recommendations, setRecommendations] = useState<GrowthRecommendation[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [timeline, setTimeline] = useState<PerformanceTimeline | null>(null);
+  const [windowDays, setWindowDays] = useState(28);
+  const [usage, setUsage] = useState<AiUsage | null>(null);
+  const [targeting, setTargeting] = useState({ country: "", extra: "", language: "", city: "" });
+  const [savingTargeting, setSavingTargeting] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   const token = getToken();
@@ -113,7 +127,12 @@ export default function KeywordWorkspacePage() {
         if (!orgId) return;
         const site = await getWebsite(activeToken, orgId, websiteId);
         setWebsite(site);
-        setCountry(site.target_country ?? "");
+        setTargeting({
+          country: site.target_country ?? "",
+          extra: site.additional_target_countries.join(", "),
+          language: site.target_language ?? "",
+          city: site.target_city ?? "",
+        });
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load website."));
   }, [router, websiteId]);
@@ -124,13 +143,17 @@ export default function KeywordWorkspacePage() {
     if (!token || !orgId) return;
     setError(null);
     try {
-      const [perf, intel, keywordIdeas, competitorList, recs] = await Promise.all([
+      const [perf, intel, keywordIdeas, competitorList, recs, perfTimeline, aiUsage] = await Promise.all([
         getSearchPerformance(token, orgId, websiteId),
         getSearchPerformanceIntelligence(token, orgId, websiteId, country || undefined),
         listKeywordIdeas(token, orgId, websiteId),
         listCompetitors(token, orgId, websiteId),
         listGrowthRecommendations(token, orgId, websiteId),
+        getPerformanceTimeline(token, orgId, websiteId, windowDays),
+        getWebsiteAiUsage(token, orgId, websiteId),
       ]);
+      setTimeline(perfTimeline);
+      setUsage(aiUsage);
       setRecommendations(recs);
       setPerformance(perf);
       setIntelligence(intel);
@@ -139,7 +162,7 @@ export default function KeywordWorkspacePage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load keyword data.");
     }
-  }, [token, orgId, websiteId, country]);
+  }, [token, orgId, websiteId, country, windowDays]);
 
   useEffect(() => {
     if (orgId) {
@@ -183,6 +206,40 @@ export default function KeywordWorkspacePage() {
       setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update recommendation.");
+    }
+  }
+
+  async function handleSendToExecution(id: string) {
+    if (!token || !orgId) return;
+    setError(null);
+    try {
+      const updated = await sendGrowthRecommendationToExecution(token, orgId, websiteId, id);
+      setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not send this recommendation for an AI draft.");
+    }
+  }
+
+  async function handleSaveTargeting(event: React.FormEvent) {
+    event.preventDefault();
+    if (!token || !orgId) return;
+    setSavingTargeting(true);
+    setError(null);
+    try {
+      const updated = await updateWebsiteSettings(token, orgId, websiteId, {
+        ...(targeting.country.trim() ? { target_country: targeting.country.trim() } : {}),
+        additional_target_countries: targeting.extra
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean),
+        ...(targeting.language.trim() ? { target_language: targeting.language.trim() } : {}),
+        target_city: targeting.city.trim(),
+      });
+      setWebsite(updated);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save target market settings.");
+    } finally {
+      setSavingTargeting(false);
     }
   }
 
@@ -331,6 +388,49 @@ export default function KeywordWorkspacePage() {
                 <div className={styles.metricValue}>{competitors.length}</div>
               </div>
             </div>
+            <form className={styles.formRow} onSubmit={handleSaveTargeting} style={{ flexWrap: "wrap", alignItems: "center" }}>
+              <strong style={{ fontSize: 13 }}>Target market</strong>
+              <input
+                className={styles.input}
+                aria-label="Primary target country"
+                placeholder="Country (e.g. US)"
+                maxLength={2}
+                value={targeting.country}
+                onChange={(e) => setTargeting({ ...targeting, country: e.target.value })}
+                style={{ width: 150 }}
+              />
+              <input
+                className={styles.input}
+                aria-label="Additional target countries"
+                placeholder="More countries (GB, CA)"
+                value={targeting.extra}
+                onChange={(e) => setTargeting({ ...targeting, extra: e.target.value })}
+              />
+              <input
+                className={styles.input}
+                aria-label="Target language"
+                placeholder="Language (e.g. en)"
+                value={targeting.language}
+                onChange={(e) => setTargeting({ ...targeting, language: e.target.value })}
+                style={{ width: 150 }}
+              />
+              <input
+                className={styles.input}
+                aria-label="Target city"
+                placeholder="City (optional)"
+                value={targeting.city}
+                onChange={(e) => setTargeting({ ...targeting, city: e.target.value })}
+              />
+              <button type="submit" className={styles.secondaryButton} disabled={savingTargeting}>
+                {savingTargeting ? "Saving..." : "Save"}
+              </button>
+            </form>
+            {usage && (
+              <p className={styles.freshnessNote}>
+                AI usage, last {usage.days} days: about ${usage.total_estimated_cost_usd.toFixed(2)} across{" "}
+                {usage.by_agent_type.reduce((sum, a) => sum + a.runs, 0)} runs. {usage.note}
+              </p>
+            )}
             {!website.search_console_site_url && (
               <p className={styles.empty}>
                 Connect Google Search Console (Integrations tab) to unlock first-party keyword data and
@@ -736,6 +836,20 @@ export default function KeywordWorkspacePage() {
                   )}
                   {rec.status === "approved" && (
                     <div className={styles.domainActions}>
+                      {rec.automation_available && !rec.opportunity_id && (
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          onClick={() => handleSendToExecution(rec.id)}
+                        >
+                          Send for AI draft
+                        </button>
+                      )}
+                      {rec.opportunity_id && (
+                        <Link href={`/dashboard/websites/${websiteId}`} className={styles.backLink}>
+                          In the Opportunities tab: preview, approve and publish there
+                        </Link>
+                      )}
                       <button
                         type="button"
                         className={styles.secondaryButton}
@@ -747,6 +861,69 @@ export default function KeywordWorkspacePage() {
                   )}
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {tab === "performance" && (
+          <div className={styles.card}>
+            <div className={styles.cardHeader}>
+              <h2>SEO Improvement Timeline</h2>
+              <select
+                className={styles.select}
+                aria-label="Comparison window"
+                value={windowDays}
+                onChange={(e) => setWindowDays(Number(e.target.value))}
+              >
+                <option value={7}>7 days before / after</option>
+                <option value={28}>28 days before / after</option>
+                <option value={90}>90 days before / after</option>
+              </select>
+            </div>
+            {timeline && <p className={styles.freshnessNote}>{timeline.caveat}</p>}
+            {!timeline || timeline.entries.length === 0 ? (
+              <p className={styles.empty}>No published changes yet. Changes RankPilot applies to a page appear here.</p>
+            ) : (
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Page / change</th>
+                    <th>Published</th>
+                    <th>Check</th>
+                    <th>Clicks</th>
+                    <th>Impressions</th>
+                    <th>CTR</th>
+                    <th>Avg. position</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {timeline.entries.map((entry) => {
+                    const pair = (
+                      before: number | null | undefined,
+                      after: number | null | undefined,
+                      format: (n: number) => string
+                    ) =>
+                      `${before == null ? "no data" : format(before)} → ${after == null ? "no data" : format(after)}`;
+                    return (
+                      <tr key={entry.change_id}>
+                        <td>
+                          {entry.page_url ?? "Unknown page"}
+                          <div className={styles.subtitle}>{entry.operation ?? "change"}</div>
+                        </td>
+                        <td>{new Date(entry.implemented_at).toLocaleDateString()}</td>
+                        <td>
+                          {entry.validation_status}
+                          {!entry.after_window_complete && <div className={styles.subtitle}>after-window still filling</div>}
+                        </td>
+                        <td>{pair(entry.before?.clicks, entry.after?.clicks, String)}</td>
+                        <td>{pair(entry.before?.impressions, entry.after?.impressions, String)}</td>
+                        <td>{pair(entry.before?.ctr, entry.after?.ctr, (n) => `${(n * 100).toFixed(1)}%`)}</td>
+                        <td>{pair(entry.before?.average_position, entry.after?.average_position, (n) => n.toFixed(1))}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         )}

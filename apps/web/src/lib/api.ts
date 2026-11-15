@@ -347,6 +347,10 @@ export function updateWebsiteSettings(
     auto_execute_categories?: Record<string, boolean>;
     crawl_frequency_hours?: number;
     ai_daily_budget_usd_override?: number;
+    target_country?: string;
+    additional_target_countries?: string[];
+    target_language?: string;
+    target_city?: string;
     notify_on_regression?: boolean;
     notify_on_auto_pipeline_summary?: boolean;
   }
@@ -1403,6 +1407,7 @@ export interface GrowthRecommendation {
   title: string;
   page_id: string | null;
   proposed_url: string | null;
+  opportunity_id: string | null;
   target_country: string | null;
   keyword: string | null;
   data_source: string;
@@ -1450,4 +1455,69 @@ export function updateGrowthRecommendationStatus(
     `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}`,
     { method: "PATCH", headers: authHeaders(token), body: JSON.stringify({ status }) }
   );
+}
+
+export function sendGrowthRecommendationToExecution(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  recommendationId: string
+) {
+  return request<GrowthRecommendation>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}/send-to-execution`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export interface SearchWindowStats {
+  clicks: number;
+  impressions: number;
+  ctr: number | null;
+  average_position: number | null;
+}
+
+export interface PerformanceTimelineEntry {
+  change_id: string;
+  page_id: string;
+  page_url: string | null;
+  operation: string | null;
+  implemented_at: string;
+  validation_status: string;
+  before: SearchWindowStats | null;
+  after: SearchWindowStats | null;
+  after_window_complete: boolean;
+  site_ga4_before: { sessions: number; conversions: number } | null;
+  site_ga4_after: { sessions: number; conversions: number } | null;
+}
+
+export interface PerformanceTimeline {
+  window_days: number;
+  caveat: string;
+  entries: PerformanceTimelineEntry[];
+}
+
+export function getPerformanceTimeline(token: string, organizationId: string, websiteId: string, windowDays: number) {
+  return request<PerformanceTimeline>(
+    `/organizations/${organizationId}/websites/${websiteId}/performance-timeline?window_days=${windowDays}`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export interface AiUsage {
+  days: number;
+  by_agent_type: {
+    agent_type: string;
+    runs: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number;
+  }[];
+  total_estimated_cost_usd: number;
+  note: string;
+}
+
+export function getWebsiteAiUsage(token: string, organizationId: string, websiteId: string) {
+  return request<AiUsage>(`/organizations/${organizationId}/websites/${websiteId}/ai-usage`, {
+    headers: authHeaders(token),
+  });
 }

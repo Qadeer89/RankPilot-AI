@@ -14,6 +14,7 @@ SEED_DOC_CATEGORIES: dict[str, str] = {
     "USER_ONBOARDING.md": "onboarding",
     "AI_AGENT_SPECIFICATION.md": "ai_automation",
     "SEO_AUTOMATION_ENGINE.md": "seo_automation",
+    "SEO_GROWTH_ENGINE.md": "seo_automation",
     "WEBSITE_CONNECTORS.md": "connectors",
     "CONNECTOR_OPERATIONS_REFERENCE.md": "connectors",
     "SECURITY_SPECIFICATION.md": "security",

@@ -232,6 +232,12 @@ def refresh_opportunities_for_website(db: Session, website: Website) -> list[SEO
     db.flush()
 
     for (page_id, title), opportunity in existing_opportunities.items():
+        # Only finding-derived opportunities are this function's to
+        # resolve. Search-Console CTR opportunities and growth-
+        # recommendation opportunities have no rule_code and their own
+        # lifecycles; resolving them here closed them on every crawl.
+        if "rule_code" not in opportunity.evidence_json:
+            continue
         if (page_id, title) not in touched_keys and opportunity.status == OpportunityStatus.open:
             # The finding stopped recurring on its own -- RankPilot didn't
             # execute a fix for it, so this is "resolved" (e.g. a false

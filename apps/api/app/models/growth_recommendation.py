@@ -45,6 +45,11 @@ class GrowthRecommendation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     page_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pages.id", ondelete="SET NULL"), nullable=True
     )
+    # Set once a person sends this recommendation to the existing
+    # AI-fix/execution pipeline (app/growth/execution.py).
+    opportunity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("seo_opportunities.id", ondelete="SET NULL"), nullable=True
+    )
     proposed_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     target_country: Mapped[str | None] = mapped_column(String(8), nullable=True)
     keyword: Mapped[str | None] = mapped_column(String(512), nullable=True)

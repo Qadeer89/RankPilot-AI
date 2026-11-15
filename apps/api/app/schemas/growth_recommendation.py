@@ -14,6 +14,7 @@ class GrowthRecommendationResponse(BaseModel):
     title: str
     page_id: uuid.UUID | None
     proposed_url: str | None
+    opportunity_id: uuid.UUID | None
     target_country: str | None
     keyword: str | None
     data_source: str

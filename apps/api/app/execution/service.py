@@ -133,7 +133,11 @@ def create_tasks_from_proposal(
             tasks.append(existing)
             continue
 
-        approval_needed = policy.requires_approval(website, proposal.risk_tier, action.operation)
+        # A change that started as a growth recommendation always waits
+        # for a person, whatever the automation mode or opt-ins say.
+        approval_needed = opportunity.category == "growth" or policy.requires_approval(
+            website, proposal.risk_tier, action.operation
+        )
         task = SEOTask(
             website_id=website.id,
             opportunity_id=opportunity.id,

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.budget import BudgetExceeded
 from app.core.deps import RequireRole
+from app.core.rate_limit import enforce_rate_limit
 from app.core.resources import get_website_or_404
 from app.db.session import get_db
 from app.keywords.discovery_service import run_keyword_discovery
@@ -32,6 +33,7 @@ def run_discovery(
     _membership: Membership = Depends(RequireRole(MembershipRole.editor)),
 ) -> KeywordDiscoveryRunResponse:
     website = get_website_or_404(db, organization_id, website_id)
+    enforce_rate_limit(f"keyword_discovery:{website_id}", max_attempts=10, window_seconds=3600)
     try:
         ideas = run_keyword_discovery(db, website, country=payload.country, max_ideas=payload.max_ideas)
     except BudgetExceeded as exc:
