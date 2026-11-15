@@ -77,6 +77,10 @@ export interface Website {
   ai_daily_budget_usd_override: number | null;
   search_console_site_url: string | null;
   ga4_property_id: string | null;
+  target_country: string | null;
+  additional_target_countries: string[];
+  target_language: string | null;
+  target_city: string | null;
 }
 
 export interface CrawlJob {
@@ -206,6 +210,9 @@ export interface SearchPerformanceRow {
   impressions: number;
   ctr: number;
   average_position: number;
+  country: string | null;
+  device: string | null;
+  page_id: string | null;
 }
 
 export interface SearchPerformance {
@@ -806,6 +813,194 @@ export function getSearchPerformance(token: string, organizationId: string, webs
     `/organizations/${organizationId}/websites/${websiteId}/search-performance`,
     { headers: authHeaders(token) }
   );
+}
+
+// --- SEO Growth Engine: search intelligence, keyword ideas, competitors ---
+
+export interface WindowStats {
+  clicks: number;
+  impressions: number;
+  average_position: number;
+}
+
+export interface PageTrendSignal {
+  page_id: string;
+  signals: string[];
+  prior: WindowStats;
+  recent: WindowStats;
+}
+
+export interface RankingOpportunity {
+  query: string;
+  page_id: string | null;
+  average_position: number;
+  impressions: number;
+}
+
+export interface CannibalizationCandidate {
+  query: string;
+  pages: { page_id: string | null; impressions: number; average_position: number }[];
+}
+
+export interface NewQuery {
+  query: string;
+  page_id: string | null;
+  impressions: number;
+  clicks: number;
+  average_position: number;
+  country: string | null;
+}
+
+export interface SearchPerformanceIntelligence {
+  freshness_note: string;
+  country: string | null;
+  declining_pages: PageTrendSignal[];
+  ranking_improvement_opportunities: RankingOpportunity[];
+  keyword_cannibalization: CannibalizationCandidate[];
+  new_queries: NewQuery[];
+}
+
+export function getSearchPerformanceIntelligence(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  country?: string
+) {
+  const query = country ? `?country=${encodeURIComponent(country)}` : "";
+  return request<SearchPerformanceIntelligence>(
+    `/organizations/${organizationId}/websites/${websiteId}/search-performance/intelligence${query}`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export type SearchIntent = "informational" | "commercial" | "transactional" | "navigational" | "local";
+export type KeywordIdeaSource = "seed" | "ai_generated" | "public_suggestion" | "competitor_gap";
+export type KeywordDataClassification =
+  | "verified_first_party"
+  | "verified_external_source"
+  | "public_search_suggestion"
+  | "ai_generated_idea"
+  | "ai_estimated_relevance"
+  | "unavailable";
+export type KeywordIdeaStatus = "new" | "dismissed" | "actioned";
+
+export interface KeywordIdea {
+  id: string;
+  keyword: string;
+  search_intent: SearchIntent;
+  source: KeywordIdeaSource;
+  data_classification: KeywordDataClassification;
+  country: string | null;
+  language: string | null;
+  relevance: number;
+  confidence: number;
+  recommended_content_type: string | null;
+  target_page_id: string | null;
+  proposed_title: string | null;
+  rationale: string;
+  cluster_key: string | null;
+  status: KeywordIdeaStatus;
+  created_at: string;
+}
+
+export interface KeywordDiscoveryRun {
+  ideas: KeywordIdea[];
+  freshness_note: string;
+}
+
+export function runKeywordDiscovery(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  payload: { country?: string | null; max_ideas?: number }
+) {
+  return request<KeywordDiscoveryRun>(
+    `/organizations/${organizationId}/websites/${websiteId}/keyword-discovery/run`,
+    { method: "POST", headers: authHeaders(token), body: JSON.stringify(payload) }
+  );
+}
+
+export function listKeywordIdeas(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  filters?: { country?: string; source?: KeywordIdeaSource; status_filter?: KeywordIdeaStatus }
+) {
+  const params = new URLSearchParams();
+  if (filters?.country) params.set("country", filters.country);
+  if (filters?.source) params.set("source", filters.source);
+  if (filters?.status_filter) params.set("status_filter", filters.status_filter);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<KeywordIdea[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/keyword-ideas${query}`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function updateKeywordIdeaStatus(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  ideaId: string,
+  status: KeywordIdeaStatus
+) {
+  return request<KeywordIdea>(
+    `/organizations/${organizationId}/websites/${websiteId}/keyword-ideas/${ideaId}`,
+    { method: "PATCH", headers: authHeaders(token), body: JSON.stringify({ status }) }
+  );
+}
+
+export interface CompetitorDomain {
+  id: string;
+  domain: string;
+  last_analyzed_at: string | null;
+  created_at: string;
+}
+
+export interface CompetitorPageSnapshot {
+  id: string;
+  url: string;
+  title: string | null;
+  meta_description: string | null;
+  word_count: number;
+  has_structured_data: boolean;
+  fetch_error: string | null;
+  fetched_at: string;
+}
+
+export function listCompetitors(token: string, organizationId: string, websiteId: string) {
+  return request<CompetitorDomain[]>(`/organizations/${organizationId}/websites/${websiteId}/competitors`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function addCompetitor(token: string, organizationId: string, websiteId: string, domain: string) {
+  return request<CompetitorDomain>(`/organizations/${organizationId}/websites/${websiteId}/competitors`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ domain }),
+  });
+}
+
+export function analyzeCompetitor(token: string, organizationId: string, websiteId: string, competitorId: string) {
+  return request<KeywordIdea[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/competitors/${competitorId}/analyze`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export function listCompetitorPages(token: string, organizationId: string, websiteId: string, competitorId: string) {
+  return request<CompetitorPageSnapshot[]>(
+    `/organizations/${organizationId}/websites/${websiteId}/competitors/${competitorId}/pages`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function deleteCompetitor(token: string, organizationId: string, websiteId: string, competitorId: string) {
+  return request<void>(`/organizations/${organizationId}/websites/${websiteId}/competitors/${competitorId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
 }
 
 // --- Reports ---

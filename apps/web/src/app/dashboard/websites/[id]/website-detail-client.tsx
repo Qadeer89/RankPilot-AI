@@ -1019,6 +1019,9 @@ export default function WebsiteDetailClient() {
               {TAB_LABELS[tab]}
             </button>
           ))}
+          <Link href={`/dashboard/websites/${websiteId}/keywords`} className={styles.tab}>
+            Keywords
+          </Link>
         </div>
 
         {activeTab === "overview" && (

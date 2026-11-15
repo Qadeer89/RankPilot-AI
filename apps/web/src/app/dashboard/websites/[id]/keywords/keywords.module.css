@@ -1,0 +1,260 @@
+.page {
+  padding: 32px;
+  min-height: 100%;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--rp-ink);
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--rp-muted);
+  margin-top: 4px;
+}
+
+.backLink {
+  font-size: 13px;
+  color: var(--rp-muted);
+}
+
+.countrySelector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select,
+.input {
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--rp-surface);
+  color: var(--rp-ink);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--rp-border);
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rp-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tabActive {
+  color: var(--rp-primary);
+  border-bottom-color: var(--rp-primary);
+}
+
+.card {
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-card);
+  box-shadow: var(--rp-shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cardHeader h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rp-ink);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.metricTile {
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  padding: 14px;
+}
+
+.metricLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--rp-muted);
+}
+
+.metricValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--rp-ink);
+  margin-top: 4px;
+}
+
+.primaryButton {
+  padding: 8px 14px;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+}
+
+.primaryButton:hover {
+  background: var(--rp-primary-hover);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  padding: 8px 14px;
+  border-radius: var(--rp-radius-control);
+  background: var(--rp-surface);
+  border: 1px solid var(--rp-border);
+  color: var(--rp-ink);
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--rp-muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--rp-border);
+}
+
+.table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--rp-border);
+  color: var(--rp-ink);
+  vertical-align: top;
+}
+
+.badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--rp-radius-pill);
+  background: var(--rp-primary-soft);
+  color: var(--rp-primary);
+  white-space: nowrap;
+}
+
+.badgeVerified {
+  background: var(--rp-success-soft);
+  color: var(--rp-success);
+}
+
+.badgeEstimate {
+  background: var(--rp-warning-soft);
+  color: var(--rp-warning);
+}
+
+.badgeUnavailable {
+  background: var(--rp-danger-soft);
+  color: var(--rp-danger);
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--rp-muted);
+  padding: 12px 0;
+}
+
+.error {
+  color: var(--rp-danger);
+  font-size: 13px;
+  background: var(--rp-danger-soft);
+  padding: 8px 12px;
+  border-radius: var(--rp-radius-control);
+}
+
+.freshnessNote {
+  font-size: 12px;
+  color: var(--rp-muted);
+  font-style: italic;
+}
+
+.clusterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clusterTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rp-ink);
+}
+
+.domainRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--rp-border);
+  border-radius: var(--rp-radius-control);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.domainActions {
+  display: flex;
+  gap: 8px;
+}
+
+.formRow {
+  display: flex;
+  gap: 8px;
+}
