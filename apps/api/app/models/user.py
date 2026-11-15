@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from sqlalchemy import Enum, String
+from sqlalchemy import Boolean, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -22,5 +22,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[UserStatus] = mapped_column(
         Enum(UserStatus, name="user_status"), default=UserStatus.active, nullable=False
     )
+    # Platform-level admin (distinct from org-scoped MembershipRole):
+    # manages the shared product knowledge base (Part 6 of the AI
+    # Assistant spec). No self-service signup path -- granted directly
+    # in the DB by whoever operates this deployment.
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")

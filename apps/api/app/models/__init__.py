@@ -2,13 +2,22 @@ from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.audit_event import AuditEvent
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
+from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, ChatMessage, ChatRole
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.ga4_daily_metric import Ga4DailyMetric
 from app.models.keyword_observation import KeywordObservation
+from app.models.knowledge import (
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeIngestionJob,
+    KnowledgeIngestionStatus,
+    KnowledgeSourceType,
+)
 from app.models.membership import Membership, MembershipRole
 from app.models.notification import Notification, NotificationChannel, NotificationStatus
 from app.models.oauth_connection import OAuthConnection, OAuthConnectionStatus, OAuthProvider
+from app.models.onboarding_state import OnboardingState
 from app.models.organization import Organization, OrganizationPlan, OrganizationStatus
 from app.models.page import IndexabilityState, Page
 from app.models.page_external_link import ExternalLinkStatus, PageExternalLink
@@ -40,6 +49,11 @@ __all__ = [
     "ChangeActorType",
     "ChangeRecord",
     "ValidationStatus",
+    "ChatConversation",
+    "ChatFeedback",
+    "ChatFeedbackRating",
+    "ChatMessage",
+    "ChatRole",
     "CrawlFrontier",
     "FrontierState",
     "CrawlJob",
@@ -47,6 +61,11 @@ __all__ = [
     "CrawlTrigger",
     "Ga4DailyMetric",
     "KeywordObservation",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
+    "KnowledgeIngestionJob",
+    "KnowledgeIngestionStatus",
+    "KnowledgeSourceType",
     "Membership",
     "MembershipRole",
     "Notification",
@@ -55,6 +74,7 @@ __all__ = [
     "OAuthConnection",
     "OAuthConnectionStatus",
     "OAuthProvider",
+    "OnboardingState",
     "Organization",
     "OrganizationPlan",
     "OrganizationStatus",

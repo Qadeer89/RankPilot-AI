@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     deploy_webhook,
     execution,
     health,
+    onboarding,
     opportunities,
     organizations,
     reporting,
@@ -28,3 +29,4 @@ api_router.include_router(opportunities.router)
 api_router.include_router(execution.router)
 api_router.include_router(reporting.router)
 api_router.include_router(ai_agents.router)
+api_router.include_router(onboarding.router)
