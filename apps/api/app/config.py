@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     verification_token_expire_minutes: int = 60 * 24
     verification_max_attempts: int = 10
 
+    # Login/register (RP13-followup): unlike verification tokens, there's
+    # no per-attempt DB row to attach a counter to, so this is a Redis
+    # fixed-window limit keyed by client IP instead.
+    auth_rate_limit_max_attempts: int = 10
+    auth_rate_limit_window_seconds: int = 600
+
+    # Password reset (RP13-followup: no self-service recovery path
+    # existed at all before this).
+    password_reset_token_expire_minutes: int = 60
+    frontend_base_url: str = "http://localhost:3100"
+
     # OpenAI (AI_AGENT_SPECIFICATION.md #3). Server-side only; never exposed
     # to the frontend, never committed, never logged.
     openai_api_key: str | None = None

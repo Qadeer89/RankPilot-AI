@@ -16,6 +16,7 @@ from app.models.page_image import ImageStatus, PageImage
 from app.models.page_indexing_status import PageIndexingStatus
 from app.models.page_render_result import PageRenderResult, RenderStatus
 from app.models.page_snapshot import PageSnapshot
+from app.models.password_reset_token import PasswordResetToken
 from app.models.performance_metric import PerformanceMetric, PerformanceStrategy
 from app.models.report import Report, ReportType
 from app.models.rollback_record import RollbackRecord, RollbackStatus
@@ -67,6 +68,7 @@ __all__ = [
     "PageRenderResult",
     "RenderStatus",
     "PageSnapshot",
+    "PasswordResetToken",
     "PerformanceMetric",
     "PerformanceStrategy",
     "Report",

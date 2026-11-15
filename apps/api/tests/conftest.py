@@ -60,6 +60,19 @@ def db_session(engine):
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _disable_auth_rate_limiting(monkeypatch):
+    # The real limiter is Redis-backed and keyed by client IP -- every
+    # TestClient request reports the same IP, so without this, tests
+    # that call /auth/register or /auth/login more than a handful of
+    # times (most of this suite does) would start 429ing each other.
+    # test_auth_rate_limit.py re-enables the real function to test the
+    # limiter itself.
+    import app.api.v1.endpoints.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "rate_limit_by_ip", lambda *a, **k: None)
+
+
 @pytest.fixture
 def client(db_session):
     def _override_get_db():

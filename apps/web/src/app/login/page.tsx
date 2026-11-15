@@ -56,6 +56,9 @@ export default function LoginPage() {
           {submitting ? "Logging in..." : "Log in"}
         </button>
         <p className={styles.footerLink}>
+          <Link href="/forgot-password">Forgot password?</Link>
+        </p>
+        <p className={styles.footerLink}>
           Need an account? <Link href="/register">Create one</Link>
         </p>
       </form>

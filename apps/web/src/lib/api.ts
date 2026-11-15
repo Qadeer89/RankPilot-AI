@@ -251,6 +251,24 @@ export function login(email: string, password: string) {
   });
 }
 
+export interface MessageResponse {
+  message: string;
+}
+
+export function forgotPassword(email: string) {
+  return request<MessageResponse>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(token: string, newPassword: string) {
+  return request<MessageResponse>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+}
+
 export function getMe(token: string) {
   return request<MeResponse>("/me", { headers: authHeaders(token) });
 }

@@ -42,6 +42,25 @@ def _send_via_smtp(to_email: str, subject: str, body: str) -> None:
         server.send_message(message)
 
 
+def send_plain_email(to_email: str, subject: str, body: str) -> bool:
+    """For transactional email that isn't tied to an organization/website
+    (unlike send_notification below) -- currently just password reset.
+    Returns whether it was actually sent; False (not configured, or a
+    send failure) is deliberately not raised, since the caller must give
+    the same response either way to avoid leaking whether an account
+    exists.
+    """
+    if not _smtp_configured():
+        logger.info("SMTP not configured; skipping email send to %s (subject=%r).", to_email, subject)
+        return False
+    try:
+        _send_via_smtp(to_email, subject, body)
+        return True
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.warning("Failed to send email to %s: %s", to_email, exc)
+        return False
+
+
 def send_notification(
     db: Session,
     *,
