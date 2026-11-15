@@ -137,6 +137,14 @@ def update_website_settings(
         website.crawl_frequency_hours = payload.crawl_frequency_hours
     if payload.ai_daily_budget_usd_override is not None:
         website.ai_daily_budget_usd_override = payload.ai_daily_budget_usd_override
+    if payload.target_country is not None:
+        website.target_country = payload.target_country.upper()
+    if payload.additional_target_countries is not None:
+        website.additional_target_countries = [c.upper() for c in payload.additional_target_countries]
+    if payload.target_language is not None:
+        website.target_language = payload.target_language.lower()
+    if payload.target_city is not None:
+        website.target_city = payload.target_city
 
     db.add(
         AuditEvent(

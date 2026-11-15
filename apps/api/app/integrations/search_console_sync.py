@@ -41,12 +41,14 @@ def sync_search_performance(
     # crawled Page (page_id below) -- without it, a downstream opportunity
     # derived from this data (app/opportunities/search_console_signals.py)
     # has no page to hand the AI content agent for a title/meta fix.
+    # "country"/"device" support the SEO Growth Engine's country-based
+    # intelligence (never fabricated -- exactly what GSC itself reports).
     rows = query_search_analytics(
         access_token,
         website.search_console_site_url,
         start_date=start_date,
         end_date=end_date,
-        dimensions=["query", "page", "date"],
+        dimensions=["query", "page", "date", "country", "device"],
     )
 
     pages_by_normalized_url = {
@@ -55,7 +57,7 @@ def sync_search_performance(
 
     synced = 0
     for row in rows:
-        query, page_url, date_str = row["keys"]
+        query, page_url, date_str, country, device = row["keys"]
         observation_date = date.fromisoformat(date_str)
         page_id = pages_by_normalized_url.get(normalize_frontier_url(page_url))
 
@@ -68,6 +70,8 @@ def sync_search_performance(
                 KeywordObservation.website_id == website.id,
                 KeywordObservation.query == query,
                 KeywordObservation.date == observation_date,
+                KeywordObservation.country == country,
+                KeywordObservation.device == device,
                 page_filter,
             )
             .one_or_none()
@@ -78,6 +82,8 @@ def sync_search_performance(
                 query=query,
                 page_id=page_id,
                 date=observation_date,
+                country=country,
+                device=device,
                 source="google_search_console",
             )
             db.add(existing)

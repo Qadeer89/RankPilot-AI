@@ -104,7 +104,28 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # when set; None (the default) means "use the global per-site default".
     ai_daily_budget_usd_override: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Country-based SEO intelligence (SEO Growth Engine spec, section 5
+    # "Country-Based SEO Intelligence"). ISO 3166-1 alpha-2 for countries
+    # (matching Search Console's own country dimension values), ISO 639-1
+    # for language. None/empty means "no country target configured yet" --
+    # never a fabricated default market.
+    target_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    additional_target_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    target_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    target_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     organization: Mapped["Organization"] = relationship(back_populates="websites")
     verifications: Mapped[list["WebsiteVerification"]] = relationship(
         back_populates="website", cascade="all, delete-orphan"
     )
+
+    @property
+    def all_target_countries(self) -> list[str]:
+        """Primary target country plus any additional ones, de-duplicated,
+        primary first. Empty when no country has been configured yet.
+        """
+        countries = [self.target_country] if self.target_country else []
+        for country in self.additional_target_countries:
+            if country not in countries:
+                countries.append(country)
+        return countries

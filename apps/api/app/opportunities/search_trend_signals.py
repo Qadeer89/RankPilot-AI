@@ -78,7 +78,30 @@ class CannibalizationCandidate:
     pages: list[dict] = field(default_factory=list)
 
 
-def _aggregate_by_page(db: Session, website_id: uuid.UUID, start: date, end: date) -> dict[uuid.UUID, WindowStats]:
+@dataclass(frozen=True)
+class NewQuery:
+    query: str
+    page_id: uuid.UUID | None
+    impressions: int
+    clicks: int
+    average_position: float
+    country: str | None
+
+
+CLICKS_GROWTH_THRESHOLD = 0.3
+IMPRESSIONS_GROWTH_THRESHOLD = 0.3
+POSITION_IMPROVEMENT_THRESHOLD = 3.0
+NEW_QUERY_WINDOW_DAYS = 14
+MIN_IMPRESSIONS_FOR_NEW_QUERY = 3
+
+
+def _country_filter(country: str | None):
+    return KeywordObservation.country == country if country else True
+
+
+def _aggregate_by_page(
+    db: Session, website_id: uuid.UUID, start: date, end: date, *, country: str | None = None
+) -> dict[uuid.UUID, WindowStats]:
     rows = (
         db.query(
             KeywordObservation.page_id,
@@ -91,6 +114,7 @@ def _aggregate_by_page(db: Session, website_id: uuid.UUID, start: date, end: dat
             KeywordObservation.page_id.isnot(None),
             KeywordObservation.date >= start,
             KeywordObservation.date < end,
+            _country_filter(country),
         )
         .group_by(KeywordObservation.page_id)
         .all()
@@ -101,18 +125,21 @@ def _aggregate_by_page(db: Session, website_id: uuid.UUID, start: date, end: dat
     }
 
 
-def detect_page_trend_signals(db: Session, website: Website) -> list[PageTrendSignal]:
+def detect_page_trend_signals(db: Session, website: Website, *, country: str | None = None) -> list[PageTrendSignal]:
     """Compare each page's most recent TREND_WINDOW_DAYS of Search
     Console data against the TREND_WINDOW_DAYS before that, and flag
     pages whose clicks, impressions or average position meaningfully
-    worsened.
+    worsened -- or, symmetrically, meaningfully improved
+    ("clicks_growing"/"impressions_growing"/"position_improving").
+    Pass `country` (GSC's own alpha-3 code) to scope the comparison to
+    one target market instead of the site's worldwide traffic.
     """
     end = date.today()
     recent_start = end - timedelta(days=TREND_WINDOW_DAYS)
     prior_start = recent_start - timedelta(days=TREND_WINDOW_DAYS)
 
-    recent_by_page = _aggregate_by_page(db, website.id, recent_start, end)
-    prior_by_page = _aggregate_by_page(db, website.id, prior_start, recent_start)
+    recent_by_page = _aggregate_by_page(db, website.id, recent_start, end, country=country)
+    prior_by_page = _aggregate_by_page(db, website.id, prior_start, recent_start, country=country)
 
     empty = WindowStats(clicks=0, impressions=0, average_position=0.0)
     results: list[PageTrendSignal] = []
@@ -123,16 +150,24 @@ def detect_page_trend_signals(db: Session, website: Website) -> list[PageTrendSi
         recent = recent_by_page.get(page_id, empty)
 
         signals: list[str] = []
-        if prior.clicks > 0 and (recent.clicks - prior.clicks) / prior.clicks <= -CLICKS_DECLINE_THRESHOLD:
-            signals.append("clicks_declining")
-        if (recent.impressions - prior.impressions) / prior.impressions <= -IMPRESSIONS_DECLINE_THRESHOLD:
-            signals.append("impressions_declining")
-        if (
-            recent.impressions > 0
-            and prior.average_position > 0
-            and (recent.average_position - prior.average_position) >= POSITION_WORSENING_THRESHOLD
-        ):
-            signals.append("position_worsening")
+        if prior.clicks > 0:
+            clicks_change = (recent.clicks - prior.clicks) / prior.clicks
+            if clicks_change <= -CLICKS_DECLINE_THRESHOLD:
+                signals.append("clicks_declining")
+            elif clicks_change >= CLICKS_GROWTH_THRESHOLD:
+                signals.append("clicks_growing")
+        if prior.impressions > 0:
+            impressions_change = (recent.impressions - prior.impressions) / prior.impressions
+            if impressions_change <= -IMPRESSIONS_DECLINE_THRESHOLD:
+                signals.append("impressions_declining")
+            elif impressions_change >= IMPRESSIONS_GROWTH_THRESHOLD:
+                signals.append("impressions_growing")
+        if recent.impressions > 0 and prior.average_position > 0:
+            position_change = recent.average_position - prior.average_position
+            if position_change >= POSITION_WORSENING_THRESHOLD:
+                signals.append("position_worsening")
+            elif position_change <= -POSITION_IMPROVEMENT_THRESHOLD:
+                signals.append("position_improving")
 
         if signals:
             results.append(PageTrendSignal(page_id=page_id, signals=signals, prior=prior, recent=recent))
@@ -140,7 +175,64 @@ def detect_page_trend_signals(db: Session, website: Website) -> list[PageTrendSi
     return results
 
 
-def detect_ranking_improvement_opportunities(db: Session, website: Website) -> list[RankingOpportunity]:
+def detect_new_queries(db: Session, website: Website, *, country: str | None = None) -> list[NewQuery]:
+    """Queries that earned real impressions in the last
+    NEW_QUERY_WINDOW_DAYS but never appeared before that -- genuine new
+    search visibility discovered from GSC's own impression data (SEO
+    Growth Engine spec section 3A.10: "New query discovery from actual
+    search impressions"), not an AI guess.
+    """
+    end = date.today()
+    recent_start = end - timedelta(days=NEW_QUERY_WINDOW_DAYS)
+
+    seen_before = {
+        row[0]
+        for row in db.query(KeywordObservation.query)
+        .filter(
+            KeywordObservation.website_id == website.id,
+            KeywordObservation.date < recent_start,
+            _country_filter(country),
+        )
+        .distinct()
+        .all()
+    }
+
+    rows = (
+        db.query(
+            KeywordObservation.query,
+            KeywordObservation.page_id,
+            KeywordObservation.country,
+            func.sum(KeywordObservation.impressions),
+            func.sum(KeywordObservation.clicks),
+            func.avg(KeywordObservation.average_position),
+        )
+        .filter(
+            KeywordObservation.website_id == website.id,
+            KeywordObservation.date >= recent_start,
+            _country_filter(country),
+        )
+        .group_by(KeywordObservation.query, KeywordObservation.page_id, KeywordObservation.country)
+        .all()
+    )
+
+    new_queries = [
+        NewQuery(
+            query=query,
+            page_id=page_id,
+            impressions=int(impressions or 0),
+            clicks=int(clicks or 0),
+            average_position=float(avg_position or 0.0),
+            country=observed_country,
+        )
+        for query, page_id, observed_country, impressions, clicks, avg_position in rows
+        if query not in seen_before and int(impressions or 0) >= MIN_IMPRESSIONS_FOR_NEW_QUERY
+    ]
+    return sorted(new_queries, key=lambda q: q.impressions, reverse=True)
+
+
+def detect_ranking_improvement_opportunities(
+    db: Session, website: Website, *, country: str | None = None
+) -> list[RankingOpportunity]:
     """Queries ranking on page 2 of Google (positions 11-20) with
     meaningful impression volume -- close enough to page 1 that a
     content/internal-linking push is a plausible way to close the gap.
@@ -153,7 +245,11 @@ def detect_ranking_improvement_opportunities(db: Session, website: Website) -> l
             func.sum(KeywordObservation.impressions),
             func.avg(KeywordObservation.average_position),
         )
-        .filter(KeywordObservation.website_id == website.id, KeywordObservation.date >= start)
+        .filter(
+            KeywordObservation.website_id == website.id,
+            KeywordObservation.date >= start,
+            _country_filter(country),
+        )
         .group_by(KeywordObservation.query, KeywordObservation.page_id)
         .all()
     )
@@ -172,7 +268,9 @@ def detect_ranking_improvement_opportunities(db: Session, website: Website) -> l
     return sorted(opportunities, key=lambda o: o.impressions, reverse=True)
 
 
-def detect_keyword_cannibalization(db: Session, website: Website) -> list[CannibalizationCandidate]:
+def detect_keyword_cannibalization(
+    db: Session, website: Website, *, country: str | None = None
+) -> list[CannibalizationCandidate]:
     """A query that multiple distinct pages earn meaningful impressions
     for is a cannibalization candidate -- Google is unsure which of the
     site's own pages should rank for it, which usually splits authority
@@ -190,6 +288,7 @@ def detect_keyword_cannibalization(db: Session, website: Website) -> list[Cannib
             KeywordObservation.website_id == website.id,
             KeywordObservation.page_id.isnot(None),
             KeywordObservation.date >= start,
+            _country_filter(country),
         )
         .group_by(KeywordObservation.query, KeywordObservation.page_id)
         .all()

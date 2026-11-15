@@ -11,6 +11,7 @@ from app.integrations import search_console_sync, token_store
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
 from app.opportunities.search_trend_signals import (
     detect_keyword_cannibalization,
+    detect_new_queries,
     detect_page_trend_signals,
     detect_ranking_improvement_opportunities,
 )
@@ -29,6 +30,7 @@ from app.models.oauth_connection import OAuthProvider
 from app.schemas.integrations import (
     CannibalizationCandidateResponse,
     ConnectUrlResponse,
+    NewQueryResponse,
     PageTrendSignalResponse,
     RankingOpportunityResponse,
     SearchPerformanceIntelligenceResponse,
@@ -180,6 +182,8 @@ def get_search_performance(
             impressions=o.impressions,
             ctr=o.ctr,
             average_position=o.average_position,
+            country=o.country,
+            device=o.device,
         )
         for o in observations
     ]
@@ -193,15 +197,20 @@ def get_search_performance(
 def get_search_performance_intelligence(
     organization_id: uuid.UUID,
     website_id: uuid.UUID,
+    country: str | None = None,
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
 ) -> SearchPerformanceIntelligenceResponse:
-    """Report-only search-performance signals (RankPilot AI Phase 5):
-    pages losing clicks/impressions or slipping in ranking, queries
-    close to page 1 that aren't there yet, and keyword cannibalization
-    candidates. Unlike CTR opportunities, none of these feed the
-    auto-execute pipeline -- there's no existing AI fix operation for
-    any of them.
+    """Report-only search-performance signals (RankPilot AI Phase 5,
+    extended for the SEO Growth Engine's country-based intelligence):
+    pages losing or gaining clicks/impressions/ranking, queries close to
+    page 1 that aren't there yet, newly-discovered queries, and keyword
+    cannibalization candidates. Pass `country` (GSC's own alpha-3 code,
+    e.g. "usa") to scope every signal to one target market instead of
+    the site's worldwide traffic -- never combined into one misleading
+    report (SEO Growth Engine spec section 5). Unlike CTR opportunities,
+    none of these feed the auto-execute pipeline -- there's no existing
+    AI fix operation for any of them.
     """
     website = get_website_or_404(db, organization_id, website_id)
 
@@ -212,17 +221,22 @@ def get_search_performance_intelligence(
             prior=WindowStatsResponse(**s.prior.__dict__),
             recent=WindowStatsResponse(**s.recent.__dict__),
         )
-        for s in detect_page_trend_signals(db, website)
+        for s in detect_page_trend_signals(db, website, country=country)
     ]
     ranking_opportunities = [
-        RankingOpportunityResponse(**o.__dict__) for o in detect_ranking_improvement_opportunities(db, website)
+        RankingOpportunityResponse(**o.__dict__)
+        for o in detect_ranking_improvement_opportunities(db, website, country=country)
     ]
     cannibalization = [
-        CannibalizationCandidateResponse(**c.__dict__) for c in detect_keyword_cannibalization(db, website)
+        CannibalizationCandidateResponse(**c.__dict__)
+        for c in detect_keyword_cannibalization(db, website, country=country)
     ]
+    new_queries = [NewQueryResponse(**q.__dict__) for q in detect_new_queries(db, website, country=country)]
 
     return SearchPerformanceIntelligenceResponse(
+        country=country,
         declining_pages=declining,
         ranking_improvement_opportunities=ranking_opportunities,
         keyword_cannibalization=cannibalization,
+        new_queries=new_queries,
     )

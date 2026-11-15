@@ -19,7 +19,9 @@ class KeywordObservation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "keyword_observations"
     __table_args__ = (
-        UniqueConstraint("website_id", "query", "date", "page_id", name="uq_keyword_obs_identity"),
+        UniqueConstraint(
+            "website_id", "query", "date", "page_id", "country", "device", name="uq_keyword_obs_identity"
+        ),
     )
 
     website_id: Mapped[uuid.UUID] = mapped_column(
@@ -35,5 +37,14 @@ class KeywordObservation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ctr: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     average_position: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     source: Mapped[str] = mapped_column(String(32), default="google_search_console", nullable=False)
+    # Search Console's own "country" dimension value: a 3-letter ISO
+    # 3166-1 alpha-3 code (e.g. "usa", "gbr") -- GSC's own format, kept
+    # as-returned rather than remapped, so a displayed country always
+    # traces back to what Google actually reported (SEO Growth Engine
+    # spec section 5: never combine country data into one misleading
+    # report). None for rows synced before this column existed, or for
+    # a dimension-less query (never fabricated as "unknown").
+    country: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    device: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     website: Mapped["Website"] = relationship()

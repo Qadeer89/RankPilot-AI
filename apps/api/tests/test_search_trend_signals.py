@@ -39,7 +39,7 @@ def _make_page(db_session, website, path="/about"):
     return page
 
 
-def _observe(db_session, website, page, *, query, days_ago, clicks, impressions, position):
+def _observe(db_session, website, page, *, query, days_ago, clicks, impressions, position, country=None):
     db_session.add(
         KeywordObservation(
             website_id=website.id,
@@ -50,6 +50,7 @@ def _observe(db_session, website, page, *, query, days_ago, clicks, impressions,
             impressions=impressions,
             ctr=(clicks / impressions) if impressions else 0.0,
             average_position=position,
+            country=country,
             source="google_search_console",
         )
     )
@@ -176,3 +177,65 @@ def test_detect_keyword_cannibalization_ignores_pages_with_too_few_impressions(d
     db_session.flush()
 
     assert signals.detect_keyword_cannibalization(db_session, website) == []
+
+
+def test_detect_page_trend_signals_flags_a_page_gaining_clicks(db_session):
+    website = _make_website(db_session)
+    page = _make_page(db_session, website)
+    _observe(db_session, website, page, query="q1", days_ago=20, clicks=5, impressions=100, position=10.0)
+    _observe(db_session, website, page, query="q1", days_ago=5, clicks=20, impressions=100, position=5.0)
+    db_session.flush()
+
+    results = signals.detect_page_trend_signals(db_session, website)
+    assert len(results) == 1
+    assert "clicks_growing" in results[0].signals
+    assert "position_improving" in results[0].signals
+
+
+def test_detect_page_trend_signals_scopes_to_one_country(db_session):
+    website = _make_website(db_session)
+    page = _make_page(db_session, website)
+    # USA traffic declines; GBR traffic is healthy -- a worldwide
+    # aggregate would mask the USA-specific decline.
+    _observe(db_session, website, page, query="q1", days_ago=20, clicks=20, impressions=100, position=5.0, country="usa")
+    _observe(db_session, website, page, query="q1", days_ago=5, clicks=1, impressions=95, position=5.0, country="usa")
+    _observe(db_session, website, page, query="q2", days_ago=20, clicks=20, impressions=100, position=5.0, country="gbr")
+    _observe(db_session, website, page, query="q2", days_ago=5, clicks=20, impressions=100, position=5.0, country="gbr")
+    db_session.flush()
+
+    usa_results = signals.detect_page_trend_signals(db_session, website, country="usa")
+    gbr_results = signals.detect_page_trend_signals(db_session, website, country="gbr")
+    assert len(usa_results) == 1
+    assert "clicks_declining" in usa_results[0].signals
+    assert gbr_results == []
+
+
+def test_detect_new_queries_flags_a_query_never_seen_before(db_session):
+    website = _make_website(db_session)
+    page = _make_page(db_session, website)
+    _observe(db_session, website, page, query="established query", days_ago=20, clicks=5, impressions=50, position=10.0)
+    _observe(db_session, website, page, query="brand new query", days_ago=3, clicks=1, impressions=8, position=15.0)
+    db_session.flush()
+
+    new_queries = signals.detect_new_queries(db_session, website)
+    assert [q.query for q in new_queries] == ["brand new query"]
+
+
+def test_detect_new_queries_excludes_low_impression_queries(db_session):
+    website = _make_website(db_session)
+    page = _make_page(db_session, website)
+    _observe(db_session, website, page, query="barely seen", days_ago=3, clicks=0, impressions=1, position=40.0)
+    db_session.flush()
+
+    assert signals.detect_new_queries(db_session, website) == []
+
+
+def test_detect_new_queries_scopes_to_one_country(db_session):
+    website = _make_website(db_session)
+    page = _make_page(db_session, website)
+    _observe(db_session, website, page, query="usa only", days_ago=3, clicks=1, impressions=10, position=12.0, country="usa")
+    _observe(db_session, website, page, query="gbr only", days_ago=3, clicks=1, impressions=10, position=12.0, country="gbr")
+    db_session.flush()
+
+    usa_new = signals.detect_new_queries(db_session, website, country="usa")
+    assert [q.query for q in usa_new] == ["usa only"]

@@ -47,7 +47,7 @@ def test_sync_attributes_observation_to_a_matching_crawled_page(db_session, monk
     def fake_query_search_analytics(access_token, site_url, **kwargs):
         return [
             {
-                "keys": ["gul clinic", "https://example.com/about", (date.today() - timedelta(days=4)).isoformat()],
+                "keys": ["gul clinic", "https://example.com/about", (date.today() - timedelta(days=4)).isoformat(), "usa", "DESKTOP"],
                 "clicks": 0,
                 "impressions": 10,
                 "ctr": 0.0,
@@ -72,7 +72,7 @@ def test_sync_leaves_page_id_null_when_no_crawled_page_matches(db_session, monke
     def fake_query_search_analytics(access_token, site_url, **kwargs):
         return [
             {
-                "keys": ["gul clinic", "https://example.com/not-crawled-yet", (date.today() - timedelta(days=4)).isoformat()],
+                "keys": ["gul clinic", "https://example.com/not-crawled-yet", (date.today() - timedelta(days=4)).isoformat(), "usa", "DESKTOP"],
                 "clicks": 0,
                 "impressions": 10,
                 "ctr": 0.0,

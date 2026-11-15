@@ -313,6 +313,38 @@ def test_update_website_settings_sets_crawl_frequency_and_budget_override(client
     assert body["ai_daily_budget_usd_override"] == 2.5
 
 
+def test_update_website_settings_sets_country_targeting(client, monkeypatch):
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "editor-targeting@example.com", "Acme Targeting")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        f"/api/v1/organizations/{org_id}/websites",
+        json={"url": "https://example.com/", "display_name": "Example Site"},
+        headers=headers,
+    )
+    website_id = created.json()["id"]
+    assert created.json()["target_country"] is None
+    assert created.json()["additional_target_countries"] == []
+
+    response = client.patch(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/settings",
+        json={
+            "target_country": "us",
+            "additional_target_countries": ["gb", "ca"],
+            "target_language": "en",
+            "target_city": "Austin",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["target_country"] == "US"
+    assert body["additional_target_countries"] == ["GB", "CA"]
+    assert body["target_language"] == "en"
+    assert body["target_city"] == "Austin"
+
+
 def test_update_website_settings_merges_category_opt_ins_and_notification_toggles(client, monkeypatch):
     _stub_dns(monkeypatch)
     token, org_id = _register_with_org(client, "editor-cats@example.com", "Acme Cats")

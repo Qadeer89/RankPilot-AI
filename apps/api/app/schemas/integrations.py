@@ -27,6 +27,8 @@ class SearchPerformanceRow(BaseModel):
     impressions: int
     ctr: float
     average_position: float
+    country: str | None = None
+    device: str | None = None
 
 
 class SearchPerformanceResponse(BaseModel):
@@ -62,13 +64,24 @@ class CannibalizationCandidateResponse(BaseModel):
     pages: list[dict]
 
 
+class NewQueryResponse(BaseModel):
+    query: str
+    page_id: uuid.UUID | None
+    impressions: int
+    clicks: int
+    average_position: float
+    country: str | None
+
+
 class SearchPerformanceIntelligenceResponse(BaseModel):
     freshness_note: str = (
         "Search Console data is delayed and aggregated; it is not real-time ranking telemetry."
     )
+    country: str | None = None
     declining_pages: list[PageTrendSignalResponse]
     ranking_improvement_opportunities: list[RankingOpportunityResponse]
     keyword_cannibalization: list[CannibalizationCandidateResponse]
+    new_queries: list[NewQueryResponse] = []
 
 
 class Ga4PropertiesResponse(BaseModel):

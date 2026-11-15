@@ -82,7 +82,7 @@ def test_select_property_then_sync_and_read_performance(client, monkeypatch, db_
         assert site_url == "https://example.com/"
         return [
             {
-                "keys": ["rankpilot seo", "https://example.com/", "2026-10-01"],
+                "keys": ["rankpilot seo", "https://example.com/", "2026-10-01", "usa", "DESKTOP"],
                 "clicks": 10,
                 "impressions": 200,
                 "ctr": 0.05,
@@ -219,6 +219,58 @@ def test_search_performance_intelligence_reports_trend_signals(client, monkeypat
     assert "clicks_declining" in body["declining_pages"][0]["signals"]
     assert body["ranking_improvement_opportunities"] == []
     assert body["keyword_cannibalization"] == []
+    assert body["country"] is None
+
+
+def test_search_performance_intelligence_country_param_scopes_results(client, monkeypatch, db_session):
+    from datetime import date, timedelta
+
+    from app.models.keyword_observation import KeywordObservation
+    from app.models.page import Page
+
+    _stub_dns(monkeypatch)
+    token, org_id = _register_with_org(client, "gsc-country@example.com", "GSC Country Org")
+    website_id = _create_website(client, token, org_id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    now = datetime.now(timezone.utc)
+    page = Page(
+        website_id=uuid.UUID(website_id),
+        canonical_url="https://example.com/about",
+        normalized_url="https://example.com/about",
+        first_seen_at=now,
+        last_seen_at=now,
+        last_status_code=200,
+    )
+    db_session.add(page)
+    db_session.flush()
+
+    for country, impressions in (("usa", 20), ("gbr", 20)):
+        db_session.add(
+            KeywordObservation(
+                website_id=uuid.UUID(website_id),
+                page_id=page.id,
+                query=f"{country} query",
+                date=date.today() - timedelta(days=3),
+                clicks=1,
+                impressions=impressions,
+                ctr=0.05,
+                average_position=12.0,
+                country=country,
+                source="google_search_console",
+            )
+        )
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/organizations/{org_id}/websites/{website_id}/search-performance/intelligence",
+        params={"country": "usa"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["country"] == "usa"
+    assert [q["query"] for q in body["new_queries"]] == ["usa query"]
 
 
 def test_search_performance_intelligence_is_tenant_scoped(client, monkeypatch):

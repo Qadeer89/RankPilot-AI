@@ -25,6 +25,10 @@ class WebsiteResponse(BaseModel):
     ai_daily_budget_usd_override: float | None
     search_console_site_url: str | None
     ga4_property_id: str | None
+    target_country: str | None
+    additional_target_countries: list[str]
+    target_language: str | None
+    target_city: str | None
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +47,13 @@ class WebsiteSettingsUpdateRequest(BaseModel):
     ai_daily_budget_usd_override: float | None = Field(default=None, ge=0)
     notify_on_regression: bool | None = None
     notify_on_auto_pipeline_summary: bool | None = None
+    # Country-based SEO intelligence (SEO Growth Engine spec section 5).
+    # ISO 3166-1 alpha-2; validated against that in the endpoint so an
+    # invalid code gets a clear 400.
+    target_country: str | None = Field(default=None, min_length=2, max_length=2)
+    additional_target_countries: list[str] | None = None
+    target_language: str | None = Field(default=None, min_length=2, max_length=8)
+    target_city: str | None = Field(default=None, max_length=128)
 
 
 class VerificationConfirmRequest(BaseModel):
