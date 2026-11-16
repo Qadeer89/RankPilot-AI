@@ -66,10 +66,17 @@ def main() -> int:
                 db.rollback()
                 print(f"GA4 landing sync FAILED: {type(exc).__name__}: {exc}")
         recs = db.query(GrowthRecommendation).filter(GrowthRecommendation.website_id == site.id).all()
-        print(f"growth recommendations: {len(recs)}")
-        for rec in recs[:6]:
-            ok, reason = execution_support(db, site, rec)
-            print(f"   [{rec.status.value}] {rec.title[:60]} -> {'CAN apply via CMS' if ok else 'cannot: ' + str(reason)}")
+        checked = [(rec, *execution_support(db, site, rec)) for rec in recs]
+        executable = [(rec, reason) for rec, ok, reason in checked if ok]
+        print(f"growth recommendations: {len(recs)} total, {len(executable)} can be applied through the connected CMS")
+        for rec, _ in executable[:10]:
+            print(f"   [{rec.status.value}] CAN apply via CMS: {rec.title[:70]}")
+        by_reason: dict[str, int] = {}
+        for _rec, ok, reason in checked:
+            if not ok:
+                by_reason[str(reason)] = by_reason.get(str(reason), 0) + 1
+        for reason, count in sorted(by_reason.items(), key=lambda kv: -kv[1]):
+            print(f"   {count} x cannot apply: {reason}")
     return 0
 
 
