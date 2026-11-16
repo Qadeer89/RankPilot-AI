@@ -909,9 +909,21 @@ export interface KeywordIdea {
   created_at: string;
 }
 
+export type AiStatus = "ok" | "skipped_no_input" | "budget_blocked" | "unavailable" | "invalid_response" | "input_too_large";
+
 export interface KeywordDiscoveryRun {
   ideas: KeywordIdea[];
   freshness_note: string;
+  ai_status: AiStatus;
+  ai_message: string | null;
+}
+
+export interface CompetitorAnalysisResult {
+  ideas: KeywordIdea[];
+  pages_fetched: number;
+  pages_failed: number;
+  ai_status: AiStatus;
+  ai_message: string | null;
 }
 
 export function runKeywordDiscovery(
@@ -989,7 +1001,7 @@ export function addCompetitor(token: string, organizationId: string, websiteId: 
 }
 
 export function analyzeCompetitor(token: string, organizationId: string, websiteId: string, competitorId: string) {
-  return request<KeywordIdea[]>(
+  return request<CompetitorAnalysisResult>(
     `/organizations/${organizationId}/websites/${websiteId}/competitors/${competitorId}/analyze`,
     { method: "POST", headers: authHeaders(token) }
   );

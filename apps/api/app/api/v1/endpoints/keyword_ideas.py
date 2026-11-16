@@ -8,7 +8,7 @@ from app.core.deps import RequireRole
 from app.core.rate_limit import enforce_rate_limit
 from app.core.resources import country_param_or_400, get_website_or_404
 from app.db.session import get_db
-from app.keywords.discovery_service import run_keyword_discovery
+from app.keywords.discovery_service import run_keyword_discovery_detailed
 from app.models.keyword_idea import KeywordIdea, KeywordIdeaSource, KeywordIdeaStatus
 from app.models.membership import Membership, MembershipRole
 from app.schemas.keyword_idea import (
@@ -35,15 +35,19 @@ def run_discovery(
     website = get_website_or_404(db, organization_id, website_id)
     enforce_rate_limit(f"keyword_discovery:{website_id}", max_attempts=10, window_seconds=3600)
     try:
-        ideas = run_keyword_discovery(
+        outcome = run_keyword_discovery_detailed(
             db, website, country=country_param_or_400(payload.country), max_ideas=payload.max_ideas
         )
     except BudgetExceeded as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     db.commit()
-    for idea in ideas:
+    for idea in outcome.ideas:
         db.refresh(idea)
-    return KeywordDiscoveryRunResponse(ideas=[KeywordIdeaResponse.model_validate(i) for i in ideas])
+    return KeywordDiscoveryRunResponse(
+        ideas=[KeywordIdeaResponse.model_validate(i) for i in outcome.ideas],
+        ai_status=outcome.ai_status,
+        ai_message=outcome.ai_message,
+    )
 
 
 @router.get(

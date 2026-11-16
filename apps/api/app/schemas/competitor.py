@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.keyword_idea import KeywordIdeaResponse
+
 
 class AddCompetitorDomainRequest(BaseModel):
     domain: str = Field(min_length=3, max_length=255)
@@ -30,3 +32,11 @@ class CompetitorPageSnapshotResponse(BaseModel):
     fetched_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CompetitorAnalysisResponse(BaseModel):
+    ideas: list[KeywordIdeaResponse]
+    pages_fetched: int
+    pages_failed: int
+    ai_status: str = "ok"
+    ai_message: str | None = None

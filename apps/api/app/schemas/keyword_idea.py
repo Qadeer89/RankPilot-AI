@@ -36,6 +36,10 @@ class KeywordIdeaResponse(BaseModel):
 
 class KeywordDiscoveryRunResponse(BaseModel):
     ideas: list[KeywordIdeaResponse]
+    # "ok" when the AI step ran; otherwise why it did not (the ideas
+    # then contain only first-party seeds).
+    ai_status: str = "ok"
+    ai_message: str | None = None
     freshness_note: str = (
         "AI-generated ideas are relevance estimates, not verified search demand. "
         "Seed keywords come directly from this site's own content and Search Console data."

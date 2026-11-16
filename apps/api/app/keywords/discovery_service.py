@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import logging
 
-from openai import OpenAIError
+from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
-from app.ai.client import AINotConfigured
 from app.ai.keyword_discovery import discover_keyword_ideas
+from app.ai.runner import AI_CALL_FAILURES, classify_ai_failure
 from app.keywords.seed_generation import generate_seed_keywords
 from app.models.keyword_idea import KeywordDataClassification, KeywordIdea, KeywordIdeaSource, SearchIntent
 from app.models.website import Website
@@ -54,30 +54,51 @@ def _persist_seed_ideas(db: Session, website: Website, seeds: list[str], *, coun
     return persisted
 
 
+@dataclass
+class DiscoveryOutcome:
+    ideas: list[KeywordIdea]
+    # "ok", "skipped_no_input", "unavailable", "invalid_response" or
+    # "input_too_large". Anything but "ok" means no AI ideas were added.
+    ai_status: str = "ok"
+    ai_message: str | None = None
+
+
 def run_keyword_discovery(
     db: Session, website: Website, *, country: str | None = None, max_ideas: int = 20
 ) -> list[KeywordIdea]:
+    return run_keyword_discovery_detailed(db, website, country=country, max_ideas=max_ideas).ideas
+
+
+def run_keyword_discovery_detailed(
+    db: Session, website: Website, *, country: str | None = None, max_ideas: int = 20
+) -> DiscoveryOutcome:
     """Generates seeds, runs the AI discovery agent, and upserts both
     the seeds and the AI-generated ideas as KeywordIdea rows. Returns
-    everything just written/touched.
+    everything just written/touched, plus whether the AI step ran.
     """
     target_country = country if country is not None else website.target_country
     seeds = generate_seed_keywords(db, website)
     seed_ideas = _persist_seed_ideas(db, website, seeds, country=target_country)
 
     if not seeds:
-        return seed_ideas
+        return DiscoveryOutcome(
+            seed_ideas,
+            "skipped_no_input",
+            "There is no crawled content or Search Console data to build ideas from yet. Run a crawl or connect Search Console first.",
+        )
 
     try:
         result = discover_keyword_ideas(
             db, website, seeds, country=target_country, language=website.language_for(target_country), max_ideas=max_ideas
         )
-    except (OpenAIError, AINotConfigured):
+    except AI_CALL_FAILURES as exc:
         # AI expansion is additive -- the seeds themselves (already
         # persisted above) are still a real, usable result on their
-        # own if the model call fails or no key is configured.
+        # own if the model call fails, times out, returns something
+        # unusable, or no key is configured.
         logger.exception("AI keyword discovery call failed for website %s", website.id)
-        return seed_ideas
+        status_, message = classify_ai_failure(exc)
+        return DiscoveryOutcome(seed_ideas, status_, message)
 
     ai_ideas: list[KeywordIdea] = []
     for draft in result.ideas[:max_ideas]:
@@ -121,4 +142,4 @@ def run_keyword_discovery(
         ai_ideas.append(idea)
 
     db.flush()
-    return seed_ideas + ai_ideas
+    return DiscoveryOutcome(seed_ideas + ai_ideas)

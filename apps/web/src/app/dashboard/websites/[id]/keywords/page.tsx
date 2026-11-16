@@ -109,6 +109,8 @@ export default function KeywordWorkspacePage() {
   const [recommendations, setRecommendations] = useState<GrowthRecommendation[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generateNote, setGenerateNote] = useState<string | null>(null);
+  const [discoveryNote, setDiscoveryNote] = useState<string | null>(null);
+  const [competitorNote, setCompetitorNote] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<PerformanceTimeline | null>(null);
   const [windowDays, setWindowDays] = useState(28);
   const [usage, setUsage] = useState<AiUsage | null>(null);
@@ -173,8 +175,14 @@ export default function KeywordWorkspacePage() {
     if (!token || !orgId) return;
     setDiscovering(true);
     setError(null);
+    setDiscoveryNote(null);
     try {
-      await runKeywordDiscovery(token, orgId, websiteId, { country: country || undefined });
+      const run = await runKeywordDiscovery(token, orgId, websiteId, { country: country || undefined });
+      setDiscoveryNote(
+        run.ai_status === "ok"
+          ? `Discovery finished: ${run.ideas.length} ideas.`
+          : `${run.ai_message ?? "The AI step did not run."} Ideas from your own site data are still listed below.`
+      );
       await refreshAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Keyword discovery failed.");
@@ -250,8 +258,16 @@ export default function KeywordWorkspacePage() {
     if (!token || !orgId) return;
     setAnalyzingId(competitorId);
     setError(null);
+    setCompetitorNote(null);
     try {
-      await analyzeCompetitor(token, orgId, websiteId, competitorId);
+      const result = await analyzeCompetitor(token, orgId, websiteId, competitorId);
+      const crawl = `Fetched ${result.pages_fetched} public page${result.pages_fetched === 1 ? "" : "s"}` +
+        (result.pages_failed ? ` (${result.pages_failed} could not be fetched)` : "") + ".";
+      setCompetitorNote(
+        result.ai_status === "ok"
+          ? `${crawl} ${result.ideas.length} content gap idea${result.ideas.length === 1 ? "" : "s"} found.`
+          : `${crawl} ${result.ai_message ?? "The AI step did not run."}`
+      );
       await refreshAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Competitor analysis failed.");
@@ -459,6 +475,11 @@ export default function KeywordWorkspacePage() {
               Seed keywords come from your own crawled pages and Search Console queries. AI ideas are relevance
               estimates, never verified search demand.
             </p>
+            {discoveryNote && (
+              <p className={styles.freshnessNote} role="status">
+                {discoveryNote}
+              </p>
+            )}
             {aiIdeas.length === 0 ? (
               <p className={styles.empty}>No keyword ideas yet -- run discovery to generate some.</p>
             ) : (
@@ -624,6 +645,11 @@ export default function KeywordWorkspacePage() {
               Only publicly accessible pages are analyzed -- never a competitor&apos;s private traffic, rankings,
               backlinks or search volume.
             </p>
+            {competitorNote && (
+              <p className={styles.freshnessNote} role="status">
+                {competitorNote}
+              </p>
+            )}
             <form className={styles.formRow} onSubmit={handleAddCompetitor}>
               <input
                 className={styles.input}

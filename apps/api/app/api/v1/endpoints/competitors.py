@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.competitors.service import add_competitor_domain, run_competitor_analysis
+from app.competitors.service import add_competitor_domain, run_competitor_analysis_detailed
 from app.core.deps import RequireRole
 from app.core.rate_limit import enforce_rate_limit
 from app.core.resources import get_website_or_404
@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.competitor import CompetitorDomain
 from app.models.membership import Membership, MembershipRole
 from app.schemas.competitor import (
+    CompetitorAnalysisResponse,
     AddCompetitorDomainRequest,
     CompetitorDomainResponse,
     CompetitorPageSnapshotResponse,
@@ -72,7 +73,7 @@ def create_competitor(
 
 @router.post(
     "/organizations/{organization_id}/websites/{website_id}/competitors/{competitor_id}/analyze",
-    response_model=list[KeywordIdeaResponse],
+    response_model=CompetitorAnalysisResponse,
 )
 def analyze_competitor(
     organization_id: uuid.UUID,
@@ -80,15 +81,21 @@ def analyze_competitor(
     competitor_id: uuid.UUID,
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.editor)),
-) -> list[KeywordIdeaResponse]:
+) -> CompetitorAnalysisResponse:
     website = get_website_or_404(db, organization_id, website_id)
     competitor = _get_competitor_or_404(db, website_id, competitor_id)
     enforce_rate_limit(f"competitor_analysis:{website_id}", max_attempts=10, window_seconds=3600)
-    ideas = run_competitor_analysis(db, website, competitor)
+    outcome = run_competitor_analysis_detailed(db, website, competitor)
     db.commit()
-    for idea in ideas:
+    for idea in outcome.ideas:
         db.refresh(idea)
-    return [KeywordIdeaResponse.model_validate(i) for i in ideas]
+    return CompetitorAnalysisResponse(
+        ideas=[KeywordIdeaResponse.model_validate(i) for i in outcome.ideas],
+        pages_fetched=outcome.pages_fetched,
+        pages_failed=outcome.pages_failed,
+        ai_status=outcome.ai_status,
+        ai_message=outcome.ai_message,
+    )
 
 
 @router.get(

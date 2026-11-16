@@ -13,11 +13,12 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TypeVar
 
+from openai import APITimeoutError, OpenAIError, RateLimitError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.ai.budget import enforce_daily_budget
-from app.ai.client import get_openai_client
+from app.ai.client import AINotConfigured, get_openai_client
 from app.ai.pricing import estimate_cost_usd
 from app.config import get_settings
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
@@ -30,6 +31,36 @@ T = TypeVar("T")
 
 class PromptTooLarge(RuntimeError):
     pass
+
+
+# Everything an AI call can fail with that a caller should degrade on
+# (rather than 500): provider/transport errors, a missing key, an
+# oversized prompt, and a response that does not match the schema.
+AI_CALL_FAILURES = (
+    OpenAIError,
+    AINotConfigured,
+    PromptTooLarge,
+    ValidationError,
+    ValueError,
+    KeyError,
+    AttributeError,
+)
+
+
+def classify_ai_failure(exc: BaseException) -> tuple[str, str]:
+    """(status, user-facing message) for a failed AI call. `status` is one
+    of "unavailable", "invalid_response" or "input_too_large"."""
+    if isinstance(exc, AINotConfigured):
+        return "unavailable", "AI is not configured on this server, so no AI ideas were added."
+    if isinstance(exc, PromptTooLarge):
+        return "input_too_large", "There was too much source content for a single AI call, so no AI ideas were added."
+    if isinstance(exc, APITimeoutError):
+        return "unavailable", "The AI provider timed out, so no AI ideas were added. Try again in a few minutes."
+    if isinstance(exc, RateLimitError):
+        return "unavailable", "The AI provider is rate limiting requests, so no AI ideas were added. Try again shortly."
+    if isinstance(exc, OpenAIError):
+        return "unavailable", "The AI provider returned an error, so no AI ideas were added. Try again later."
+    return "invalid_response", "The AI returned a response RankPilot could not use, so no AI ideas were added."
 
 
 def run_ai_agent(

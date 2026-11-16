@@ -8,13 +8,14 @@ SEO Growth Engine spec section 6).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from openai import OpenAIError
 from sqlalchemy.orm import Session
 
-from app.ai.client import AINotConfigured
+from app.ai.budget import BudgetExceeded
 from app.ai.competitor_gap import analyze_competitor_gaps
+from app.ai.runner import AI_CALL_FAILURES, classify_ai_failure
 from app.competitors.crawler import fetch_competitor_pages
 from app.keywords.seed_generation import generate_seed_keywords
 from app.models.competitor import CompetitorDomain, CompetitorPageSnapshot
@@ -57,7 +58,25 @@ def _competitor_topics(pages) -> list[str]:
     return topics
 
 
+@dataclass
+class CompetitorAnalysisOutcome:
+    ideas: list[KeywordIdea] = field(default_factory=list)
+    pages_fetched: int = 0
+    pages_failed: int = 0
+    # "ok", "skipped_no_input", "budget_blocked", "unavailable",
+    # "invalid_response" or "input_too_large". Anything but "ok" means no
+    # AI gap ideas were added (the crawl itself is still saved).
+    ai_status: str = "ok"
+    ai_message: str | None = None
+
+
 def run_competitor_analysis(db: Session, website: Website, competitor: CompetitorDomain) -> list[KeywordIdea]:
+    return run_competitor_analysis_detailed(db, website, competitor).ideas
+
+
+def run_competitor_analysis_detailed(
+    db: Session, website: Website, competitor: CompetitorDomain
+) -> CompetitorAnalysisOutcome:
     """Crawls the competitor's public pages, records them as
     CompetitorPageSnapshot evidence, and -- if the AI call succeeds --
     persists content-gap ideas. Always returns the competitor
@@ -88,17 +107,29 @@ def run_competitor_analysis(db: Session, website: Website, competitor: Competito
     competitor.last_analyzed_at = now
     db.flush()
 
+    outcome = CompetitorAnalysisOutcome(
+        pages_fetched=sum(1 for p in pages if not p.error), pages_failed=sum(1 for p in pages if p.error)
+    )
     competitor_topics = _competitor_topics(pages)
     if not competitor_topics:
-        return []
+        reasons = sorted({p.error for p in pages if p.error})[:3]
+        outcome.ai_status = "skipped_no_input"
+        outcome.ai_message = "No readable titles or headings could be fetched from this competitor" + (
+            f" ({'; '.join(reasons)})." if reasons else "."
+        )
+        return outcome
 
     own_topics = generate_seed_keywords(db, website)
 
     try:
         result = analyze_competitor_gaps(db, website, own_topics, competitor.domain, competitor_topics)
-    except (OpenAIError, AINotConfigured):
+    except BudgetExceeded as exc:
+        outcome.ai_status, outcome.ai_message = "budget_blocked", str(exc)
+        return outcome
+    except AI_CALL_FAILURES as exc:
         logger.exception("Competitor gap AI call failed for website %s / %s", website.id, competitor.domain)
-        return []
+        outcome.ai_status, outcome.ai_message = classify_ai_failure(exc)
+        return outcome
 
     ideas: list[KeywordIdea] = []
     for gap in result.gaps:
@@ -136,4 +167,5 @@ def run_competitor_analysis(db: Session, website: Website, competitor: Competito
         ideas.append(idea)
 
     db.flush()
-    return ideas
+    outcome.ideas = ideas
+    return outcome
