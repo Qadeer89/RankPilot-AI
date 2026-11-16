@@ -1,6 +1,7 @@
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.audit_event import AuditEvent
+from app.models.email_verification_token import EmailVerificationToken
 from app.models.billing import (
     BillingEvent,
     BillingEventStatus,
@@ -87,6 +88,7 @@ __all__ = [
     "CrawlTrigger",
     "Ga4DailyMetric",
     "Ga4LandingPageMetric",
+    "EmailVerificationToken",
     "BillingEvent",
     "BillingEventStatus",
     "BillingInterval",

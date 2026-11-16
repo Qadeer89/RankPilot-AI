@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import enum
 
-from sqlalchemy import Boolean, Enum, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,5 +29,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Assistant spec). No self-service signup path -- granted directly
     # in the DB by whoever operates this deployment.
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Set only by following an emailed link (or by the server operator's script). Existing users stay
+    # NULL: it is required for Super Admin access and nothing else.
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")

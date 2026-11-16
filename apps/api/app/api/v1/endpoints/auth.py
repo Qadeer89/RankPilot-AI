@@ -6,16 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.admin import is_super_admin
 from app.core.deps import get_current_user
 from app.core.rate_limit import rate_limit_by_ip
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.verification import generate_token, hash_token
 from app.db.session import get_db
 from app.models.audit_event import AuditEvent
+from app.models.email_verification_token import EmailVerificationToken
 from app.models.membership import Membership, MembershipRole
 from app.models.organization import Organization
 from app.models.password_reset_token import PasswordResetToken
-from app.models.user import User
+from app.models.user import User, UserStatus
 from app.notifications.email import send_plain_email
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -27,6 +29,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     TokenResponse,
     UserResponse,
+    VerifyEmailRequest,
 )
 
 # Always the same regardless of whether the email matched an account --
@@ -93,6 +96,8 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     user = db.query(User).filter(User.email == payload.email).one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    if user.status != UserStatus.active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="This account is suspended.")
 
     return TokenResponse(access_token=create_access_token(user.id))
 
@@ -202,4 +207,59 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)) ->
         )
         for m in memberships
     ]
-    return MeResponse(user=UserResponse.model_validate(user), organizations=organizations)
+    admin = is_super_admin(user)
+    return MeResponse(
+        user=UserResponse(
+            id=user.id, email=user.email, is_platform_admin=admin, is_super_admin=admin,
+            email_verified=user.email_verified_at is not None,
+        ),
+        organizations=organizations,
+    )
+
+
+@router.post("/auth/send-verification-email", response_model=MessageResponse)
+def send_verification_email(
+    request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> MessageResponse:
+    """Email the signed-in user a one-time link that proves they control their address."""
+    settings = get_settings()
+    rate_limit_by_ip(
+        request, scope="auth_verify_email", max_attempts=settings.auth_rate_limit_max_attempts,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+    )
+    if user.email_verified_at is not None:
+        return MessageResponse(message="Your email address is already verified.")
+    token = generate_token()
+    db.add(EmailVerificationToken(
+        user_id=user.id, email=user.email, token_hash=hash_token(token),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.email_verification_token_expire_hours),
+    ))
+    db.commit()
+    link = f"{settings.frontend_base_url.rstrip('/')}/verify-email?token={token}"
+    send_plain_email(
+        user.email, "Verify your RankPilot AI email address",
+        f"Click the link below to verify your email address. It expires in {settings.email_verification_token_expire_hours} "
+        f"hours and can be used once.\n\n{link}\n\nIf you did not ask for this, ignore this email.",
+    )
+    return MessageResponse(message="Verification email sent. Check your inbox.")
+
+
+@router.post("/auth/verify-email", response_model=MessageResponse)
+def verify_email(payload: VerifyEmailRequest, request: Request, db: Session = Depends(get_db)) -> MessageResponse:
+    settings = get_settings()
+    rate_limit_by_ip(
+        request, scope="auth_verify_email_token", max_attempts=settings.auth_rate_limit_max_attempts,
+        window_seconds=settings.auth_rate_limit_window_seconds,
+    )
+    row = db.query(EmailVerificationToken).filter(EmailVerificationToken.token_hash == hash_token(payload.token)).one_or_none()
+    now = datetime.now(timezone.utc)
+    user = db.get(User, row.user_id) if row is not None else None
+    # The link only counts for the address it was sent to: if the email was changed since, it verifies nothing.
+    if row is None or row.used_at is not None or row.expires_at < now or user is None or user.email != row.email:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification link.")
+    user.email_verified_at = now
+    row.used_at = now
+    db.add(AuditEvent(organization_id=None, actor_user_id=user.id, action="user.email_verified",
+                      resource_type="user", resource_id=str(user.id), metadata_json={}))
+    db.commit()
+    return MessageResponse(message="Your email address is verified.")

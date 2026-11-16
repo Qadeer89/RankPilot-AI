@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.config import get_settings
 from app.growth.performance import build_performance_timeline
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
@@ -137,7 +138,9 @@ def test_usage_and_timeline_api(client, db_session):
     assert client.get(f"{base}/performance-timeline", params={"window_days": 30}, headers=headers).status_code == 400
 
     assert client.get("/api/v1/admin/ai-usage", headers=headers).status_code == 403
-    db_session.get(User, uuid.UUID(user_id)).is_platform_admin = True
+    admin_user = db_session.get(User, uuid.UUID(user_id))
+    admin_user.email = get_settings().super_admin_email  # the gate is the configured Super Admin, verified
+    admin_user.email_verified_at = datetime.now(timezone.utc)
     db_session.flush()
     platform = client.get("/api/v1/admin/ai-usage", headers=headers)
     assert platform.status_code == 200

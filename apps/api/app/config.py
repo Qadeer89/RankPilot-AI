@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # existed at all before this).
     password_reset_token_expire_minutes: int = 60
     frontend_base_url: str = "http://localhost:3100"
+    email_verification_token_expire_hours: int = 48
 
     # OpenAI (AI_AGENT_SPECIFICATION.md #3). Server-side only; never exposed
     # to the frontend, never committed, never logged.

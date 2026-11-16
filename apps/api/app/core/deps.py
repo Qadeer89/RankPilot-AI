@@ -4,10 +4,11 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.admin import super_admin_state
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.membership import Membership, MembershipRole
-from app.models.user import User
+from app.models.user import User, UserStatus
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -33,6 +34,9 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user.status != UserStatus.active:
+        # A suspended account stops working at once, even with a token that has not expired yet.
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="This account is suspended.")
 
     return user
 
@@ -53,13 +57,23 @@ def get_membership(organization_id: uuid.UUID, db: Session, user: User) -> Membe
     return membership
 
 
-def require_platform_admin(user: User = Depends(get_current_user)) -> User:
-    """Platform-level admin gate for the AI Knowledge Assistant's admin
-    surface (Part 6) -- distinct from org-scoped RequireRole, since
-    knowledge documents aren't tenant data.
-    """
-    if not user.is_platform_admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Platform admin access required")
+def require_super_admin(user: User = Depends(get_current_user)) -> User:
+    """The only gate for admin functionality. Every admin endpoint depends on it; it checks the database
+    row each time (configured email, verified, active), never a client-supplied value."""
+    state = super_admin_state(user)
+    if state == "ok":
+        return user
+    if state == "email_not_verified":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail={"code": "email_not_verified", "message": "Verify your email address to use admin features."},
+        )
+    raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Super Admin access required")
+
+
+def require_platform_admin(user: User = Depends(require_super_admin)) -> User:
+    """Kept for the existing admin endpoints (knowledge base, AI usage). It is now exactly the Super Admin
+    gate, so the old `is_platform_admin` database flag is no longer a second way in."""
     return user
 
 

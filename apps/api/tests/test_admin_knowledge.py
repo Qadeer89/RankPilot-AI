@@ -4,12 +4,14 @@ chatbot feedback -- especially unanswered questions.
 """
 
 import uuid
+from datetime import datetime, timezone
 
 from app.ai import embeddings as embeddings_module
 from app.knowledge import admin_service
 from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, ChatMessage, ChatRole
 from app.models.knowledge import KnowledgeDocument, KnowledgeIngestionStatus, KnowledgeSourceType
 from app.models.user import User
+from app.config import get_settings
 
 
 def _fake_embed_texts(texts):
@@ -17,7 +19,9 @@ def _fake_embed_texts(texts):
 
 
 def _make_admin(db_session, email=None):
-    user = User(email=email or f"{uuid.uuid4().hex}@example.com", hashed_password="x", is_platform_admin=True)
+    # The admin gate is now the configured Super Admin: that email, verified, active.
+    user = User(email=email or get_settings().super_admin_email, hashed_password="x", is_platform_admin=True,
+                email_verified_at=datetime.now(timezone.utc))
     db_session.add(user)
     db_session.flush()
     return user
@@ -163,7 +167,8 @@ def test_admin_api_full_flow(client, db_session, monkeypatch):
     me = client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
     user_id = me.json()["user"]["id"]
     user = db_session.get(User, uuid.UUID(user_id))
-    user.is_platform_admin = True
+    user.email = get_settings().super_admin_email
+    user.email_verified_at = datetime.now(timezone.utc)
     db_session.flush()
 
     headers = {"Authorization": f"Bearer {token}"}

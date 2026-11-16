@@ -64,7 +64,7 @@ export interface OrganizationSummary {
 }
 
 export interface MeResponse {
-  user: { id: string; email: string; is_platform_admin: boolean };
+  user: { id: string; email: string; is_platform_admin: boolean; is_super_admin: boolean; email_verified: boolean };
   organizations: OrganizationSummary[];
 }
 
@@ -287,6 +287,14 @@ export function resetPassword(token: string, newPassword: string) {
     method: "POST",
     body: JSON.stringify({ token, new_password: newPassword }),
   });
+}
+
+export function verifyEmail(token: string) {
+  return request<MessageResponse>("/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) });
+}
+
+export function sendVerificationEmail(token: string) {
+  return request<MessageResponse>("/auth/send-verification-email", { method: "POST", headers: authHeaders(token) });
 }
 
 export function getMe(token: string) {

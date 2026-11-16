@@ -35,7 +35,11 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: EmailStr
+    # Display hints only; the server re-checks on every admin request. Both are true only for the
+    # configured Super Admin with a verified email.
     is_platform_admin: bool
+    is_super_admin: bool = False
+    email_verified: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -52,3 +56,7 @@ class OrganizationSummary(BaseModel):
     role: str
 
     model_config = {"from_attributes": True}
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
