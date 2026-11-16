@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from app.growth.title_repair import create_repair_tasks, plan_title_repairs
+from app.growth import title_repair
+from app.growth.title_repair import create_repair_tasks, plan_title_repairs as _plan
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.organization import Organization
@@ -15,6 +16,12 @@ from app.models.website import Website
 from app.models.website_connection import ConnectorType
 
 BRAND = "Clinic Rawalpindi"
+
+
+def plan_title_repairs(db, site, **kwargs):
+    """Tests read the 'live' title from the stored snapshot instead of the network."""
+    kwargs.setdefault("live_title", lambda url: title_repair._latest_snapshot_title(db, site, url))
+    return _plan(db, site, **kwargs)
 
 
 def _site(db_session, *, pages: list[tuple[str, str, str | None]], autopilot_optin=False):
@@ -137,3 +144,38 @@ def test_a_page_whose_live_title_is_now_fine_is_not_planned_again(db_session):
     snapshot.title = f"Knee Pain | {BRAND}"
     db_session.flush()
     assert "a" not in {c.target_url.rsplit("/", 1)[1] for c in plan_title_repairs(db_session, site).candidates}
+
+
+def test_the_live_page_decides_not_a_stale_snapshot(db_session):
+    site, _, _ = _site(db_session, pages=DOUBLED)
+    # the stored snapshot says everything is fine, but the live page still shows the brand twice
+    for snapshot in db_session.query(PageSnapshot).all():
+        snapshot.title = f"Anything | {BRAND}"
+    db_session.flush()
+    live = {f"https://clinic.example/{s}": t for s, t, _ in DOUBLED}
+    plan = _plan(db_session, site, live_title=lambda url: live.get(url))
+    assert {c.target_url.rsplit("/", 1)[1] for c in plan.candidates} == {"a", "b", "d"}
+
+
+def test_every_skipped_page_is_accounted_for(db_session):
+    site, _, _ = _site(db_session, pages=DOUBLED)
+    plan = plan_title_repairs(db_session, site)
+    assert plan.skipped["the applied title has no repeated brand to remove"] == 1  # page c: nothing to strip
+    # pages that were fixed in the meantime are reported as such
+    fixed = _plan(db_session, site, live_title=lambda url: f"Anything | {BRAND}")
+    assert fixed.candidates == [] and fixed.skipped["the live title already shows the brand once"] == 3
+    # an unreadable page is reported, not silently dropped
+    plan = _plan(db_session, site, live_title=lambda url: None)
+    assert plan.candidates == [] and plan.skipped["the live page could not be read"] == 3
+
+
+def test_the_limit_stops_fetching_early(db_session):
+    site, _, _ = _site(db_session, pages=DOUBLED)
+    fetched = []
+
+    def live(url):
+        fetched.append(url)
+        return f"X | {BRAND} | {BRAND}"
+
+    plan = _plan(db_session, site, limit=1, live_title=live)
+    assert len(plan.candidates) == 1 and len(fetched) == 1

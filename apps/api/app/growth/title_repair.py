@@ -12,11 +12,16 @@ person approves and executes each one in the normal Tasks flow.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import EvidenceRef, OpportunityProposal, ProposedAction
+from app.crawler.extract import extract_page
+from app.crawler.fetch import FetchError, safe_fetch
 from app.crawler.orchestrator import normalize_frontier_url
 from app.execution.service import create_tasks_from_proposal
 from app.growth.recrawl import applied_value
@@ -48,6 +53,8 @@ class RepairPlan:
     candidates: list[RepairCandidate]
     skipped_already_pending: int = 0
     reason_none: str | None = None
+    # why pages were left out, e.g. {"title is already fine": 12}
+    skipped: Counter = field(default_factory=Counter)
 
 
 def _latest_snapshot_title(db: Session, website: Website, target_url: str) -> str | None:
@@ -64,9 +71,37 @@ def _latest_snapshot_title(db: Session, website: Website, target_url: str) -> st
     return snapshot.title if snapshot else None
 
 
-def plan_title_repairs(db: Session, website: Website, *, limit: int | None = None) -> RepairPlan:
-    """Pages whose newest applied title is still shown with the brand twice
-    in the most recent crawl, and the corrected value for each."""
+FETCH_PAUSE_SECONDS = 0.5
+
+
+def _live_title(website: Website) -> Callable[[str], str | None]:
+    """The page's title as a crawler sees it right now (a polite, single GET
+    through the SSRF-safe fetcher)."""
+
+    def fetch(url: str) -> str | None:
+        time.sleep(FETCH_PAUSE_SECONDS)
+        try:
+            result = safe_fetch(url)
+        except FetchError:
+            return None
+        if result.status_code >= 400:
+            return None
+        return extract_page(result.body, base_url=result.final_url, site_hostname=website.hostname).title
+
+    return fetch
+
+
+def plan_title_repairs(
+    db: Session,
+    website: Website,
+    *,
+    limit: int | None = None,
+    live_title: Callable[[str], str | None] | None = None,
+) -> RepairPlan:
+    """Pages whose newest applied title is shown with the brand twice on the
+    live page, and the corrected value for each. `live_title` fetches the
+    page's current title (default: a real request)."""
+    live_title = live_title or _live_title(website)
     suffix = site_title_suffix(db, website)
     if suffix is None:
         return RepairPlan([], reason_none="No site-wide title template was detected from the crawled titles.")
@@ -91,14 +126,23 @@ def plan_title_repairs(db: Session, website: Website, *, limit: int | None = Non
             .filter(RollbackRecord.change_record_id == change.id, RollbackRecord.status == RollbackStatus.completed)
             .first()
         )
-        if rolled_back is not None or task.opportunity_id is None:
+        if rolled_back is not None:
+            plan.skipped["the change was rolled back"] += 1
             continue
-        live = _latest_snapshot_title(db, website, url)
+        if task.opportunity_id is None:
+            plan.skipped["the change has no opportunity to attach a correction to"] += 1
+            continue
         applied = applied_value(change, task) or ""
-        if not live or not has_duplicate_brand(live):
-            continue
         fixed = strip_title_suffix(applied, suffix).strip()
         if not fixed or fixed == applied.strip():
+            plan.skipped["the applied title has no repeated brand to remove"] += 1
+            continue
+        live = live_title(url)
+        if not live:
+            plan.skipped["the live page could not be read"] += 1
+            continue
+        if not has_duplicate_brand(live):
+            plan.skipped["the live title already shows the brand once"] += 1
             continue
 
         pending = (
@@ -115,9 +159,9 @@ def plan_title_repairs(db: Session, website: Website, *, limit: int | None = Non
             plan.skipped_already_pending += 1
             continue
         plan.candidates.append(RepairCandidate(url, applied, live, fixed, task.opportunity_id))
+        if limit is not None and len(plan.candidates) >= limit:
+            break
 
-    if limit is not None:
-        plan.candidates = plan.candidates[:limit]
     return plan
 
 

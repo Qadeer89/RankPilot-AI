@@ -53,6 +53,8 @@ def main() -> int:
         print(plan.reason_none)
         return 0
     print(f"{len(plan.candidates)} title(s) to fix in this batch; {plan.skipped_already_pending} already have a pending fix.")
+    for reason, count in plan.skipped.most_common():
+        print(f"  left out: {count} x {reason}")
     for c in plan.candidates:
         print(f"- {c.target_url}\n    live now : {c.live_title!r}\n    new value: {c.fixed_title!r}")
 
