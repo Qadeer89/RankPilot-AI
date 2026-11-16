@@ -159,6 +159,7 @@ export default function WebsiteDetailClient() {
   const [pageReportLoading, setPageReportLoading] = useState<string | null>(null);
   const [pageReportError, setPageReportError] = useState<string | null>(null);
   const [taskSubTab, setTaskSubTab] = useState<string | null>(null);
+  const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const [deployWebhookSecret, setDeployWebhookSecret] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
@@ -532,9 +533,46 @@ export default function WebsiteDetailClient() {
     const proposal = proposals[opportunityId];
     if (!token || !orgId || !proposal) return;
     setError(null);
+    setTaskNotice(null);
     try {
-      await createTasks(token, orgId, websiteId, opportunityId, proposal);
-      setTasks(await listTasks(token, orgId, websiteId));
+      const created = await createTasks(token, orgId, websiteId, opportunityId, proposal);
+      const all = await listTasks(token, orgId, websiteId);
+      setTasks(all);
+      // The server never creates a second task for the same change: it hands
+      // back the existing one, which may sit in another sub-tab (completed,
+      // failed, rejected...). Jump to it and say so instead of showing an
+      // apparently unchanged list.
+      const first = created[0] ? all.find((t) => t.id === created[0].id) : undefined;
+      if (!first) {
+        setError("No task was created for this proposal. Refresh the page and try again.");
+        return;
+      }
+      const group =
+        first.approval_status === "pending"
+          ? "needs_approval"
+          : first.status === "pending"
+            ? "ready"
+            : first.status === "executing"
+              ? "executing"
+              : first.status === "completed"
+                ? "completed"
+                : first.status === "failed"
+                  ? "failed"
+                  : "rejected";
+      setTaskSubTab(group);
+      const label: Record<string, string> = {
+        needs_approval: "",
+        ready: "",
+        executing: "It is already running.",
+        completed: "This change was already applied earlier, so it is listed under Completed.",
+        failed: "An earlier attempt at this change failed, so it is listed under Failed.",
+        rejected: "This change was rejected or cancelled earlier, so it is listed under Rejected / cancelled.",
+      };
+      setTaskNotice(
+        label[group]
+          ? `A task for this exact change already exists. ${label[group]}`
+          : "Task created. It is waiting for you in this list."
+      );
       setActiveTab("tasks");
     } catch (err) {
       setError(err instanceof ApiError ? `${err.status}: ${err.message}` : "Failed to create a task.");
@@ -1679,6 +1717,11 @@ export default function WebsiteDetailClient() {
         {activeTab === "tasks" && (
           <div className={styles.card}>
             <h2>Tasks</h2>
+            {taskNotice && (
+              <p className={styles.rowMeta} role="status">
+                {taskNotice}
+              </p>
+            )}
             {tasks.length > 0 && (
               <div className={styles.actions}>
                 <button
