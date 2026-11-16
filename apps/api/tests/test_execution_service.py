@@ -406,3 +406,71 @@ def test_execute_task_rolls_back_on_failed_validation_for_set_canonical(db_sessi
     rollback = db_session.query(RollbackRecord).filter(RollbackRecord.change_record_id == change_record.id).one()
     assert rollback.status == RollbackStatus.completed
     assert rollback.rollback_method == "wordpress.set_canonical"
+
+
+def _proposal_with_value(opportunity_id, value):
+    proposal = _proposal(opportunity_id)
+    proposal.proposed_actions[0].value = value
+    return proposal
+
+
+@pytest.mark.parametrize("closed_status", [SEOTaskStatus.completed, SEOTaskStatus.failed, SEOTaskStatus.rejected])
+def test_a_person_can_correct_a_closed_change_with_a_different_value(db_session, closed_status):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    requester = _make_user(db_session).id
+    old = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title | Brand"), requested_by=requester
+    )[0]
+    old.status = closed_status
+    db_session.flush()
+
+    corrected = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title"), requested_by=requester
+    )[0]
+
+    assert corrected.id != old.id
+    assert corrected.proposed_change_json["value"] == "Title"
+    assert corrected.status == SEOTaskStatus.pending
+
+    # asking for the same correction again is still idempotent
+    again = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title"), requested_by=requester
+    )[0]
+    assert again.id == corrected.id
+
+
+def test_the_same_value_or_an_open_task_is_never_duplicated(db_session):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    requester = _make_user(db_session).id
+    first = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title | Brand"), requested_by=requester
+    )[0]
+
+    # still pending: a different value does not create a second task
+    open_again = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Other"), requested_by=requester
+    )[0]
+    assert open_again.id == first.id
+
+    # completed: the SAME value is a retry, not a correction
+    first.status = SEOTaskStatus.completed
+    db_session.flush()
+    same = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title | Brand"), requested_by=requester
+    )[0]
+    assert same.id == first.id
+
+
+def test_the_automatic_pipeline_never_re_writes_a_completed_change(db_session):
+    website, opportunity = _make_website_and_opportunity(db_session)
+    first = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "Title | Brand"), requested_by=None
+    )[0]
+    first.status = SEOTaskStatus.completed
+    db_session.flush()
+
+    again = execution_service.create_tasks_from_proposal(
+        db_session, website, opportunity, _proposal_with_value(opportunity.id, "A different AI answer"), requested_by=None
+    )[0]
+
+    assert again.id == first.id  # otherwise every crawl could rewrite the page with a new AI value

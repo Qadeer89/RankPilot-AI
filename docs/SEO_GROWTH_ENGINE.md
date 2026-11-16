@@ -227,3 +227,8 @@ the model is told about it and is shown the title without it; and, whatever the 
 the template already adds is stripped from `set_title` values in code. Verification (re-crawl, live check,
 `scripts/check_applied_changes.py`) accepts the applied value followed by the template suffix, and flags a
 doubled brand. Titles already damaged on live sites are not rewritten automatically.
+
+**Correcting a change that already ran.** A task is normally unique per (opportunity, operation, page): asking again
+returns the existing task. When a *person* clicks "Create task" with a different value than a task that already
+completed, failed or was rejected, a new task is created instead (that is how a doubled brand on a live title is
+corrected). The automatic pipeline never does this, so it cannot re-write the same page on every crawl.

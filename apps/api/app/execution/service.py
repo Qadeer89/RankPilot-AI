@@ -130,8 +130,24 @@ def create_tasks_from_proposal(
 
         existing = db.query(SEOTask).filter(SEOTask.idempotency_key == idempotency_key).one_or_none()
         if existing is not None:
-            tasks.append(existing)
-            continue
+            # A person asking for a DIFFERENT value for a change that already
+            # ran (or was rejected / failed) is a deliberate correction, not a
+            # retried request, so it gets its own task. The automatic pipeline
+            # (requested_by is None) keeps the strict one-task-per-change rule:
+            # otherwise it could re-write the same page on every crawl.
+            is_correction = (
+                requested_by is not None
+                and existing.status in (SEOTaskStatus.completed, SEOTaskStatus.failed, SEOTaskStatus.rejected)
+                and (existing.proposed_change_json or {}).get("value") != action.value
+            )
+            if not is_correction:
+                tasks.append(existing)
+                continue
+            idempotency_key = hashlib.sha256(f"{idempotency_key}:{action.value}".encode("utf-8")).hexdigest()
+            repeat = db.query(SEOTask).filter(SEOTask.idempotency_key == idempotency_key).one_or_none()
+            if repeat is not None:
+                tasks.append(repeat)
+                continue
 
         # A change that started as a growth recommendation always waits
         # for a person, whatever the automation mode or opt-ins say.
