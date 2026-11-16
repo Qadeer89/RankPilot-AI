@@ -11,6 +11,7 @@ import styles from "./AppShell.module.css";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Websites" },
   { href: "/dashboard/assistant", label: "AI Assistant" },
+  { href: "/dashboard/billing", label: "Billing" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

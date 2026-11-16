@@ -62,6 +62,18 @@ def get_plans(_user: User = Depends(get_current_user)) -> PlansResponse:
     )
 
 
+@router.get("/organizations/{organization_id}/billing/overview")
+def billing_overview(
+    organization_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> dict:
+    """Projects grouped with their own subscription, entitlement and payment history."""
+    from app.billing.overview import build_overview
+
+    return build_overview(db, organization_id)
+
+
 @router.post("/organizations/{organization_id}/websites/{website_id}/billing/checkout", response_model=CheckoutResponse)
 def create_checkout(
     organization_id: uuid.UUID,

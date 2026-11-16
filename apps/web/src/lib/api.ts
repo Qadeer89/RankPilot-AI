@@ -3,7 +3,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public code?: string
   ) {
     super(message);
   }
@@ -20,13 +21,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     let detail = response.statusText;
+    let code: string | undefined;
     try {
       const body = await response.json();
-      detail = body.detail ?? detail;
+      const raw = body.detail;
+      if (typeof raw === "string") {
+        detail = raw;
+      } else if (raw && typeof raw === "object" && !Array.isArray(raw) && typeof raw.message === "string") {
+        // Structured errors: { code, message } (billing endpoints).
+        detail = raw.message;
+        code = typeof raw.code === "string" ? raw.code : undefined;
+      } else if (Array.isArray(raw)) {
+        // FastAPI validation errors.
+        detail = raw.map((e) => (e && typeof e === "object" && "msg" in e ? String(e.msg) : String(e))).join("; ");
+      }
     } catch {
       // response had no JSON body
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   if (response.status === 204) {
@@ -1638,5 +1650,119 @@ export function recrawlGrowthRecommendation(
   return request<GrowthRecommendation>(
     `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}/recrawl`,
     { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+
+// --- Billing (per-project subscriptions) ---
+
+export interface BillingPlan {
+  interval: "month" | "year";
+  price_cents: number;
+  currency: string;
+  trial_days: number;
+  monthly_equivalent_cents: number;
+}
+
+export interface BillingSubscription {
+  id: string;
+  status: "trialing" | "active" | "past_due" | "unpaid" | "paused" | "cancelled" | "expired" | "refunded";
+  provider: string;
+  complimentary: boolean;
+  interval: "month" | "year";
+  price_cents: number;
+  currency: string;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  renews_at: string | null;
+  ends_at: string | null;
+  cancelled_at: string | null;
+  cancellation_scheduled: boolean;
+  grace_ends_at: string | null;
+  replacements_used: number;
+  replacement_limit: number;
+  replacements_remaining: number;
+  customer_portal_url: string | null;
+  update_payment_url: string | null;
+}
+
+export interface BillingPayment {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  status: "paid" | "failed" | "pending" | "refunded" | "partially_refunded";
+  refunded_cents: number;
+  billing_reason: string | null;
+  paid_at: string | null;
+  created_at: string | null;
+}
+
+export interface BillingProject {
+  website_id: string;
+  display_name: string;
+  hostname: string;
+  target_countries: string[];
+  entitlement: { entitled: boolean; reason: string; message: string; until: string | null };
+  subscription: BillingSubscription | null;
+  payments: BillingPayment[];
+  can_start_plan: boolean;
+  trial_available: boolean;
+}
+
+export interface BillingOverview {
+  enforcement: "off" | "log" | "enforce";
+  plans: BillingPlan[];
+  annual_saving_cents: number;
+  projects: BillingProject[];
+}
+
+export interface CheckoutStarted {
+  checkout_url: string;
+  interval: "month" | "year";
+  price_cents: number;
+  currency: string;
+  with_trial: boolean;
+  trial_days: number;
+  first_charge_at: string | null;
+  expires_at: string | null;
+}
+
+export function getBillingOverview(token: string, organizationId: string) {
+  return request<BillingOverview>(`/organizations/${organizationId}/billing/overview`, { headers: authHeaders(token) });
+}
+
+export function startCheckout(token: string, organizationId: string, websiteId: string, interval: "month" | "year") {
+  return request<CheckoutStarted>(`/organizations/${organizationId}/websites/${websiteId}/billing/checkout`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ interval }),
+  });
+}
+
+export interface ReplacementTargets {
+  replacements_remaining: number;
+  targets: { id: string; display_name: string; hostname: string }[];
+}
+
+export function getReplacementTargets(token: string, organizationId: string, subscriptionId: string) {
+  return request<ReplacementTargets>(
+    `/organizations/${organizationId}/billing/subscriptions/${subscriptionId}/replacement-targets`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export function replaceSubscriptionProject(
+  token: string,
+  organizationId: string,
+  subscriptionId: string,
+  targetWebsiteId: string
+) {
+  return request<{ subscription_id: string; website_id: string; replacements_remaining: number; sequence: number }>(
+    `/organizations/${organizationId}/billing/subscriptions/${subscriptionId}/replace-project`,
+    {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ target_website_id: targetWebsiteId, confirm: true, acknowledge_permanent: true }),
+    }
   );
 }
