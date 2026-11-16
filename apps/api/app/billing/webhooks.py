@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.billing import notifications
 from app.billing.provider import verify_signature
 from app.config import get_settings
 from app.models.billing import (
@@ -153,22 +154,26 @@ def process_webhook(db: Session, raw_body: bytes, signature: str | None) -> Webh
         db.commit()
         return WebhookOutcome("ignored", event.id)
 
+    notifications.discard(db)
     try:
         outcome, subscription = _dispatch(db, event_name, payload)
     except PermanentWebhookError as exc:
         db.rollback()
+        notifications.discard(db)
         event = db.get(BillingEvent, event.id)
         event.status, event.error = BillingEventStatus.failed, str(exc)[:1000]
         db.commit()
         return WebhookOutcome("failed", event.id)
     except TransientWebhookError as exc:
         db.rollback()
+        notifications.discard(db)
         event = db.get(BillingEvent, event.id)
         event.status, event.error = BillingEventStatus.failed, f"retry: {exc}"[:1000]
         db.commit()
         raise
     except Exception as exc:  # noqa: BLE001 - recorded, then surfaced as a 5xx so the provider retries
         db.rollback()
+        notifications.discard(db)
         event = db.get(BillingEvent, event.id)
         event.status, event.error = BillingEventStatus.failed, f"{type(exc).__name__}: {exc}"[:1000]
         db.commit()
@@ -180,6 +185,7 @@ def process_webhook(db: Session, raw_body: bytes, signature: str | None) -> Webh
     event.processed_at = _utcnow()
     event.subscription_id = subscription.id if subscription is not None else None
     db.commit()
+    notifications.flush(db)  # only after the state change is safely stored
     return WebhookOutcome("processed" if outcome == "processed" else "ignored", event.id)
 
 
@@ -223,6 +229,7 @@ def apply_subscription_object(
     status = map_status(attributes.get("status"), bool(attributes.get("cancelled")))
 
     session: CheckoutSession | None = None
+    created_now = sub is None
     if sub is None:
         reference = (custom_data or {}).get("reference")
         session = db.query(CheckoutSession).filter(CheckoutSession.reference == str(reference)).one_or_none() if reference else None
@@ -270,11 +277,28 @@ def apply_subscription_object(
         sub.grace_ends_at = (provider_updated or _utcnow()) + timedelta(days=settings.billing_grace_days)
 
     _track_trial(db, sub, previous_status, status, at=provider_updated or _utcnow())
+    _queue_state_notifications(db, sub, previous_status, status, created_now)
 
     if session is not None and session.status == CheckoutStatus.pending:
         session.status, session.completed_at, session.subscription_id = CheckoutStatus.completed, _utcnow(), sub.id
     db.flush()
     return "processed", sub
+
+
+def _queue_state_notifications(
+    db: Session, sub: Subscription, previous: SubscriptionStatus, now_status: SubscriptionStatus, created_now: bool
+) -> None:
+    """Only a real change of state produces a message (payments are announced from the payment itself)."""
+    if created_now and now_status == SubscriptionStatus.trialing:
+        notifications.queue(db, "trial_started", sub, date=sub.trial_ends_at)
+    elif created_now and now_status == SubscriptionStatus.active:
+        notifications.queue(db, "subscription_activated", sub)
+    elif previous == SubscriptionStatus.trialing and now_status == SubscriptionStatus.active:
+        notifications.queue(db, "subscription_activated", sub)
+    elif now_status == SubscriptionStatus.cancelled and previous != SubscriptionStatus.cancelled and not created_now:
+        notifications.queue(db, "cancellation_scheduled", sub, date=sub.ends_at)
+    elif now_status == SubscriptionStatus.expired and previous != SubscriptionStatus.expired and not created_now:
+        notifications.queue(db, "subscription_expired", sub)
 
 
 def _track_trial(
@@ -344,8 +368,16 @@ def _apply_invoice(db: Session, event_name: str, payload: dict) -> tuple[str, Su
         db.add(payment)
     elif payment.updated_at and _aware(payment.updated_at) > event_time and payment.status == PaymentStatus.refunded:
         return "ignored: older than the payment state already held", sub
+    previous_payment_status = None if payment.id is None else payment.status
     payment.amount_cents = amount or payment.amount_cents
     payment.status = status
+    if previous_payment_status != status:
+        if status == PaymentStatus.paid and previous_payment_status == PaymentStatus.failed:
+            notifications.queue(db, "payment_recovered", sub)
+        elif status == PaymentStatus.paid and amount > 0:
+            notifications.queue(db, "payment_successful", sub)
+        elif status == PaymentStatus.failed:
+            notifications.queue(db, "payment_failed", sub)
     if status == PaymentStatus.paid:
         payment.paid_at = payment.paid_at or _parse_dt(attributes.get("created_at")) or event_time
     if status == PaymentStatus.refunded:
@@ -384,3 +416,35 @@ def _apply_order_refund(db: Session, payload: dict) -> tuple[str, Subscription |
         sub.status = SubscriptionStatus.refunded
     db.flush()
     return "processed", sub
+
+
+def reprocess_event(db: Session, event: BillingEvent) -> str:
+    """Re-apply a stored event that failed transiently (its payload is already verified: it was stored
+    only after the signature checked out). Used by the retry job; safe to call repeatedly."""
+    if not isinstance(event.payload_json, dict) or not event.event_name:
+        return "skipped"
+    event.attempts += 1
+    notifications.discard(db)
+    try:
+        outcome, subscription = _dispatch(db, event.event_name, event.payload_json)
+    except PermanentWebhookError as exc:
+        db.rollback()
+        notifications.discard(db)
+        event = db.get(BillingEvent, event.id)
+        event.status, event.error = BillingEventStatus.failed, str(exc)[:1000]
+        db.commit()
+        return "failed"
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        notifications.discard(db)
+        event = db.get(BillingEvent, event.id)
+        event.status, event.error = BillingEventStatus.failed, f"retry: {exc}"[:1000]
+        db.commit()
+        return "retry"
+    event.status = BillingEventStatus.processed if outcome == "processed" else BillingEventStatus.ignored
+    event.error = None if outcome == "processed" else outcome
+    event.processed_at = _utcnow()
+    event.subscription_id = subscription.id if subscription is not None else None
+    db.commit()
+    notifications.flush(db)
+    return "processed"

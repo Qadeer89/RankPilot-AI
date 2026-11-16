@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from app.celery_app import celery_app
 from app.connectors import github_pr
 from app.connectors.errors import ConnectorError
+from app.billing.entitlement import allowed as billing_allowed
 from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
 from app.db.session import SessionLocal
 from app.config import get_settings
@@ -61,6 +62,8 @@ def daily_crawl_all_active_websites() -> int:
         )
         now = datetime.now(timezone.utc)
         for website in websites:
+            if not billing_allowed(db, website, "scheduled_crawl"):
+                continue
             last_crawl = (
                 db.query(CrawlJob)
                 .filter(CrawlJob.website_id == website.id, CrawlJob.trigger != CrawlTrigger.post_change)
@@ -101,6 +104,8 @@ def daily_sync_search_signals_for_all_websites() -> int:
     try:
         websites = db.query(Website).filter(Website.status != WebsiteStatus.deleted).all()
         for website in websites:
+            if not billing_allowed(db, website, "scheduled_sync"):
+                continue
             if website.search_console_site_url:
                 try:
                     sync_search_performance(db, website)
@@ -148,6 +153,8 @@ def daily_sync_performance_metrics_for_all_websites() -> int:
             .all()
         )
         for website in websites:
+            if not billing_allowed(db, website, "scheduled_sync"):
+                continue
             try:
                 sync_performance_metrics(db, website)
                 db.commit()
@@ -177,6 +184,8 @@ def daily_sync_url_inspection_for_all_websites() -> int:
             .all()
         )
         for website in websites:
+            if not billing_allowed(db, website, "scheduled_sync"):
+                continue
             if not website.search_console_site_url:
                 continue
             try:
@@ -201,6 +210,8 @@ def generate_weekly_reports() -> int:
     try:
         websites = db.query(Website).filter(Website.status != WebsiteStatus.deleted).all()
         for website in websites:
+            if not billing_allowed(db, website, "report"):
+                continue
             try:
                 generate_weekly_report(db, website)
                 db.commit()
@@ -329,5 +340,34 @@ def poll_and_merge_github_prs() -> int:
                 )
                 db.rollback()
         return merged
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scheduler.run_billing_maintenance")
+def run_billing_maintenance() -> dict[str, int]:
+    """Hourly: expire finished subscriptions, remind about ending trials, retry events that were waiting for
+    another event, and reconcile with the payment provider. Each step is independent and idempotent."""
+    from app.billing import jobs
+
+    db = SessionLocal()
+    summary: dict[str, int] = {}
+    try:
+        for name, step in (
+            ("expired", lambda: jobs.expire_finished(db)),
+            ("trial_reminders", lambda: jobs.send_trial_reminders(db)),
+            ("events_retried", lambda: jobs.retry_failed_events(db)),
+        ):
+            try:
+                summary[name] = step()
+            except Exception:
+                logger.exception("billing maintenance step %s failed", name)
+                db.rollback()
+        try:
+            summary.update({f"reconcile_{k}": v for k, v in jobs.reconcile_subscriptions(db).items()})
+        except Exception:
+            logger.exception("billing reconciliation failed")
+            db.rollback()
+        return summary
     finally:
         db.close()

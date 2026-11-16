@@ -358,6 +358,14 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
 
     if website.status != WebsiteStatus.active:
         raise ExecutionBlocked("Automation is paused for this website.")
+
+    # Applying a change to a live site is a paid feature (no-op unless billing enforcement is on).
+    from app.billing.entitlement import EntitlementRequired, check as check_entitlement
+
+    try:
+        check_entitlement(db, website, "execute")
+    except EntitlementRequired as exc:
+        raise ExecutionBlocked(exc.entitlement.message) from exc
     if not website.writes_enabled:
         raise ExecutionBlocked(
             "Writes are disabled for this website (kill switch). Crawling and analysis are unaffected; "

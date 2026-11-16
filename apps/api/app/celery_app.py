@@ -66,4 +66,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.poll_and_merge_github_prs",
         "schedule": crontab(minute="*/10"),
     },
+    "billing-maintenance": {
+        # Expire finished subscriptions, remind about ending trials, retry events that were
+        # waiting for another event, and reconcile with the payment provider.
+        "task": "app.tasks.scheduler.run_billing_maintenance",
+        "schedule": crontab(minute=15),
+    },
 }

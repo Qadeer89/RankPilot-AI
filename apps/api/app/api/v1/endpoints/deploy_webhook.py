@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404
 from app.core.verification import generate_token, hash_token
+from app.billing.entitlement import EntitlementRequired
+from app.billing.entitlement import check as check_entitlement
 from app.crawler.orchestrator import create_crawl_job
 from app.db.session import get_db
 from app.models.audit_event import AuditEvent
@@ -94,6 +96,14 @@ def trigger_deploy_webhook(
 
     if website.status != WebsiteStatus.active:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Automation is paused for this website.")
+
+    try:
+        check_entitlement(db, website, "crawl")
+    except EntitlementRequired as exc:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail={"code": "subscription_required", "reason": exc.entitlement.reason, "message": exc.entitlement.message},
+        ) from exc
 
     existing = (
         db.query(CrawlJob)

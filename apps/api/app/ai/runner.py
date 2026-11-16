@@ -86,6 +86,10 @@ def run_ai_agent(
             f"{settings.ai_max_prompt_characters}-character limit (RANKPILOT_AI_MAX_PROMPT_CHARACTERS)."
         )
 
+    # A project without an entitlement gets no paid AI work (no-op unless billing enforcement is on).
+    from app.billing.entitlement import check as check_entitlement
+
+    check_entitlement(db, website, "ai")
     enforce_daily_budget(db, website)
 
     client = get_openai_client()

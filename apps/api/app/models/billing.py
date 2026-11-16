@@ -124,6 +124,7 @@ class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     grace_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trial_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # One replacement per subscription lifetime (a Super Admin can raise the limit).
     replacements_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
