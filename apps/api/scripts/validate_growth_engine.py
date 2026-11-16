@@ -124,7 +124,16 @@ def edge_case_checks() -> None:
     record("crawl.edge.redirect_followed", "PASS" if page.error is None and page.url.startswith("https://example.com") else "FAIL", {"final_url": page.url, "title": page.title})
 
     page, secs = one("https://httpbin.org/redirect-to?url=http://169.254.169.254/latest/meta-data/")
-    record("crawl.edge.redirect_to_private_address_blocked", "PASS" if page.error and "unsafe_url" in page.error else "FAIL", {"error": page.error})
+    if page.error and "unsafe_url" in page.error:
+        record("crawl.edge.redirect_to_private_address_blocked", "PASS", {"error": page.error})
+    elif page.error and page.error.startswith("HTTP 4"):
+        # The public test service itself refused to issue a redirect to a
+        # metadata address, so the redirect never reached RankPilot and its
+        # own check was not exercised. Not a pass, not a failure.
+        record("crawl.edge.redirect_to_private_address_blocked", "SKIPPED",
+               {"error": page.error, "note": "httpbin refused to issue this redirect; RankPilot's hop check is unit-tested (tests/test_fetch.py)."})
+    else:
+        record("crawl.edge.redirect_to_private_address_blocked", "FAIL", {"error": page.error, "final_url": page.url})
 
     # A real timeout cannot be provoked deterministically from a public host:
     # httpbin caps /delay at 10s, which equals the client's own 10s timeout
