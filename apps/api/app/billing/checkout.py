@@ -25,6 +25,7 @@ from app.models.billing import (
     Subscription,
     TrialHistory,
 )
+from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.website import Website, WebsiteStatus
@@ -61,12 +62,17 @@ def live_subscription(db: Session, website_id) -> Subscription | None:
     )
 
 
-def trial_already_used(db: Session, website: Website) -> bool:
-    """One free trial per domain, ever: the project row, the account and a deleted-and-re-added copy do not matter."""
+def trial_already_used(db: Session, website: Website, user_id=None) -> bool:
+    """One free trial per CUSTOMER, not per project: once any project of this workspace (or of any workspace the
+    buyer belongs to) has had a trial, every other project is billed from day one. It also stays used for
+    the same domain, so deleting and re-adding a site, or adding it from another account, unlocks nothing."""
+    org_ids = {website.organization_id}
+    if user_id is not None:
+        org_ids |= {m.organization_id for m in db.query(Membership).filter(Membership.user_id == user_id)}
     key = domain_key(website.hostname)
     return (
         db.query(TrialHistory)
-        .filter(or_(TrialHistory.website_id == website.id, TrialHistory.domain_key == key))
+        .filter(or_(TrialHistory.website_id == website.id, TrialHistory.domain_key == key, TrialHistory.organization_id.in_(org_ids)))
         .first()
         is not None
     )
@@ -90,7 +96,7 @@ def start_checkout(
     if live_subscription(db, website.id) is not None:
         raise CheckoutError("already_subscribed", "This project already has a subscription.")
 
-    with_trial = not trial_already_used(db, website)
+    with_trial = not trial_already_used(db, website, user.id)
     variant_id = _variant_for(interval, with_trial=with_trial)
     if variant_id is None:
         if not with_trial:

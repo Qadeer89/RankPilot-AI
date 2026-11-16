@@ -191,3 +191,18 @@ def test_the_same_site_cannot_be_registered_twice_in_a_workspace(client, db_sess
         r = client.post(path, json={"url": url, "display_name": "B", "purpose": "owned"}, headers=headers)
         assert r.status_code == 409 and r.json()["detail"]["code"] == "duplicate_project", url
     assert client.post(path, json={"url": "https://another.example", "display_name": "C", "purpose": "owned"}, headers=headers).status_code == 201
+
+
+def test_the_free_trial_is_once_per_customer_not_per_project(client, db_session):
+    from app.billing.checkout import trial_already_used
+    from app.models.user import User
+    from tests.billing_helpers import make_website, register
+    _, org = register(client, "owner@example.com")
+    _, other_org = register(client, "stranger@example.com")
+    owner = db_session.query(User).filter(User.email == "owner@example.com").one()
+    first, second = make_website(db_session, org, "first.example"), make_website(db_session, org, "second.example")
+    stranger_site = make_website(db_session, other_org, "third.example")
+    assert not trial_already_used(db_session, first, owner.id) and not trial_already_used(db_session, second, owner.id)
+    _trial_row(db_session, first, org)
+    assert trial_already_used(db_session, second, owner.id)          # other project, same customer: no second trial
+    assert not trial_already_used(db_session, stranger_site, None)   # an unrelated customer still gets theirs
