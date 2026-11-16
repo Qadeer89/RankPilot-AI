@@ -247,6 +247,9 @@ class TrialHistory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     website_id: Mapped[uuid.UUID | None] = _fk("websites")
     organization_id: Mapped[uuid.UUID | None] = _fk("organizations")
     subscription_id: Mapped[uuid.UUID | None] = _fk("subscriptions")
+    # The trial belongs to the DOMAIN, not to a project row: deleting and re-adding a site, or adding it
+    # from another account, must not unlock a second trial.
+    domain_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     outcome: Mapped[str] = mapped_column(String(16), default="active", nullable=False)  # active|converted|cancelled|expired

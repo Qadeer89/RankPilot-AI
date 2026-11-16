@@ -150,3 +150,44 @@ def test_a_provider_failure_is_reported_and_does_not_block_a_retry(client, db_se
 
     fake.fail = None
     assert client.post(_url(org, site), json={"interval": "month"}, headers=headers).status_code == 200
+
+
+# --- one trial per DOMAIN, and no duplicate projects ---------------------------------------------
+
+def _trial_row(db_session, site, org_id):
+    from app.core.domains import domain_key
+    from app.models.billing import TrialHistory
+    db_session.add(TrialHistory(website_id=site.id, organization_id=uuid.UUID(org_id), started_at=datetime.now(timezone.utc), domain_key=domain_key(site.hostname)))
+    db_session.commit()
+
+
+def test_a_readded_or_other_account_copy_of_the_same_domain_gets_no_second_trial(client, db_session):
+    from app.billing.checkout import trial_already_used
+    from tests.billing_helpers import make_website, register
+    _, org1 = register(client, "first@example.com")
+    _, org2 = register(client, "second@example.com")
+    original = make_website(db_session, org1, "www.Shop.example")
+    _trial_row(db_session, original, org1)
+    again = make_website(db_session, org1, "shop.example")          # deleted and re-added
+    elsewhere = make_website(db_session, org2, "SHOP.example")      # same domain, another account
+    other = make_website(db_session, org2, "different.example")
+    assert trial_already_used(db_session, original)
+    assert trial_already_used(db_session, again)
+    assert trial_already_used(db_session, elsewhere)
+    assert not trial_already_used(db_session, other)
+
+
+def test_the_same_site_cannot_be_registered_twice_in_a_workspace(client, db_session, monkeypatch):
+    from app.core import url_safety
+    from tests.billing_helpers import register
+    def fake(url):
+        host = url.split("//")[1].split("/")[0].lower()
+        return url_safety.SafeUrl(normalized_url=f"https://{host}/", hostname=host, resolved_ip="93.184.216.34", request_url=f"https://{host}/")
+    monkeypatch.setattr("app.api.v1.endpoints.websites.validate_public_url", fake)
+    headers, org = register(client, "dupes@example.com")
+    path = f"/api/v1/organizations/{org}/websites"
+    assert client.post(path, json={"url": "https://shop.example", "display_name": "A", "purpose": "owned"}, headers=headers).status_code == 201
+    for url in ("https://shop.example", "https://www.shop.example", "https://SHOP.example/"):
+        r = client.post(path, json={"url": url, "display_name": "B", "purpose": "owned"}, headers=headers)
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "duplicate_project", url
+    assert client.post(path, json={"url": "https://another.example", "display_name": "C", "purpose": "owned"}, headers=headers).status_code == 201

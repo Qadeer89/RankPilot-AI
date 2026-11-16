@@ -28,6 +28,8 @@ from sqlalchemy.orm import Session
 from app.billing import notifications
 from app.billing.provider import verify_signature
 from app.config import get_settings
+from app.core.domains import domain_key
+from app.models.website import Website
 from app.models.billing import (
     BillingEvent,
     BillingEventStatus,
@@ -316,8 +318,10 @@ def _track_trial(
     if trial is None and sub.trial_ends_at is not None and now_status in (
         SubscriptionStatus.trialing, SubscriptionStatus.cancelled, SubscriptionStatus.active
     ):
+        site = db.get(Website, sub.website_id)
         trial = TrialHistory(
             website_id=sub.website_id, organization_id=sub.organization_id, subscription_id=sub.id,
+            domain_key=domain_key(site.hostname) if site else None,
             started_at=sub.trial_started_at or _utcnow(), ends_at=sub.trial_ends_at, outcome="active",
         )
         db.add(trial)

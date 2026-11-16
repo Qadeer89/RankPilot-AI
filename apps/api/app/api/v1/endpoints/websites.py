@@ -24,6 +24,8 @@ from app.schemas.website import (
     WebsiteSettingsUpdateRequest,
 )
 
+from app.core.domains import domain_key  # noqa: E402
+
 router = APIRouter(tags=["websites"])
 
 
@@ -42,6 +44,15 @@ def register_website(
         safe_url = validate_public_url(payload.url)
     except UnsafeUrlError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"unsafe_url: {exc}") from exc
+
+    # No duplicate projects: the same site (www or not, any case) cannot be registered twice in one workspace.
+    key = domain_key(safe_url.hostname)
+    existing = [
+        w for w in db.query(Website).filter(Website.organization_id == organization_id, Website.status != WebsiteStatus.deleted)
+        if domain_key(w.hostname) == key
+    ]
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail={"code": "duplicate_project", "message": f"{key} is already a project in this workspace."})
 
     website = Website(
         organization_id=organization_id,

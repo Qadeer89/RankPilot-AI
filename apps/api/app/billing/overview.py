@@ -87,7 +87,7 @@ def build_overview(db: Session, organization_id) -> dict:
                 "subscription": subscription_view(sub) if sub is not None else None,
                 "payments": [payment_view(p) for p in payments],
                 "can_start_plan": sub is None,
-                "trial_available": sub is None and not trial_already_used(db, website.id),
+                "trial_available": sub is None and not trial_already_used(db, website),
             }
         )
     return {

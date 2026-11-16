@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from app.core.domains import domain_key
 
 from app.billing.plans import Plan, get_plan
 from app.billing.provider import BillingProvider, ProviderError, ProviderNotConfigured, get_provider
@@ -58,8 +61,15 @@ def live_subscription(db: Session, website_id) -> Subscription | None:
     )
 
 
-def trial_already_used(db: Session, website_id) -> bool:
-    return db.query(TrialHistory).filter(TrialHistory.website_id == website_id).first() is not None
+def trial_already_used(db: Session, website: Website) -> bool:
+    """One free trial per domain, ever: the project row, the account and a deleted-and-re-added copy do not matter."""
+    key = domain_key(website.hostname)
+    return (
+        db.query(TrialHistory)
+        .filter(or_(TrialHistory.website_id == website.id, TrialHistory.domain_key == key))
+        .first()
+        is not None
+    )
 
 
 def start_checkout(
@@ -80,7 +90,7 @@ def start_checkout(
     if live_subscription(db, website.id) is not None:
         raise CheckoutError("already_subscribed", "This project already has a subscription.")
 
-    with_trial = not trial_already_used(db, website.id)
+    with_trial = not trial_already_used(db, website)
     variant_id = _variant_for(interval, with_trial=with_trial)
     if variant_id is None:
         if not with_trial:

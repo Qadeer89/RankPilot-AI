@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.billing import notifications
+from app.core.domains import domain_key
 from app.billing.checkout import live_subscription
 from app.models.audit_event import AuditEvent
 from app.models.billing import LIVE_STATUSES, ProjectReplacement, Subscription, TrialHistory
@@ -114,7 +115,9 @@ def _carry_trial(db: Session, sub: Subscription, from_website_id, to_website_id)
     if original is None:
         return
     if db.query(TrialHistory).filter(TrialHistory.website_id == to_website_id).first() is None:
+        target = db.get(Website, to_website_id)
         db.add(TrialHistory(website_id=to_website_id, organization_id=sub.organization_id, subscription_id=sub.id,
+                            domain_key=domain_key(target.hostname) if target else None,
                             started_at=original.started_at, ends_at=original.ends_at, outcome=original.outcome, ended_at=original.ended_at))
 
 
