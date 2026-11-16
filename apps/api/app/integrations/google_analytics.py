@@ -103,3 +103,44 @@ def run_report(
         metric_values = [v["value"] for v in row.get("metricValues", [])]
         rows.append({"dimension_values": dimension_values, "metric_values": metric_values})
     return rows
+
+
+def run_landing_page_report(
+    access_token: str,
+    property_id: str,
+    *,
+    start_date: date,
+    end_date: date,
+    row_limit: int = 10000,
+) -> list[dict]:
+    """Daily organic-search sessions per landing page. Same row shape as
+    run_report: dimension_values are [date, landing page path], metric
+    values are [sessions, engagedSessions, conversions].
+    """
+    response = httpx.post(
+        f"{ANALYTICS_DATA_API_BASE}/{property_id}:runReport",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+        json={
+            "dateRanges": [{"startDate": start_date.isoformat(), "endDate": end_date.isoformat()}],
+            "dimensions": [{"name": "date"}, {"name": "landingPagePlusQueryString"}],
+            "metrics": [{"name": "sessions"}, {"name": "engagedSessions"}, {"name": "conversions"}],
+            "dimensionFilter": {
+                "filter": {
+                    "fieldName": "sessionDefaultChannelGroup",
+                    "stringFilter": {"matchType": "EXACT", "value": "Organic Search"},
+                }
+            },
+            "limit": row_limit,
+        },
+        timeout=30.0,
+    )
+    if response.status_code != 200:
+        raise GoogleApiError(f"GA4 landing-page report failed: HTTP {response.status_code} {response.text[:300]}")
+
+    return [
+        {
+            "dimension_values": [v["value"] for v in row.get("dimensionValues", [])],
+            "metric_values": [v["value"] for v in row.get("metricValues", [])],
+        }
+        for row in response.json().get("rows", [])
+    ]

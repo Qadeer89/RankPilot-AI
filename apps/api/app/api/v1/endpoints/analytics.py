@@ -130,6 +130,13 @@ def sync_ga4(
     try:
         rows_synced = ga4_sync.sync_ga4_metrics(db, website)
         db.commit()
+        try:
+            ga4_sync.sync_ga4_landing_pages(db, website)
+            db.commit()
+        except GoogleApiError:
+            # Landing-page data is additive; the daily totals above are
+            # already saved and still a valid result on their own.
+            db.rollback()
         return SyncResultResponse(rows_synced=rows_synced)
     except LookupError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc

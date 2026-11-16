@@ -81,6 +81,7 @@ def test_select_property_then_sync_and_read_metrics(client, monkeypatch, db_sess
         return [{"dimension_values": ["20261001"], "metric_values": ["42", "30", "5"]}]
 
     monkeypatch.setattr(analytics_endpoint.ga4_sync, "run_report", fake_run_report)
+    monkeypatch.setattr(analytics_endpoint.ga4_sync, "run_landing_page_report", lambda *args, **kwargs: [])
 
     sync_response = client.post(
         f"/api/v1/organizations/{org_id}/websites/{website_id}/ga4/sync", headers=headers

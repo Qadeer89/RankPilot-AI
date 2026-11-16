@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.deps import RequireRole
-from app.core.resources import get_website_or_404
+from app.core.resources import country_param_or_400, get_website_or_404
 from app.db.session import get_db
 from app.integrations import search_console_sync, token_store
 from app.opportunities.search_console_signals import refresh_ctr_opportunities
@@ -163,13 +163,17 @@ def sync_search_console(
 def get_search_performance(
     organization_id: uuid.UUID,
     website_id: uuid.UUID,
+    country: str | None = None,
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
 ) -> SearchPerformanceResponse:
     get_website_or_404(db, organization_id, website_id)
+    country = country_param_or_400(country)
+    query = db.query(KeywordObservation).filter(KeywordObservation.website_id == website_id)
+    if country is not None:
+        query = query.filter(KeywordObservation.country == country)
     observations = (
-        db.query(KeywordObservation)
-        .filter(KeywordObservation.website_id == website_id)
+        query
         .order_by(KeywordObservation.date.desc())
         .limit(500)
         .all()
@@ -206,14 +210,15 @@ def get_search_performance_intelligence(
     extended for the SEO Growth Engine's country-based intelligence):
     pages losing or gaining clicks/impressions/ranking, queries close to
     page 1 that aren't there yet, newly-discovered queries, and keyword
-    cannibalization candidates. Pass `country` (GSC's own alpha-3 code,
-    e.g. "usa") to scope every signal to one target market instead of
+    cannibalization candidates. Pass `country` (any supported code,
+    e.g. "US" or "usa") to scope every signal to one target market instead of
     the site's worldwide traffic -- never combined into one misleading
     report (SEO Growth Engine spec section 5). Unlike CTR opportunities,
     none of these feed the auto-execute pipeline -- there's no existing
     AI fix operation for any of them.
     """
     website = get_website_or_404(db, organization_id, website_id)
+    country = country_param_or_400(country)
 
     declining = [
         PageTrendSignalResponse(

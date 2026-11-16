@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.core.countries import require_country, require_language
 from app.core.deps import RequireRole
 from app.core.resources import get_website_or_404 as _get_website_or_404
 from app.core.url_safety import UnsafeUrlError, validate_public_url
@@ -137,14 +138,38 @@ def update_website_settings(
         website.crawl_frequency_hours = payload.crawl_frequency_hours
     if payload.ai_daily_budget_usd_override is not None:
         website.ai_daily_budget_usd_override = payload.ai_daily_budget_usd_override
-    if payload.target_country is not None:
-        website.target_country = payload.target_country.upper()
-    if payload.additional_target_countries is not None:
-        website.additional_target_countries = [c.upper() for c in payload.additional_target_countries]
-    if payload.target_language is not None:
-        website.target_language = payload.target_language.lower()
+    try:
+        if payload.target_country is not None:
+            website.target_country = require_country(payload.target_country) if payload.target_country.strip() else None
+        if payload.additional_target_countries is not None:
+            additional: list[str] = []
+            for raw in payload.additional_target_countries:
+                code = require_country(raw)
+                if code not in additional:
+                    additional.append(code)
+            website.additional_target_countries = additional
+        if payload.target_language is not None:
+            website.target_language = (
+                require_language(payload.target_language) if payload.target_language.strip() else None
+            )
+        if payload.target_languages_by_country is not None:
+            website.target_languages_by_country = {
+                require_country(country): require_language(language)
+                for country, language in payload.target_languages_by_country.items()
+            }
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if payload.target_city is not None:
-        website.target_city = payload.target_city
+        website.target_city = payload.target_city.strip() or None
+    # Keep the three fields consistent with each other whichever was sent.
+    website.additional_target_countries = [
+        c for c in website.additional_target_countries if c != website.target_country
+    ]
+    website.target_languages_by_country = {
+        country: language
+        for country, language in website.target_languages_by_country.items()
+        if country in website.all_target_countries
+    }
 
     db.add(
         AuditEvent(

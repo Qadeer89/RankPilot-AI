@@ -13,9 +13,11 @@ from datetime import date, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.crawler.orchestrator import normalize_frontier_url
 from app.integrations.search_console_sync import REPORTING_LAG_DAYS
 from app.models.change_record import ChangeRecord
 from app.models.ga4_daily_metric import Ga4DailyMetric
+from app.models.ga4_landing_page_metric import Ga4LandingPageMetric
 from app.models.keyword_observation import KeywordObservation
 from app.models.page import Page
 from app.models.website import Website
@@ -67,39 +69,80 @@ def _ga4_stats(db: Session, website_id, start: date, end: date) -> dict | None:
     return {"sessions": int(sessions or 0), "conversions": int(conversions or 0)}
 
 
+def _organic_landing_stats(db: Session, website_id, page_id, start: date, end: date) -> dict | None:
+    """GA4 organic-search sessions that landed on this page. Engagement
+    data from Analytics -- shown next to, never mixed into, the Search
+    Console figures.
+    """
+    rows, sessions, engaged, conversions = (
+        db.query(
+            func.count(Ga4LandingPageMetric.id),
+            func.sum(Ga4LandingPageMetric.sessions),
+            func.sum(Ga4LandingPageMetric.engaged_sessions),
+            func.sum(Ga4LandingPageMetric.conversions),
+        )
+        .filter(
+            Ga4LandingPageMetric.website_id == website_id,
+            Ga4LandingPageMetric.page_id == page_id,
+            Ga4LandingPageMetric.date >= start,
+            Ga4LandingPageMetric.date < end,
+        )
+        .one()
+    )
+    if not rows:
+        return None
+    return {"sessions": int(sessions or 0), "engaged_sessions": int(engaged or 0), "conversions": int(conversions or 0)}
+
+
 def build_performance_timeline(db: Session, website: Website, *, window_days: int = 28) -> dict:
     if window_days not in ALLOWED_WINDOWS:
         raise ValueError(f"window_days must be one of {ALLOWED_WINDOWS}.")
 
     changes = (
         db.query(ChangeRecord)
-        .filter(ChangeRecord.website_id == website.id, ChangeRecord.page_id.isnot(None))
+        .filter(ChangeRecord.website_id == website.id)
         .order_by(ChangeRecord.executed_at.desc())
         .limit(MAX_CHANGES)
         .all()
     )
-    urls = dict(db.query(Page.id, Page.canonical_url).filter(Page.website_id == website.id).all()) if changes else {}
+    pages = db.query(Page.id, Page.canonical_url, Page.normalized_url).filter(Page.website_id == website.id).all() if changes else []
+    url_by_id = {page_id: canonical for page_id, canonical, _ in pages}
+    id_by_normalized_url = {normalized: page_id for page_id, _, normalized in pages}
     today = date.today()
 
     entries = []
     for change in changes:
+        # Not every connector records the page on the change itself
+        # (WordPress stores its own post id instead), so fall back to the
+        # URL the task targeted.
+        target_url = change.seo_task.proposed_change_json.get("target_url") if change.seo_task else None
+        page_id = change.page_id
+        if page_id is None and target_url:
+            page_id = id_by_normalized_url.get(normalize_frontier_url(target_url))
+
         changed_on = change.executed_at.date()
         before_start = changed_on - timedelta(days=window_days)
         after_start = changed_on + timedelta(days=1)
         after_end = after_start + timedelta(days=window_days)
+
+        def window(fn, start, end):
+            return fn(db, website.id, page_id, start, end) if page_id is not None else None
+
         entries.append(
             {
                 "change_id": change.id,
-                "page_id": change.page_id,
-                "page_url": urls.get(change.page_id),
+                "page_id": page_id,
+                "page_url": url_by_id.get(page_id) or target_url,
                 "operation": change.seo_task.task_type if change.seo_task else None,
                 "implemented_at": change.executed_at,
                 "validation_status": change.validation_status.value,
-                "before": _search_stats(db, website.id, change.page_id, before_start, changed_on),
-                "after": _search_stats(db, website.id, change.page_id, after_start, after_end),
+                "before": window(_search_stats, before_start, changed_on),
+                "after": window(_search_stats, after_start, after_end),
                 # False while Search Console has not yet reported the
                 # whole "after" window -- the after numbers are partial.
                 "after_window_complete": after_end + timedelta(days=REPORTING_LAG_DAYS) <= today,
+                "organic_landing_before": window(_organic_landing_stats, before_start, changed_on),
+                "organic_landing_after": window(_organic_landing_stats, after_start, after_end),
                 "site_ga4_before": _ga4_stats(db, website.id, before_start, changed_on),
                 "site_ga4_after": _ga4_stats(db, website.id, after_start, after_end),
             }

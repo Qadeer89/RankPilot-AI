@@ -245,7 +245,7 @@ def test_search_performance_intelligence_country_param_scopes_results(client, mo
     db_session.add(page)
     db_session.flush()
 
-    for country, impressions in (("usa", 20), ("gbr", 20)):
+    for country, impressions in (("US", 20), ("GB", 20)):
         db_session.add(
             KeywordObservation(
                 website_id=uuid.UUID(website_id),
@@ -269,8 +269,8 @@ def test_search_performance_intelligence_country_param_scopes_results(client, mo
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["country"] == "usa"
-    assert [q["query"] for q in body["new_queries"]] == ["usa query"]
+    assert body["country"] == "US"
+    assert [q["query"] for q in body["new_queries"]] == ["US query"]
 
 
 def test_search_performance_intelligence_is_tenant_scoped(client, monkeypatch):

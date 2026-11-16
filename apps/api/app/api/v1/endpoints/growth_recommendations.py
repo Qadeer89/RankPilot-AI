@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import RequireRole
-from app.core.resources import get_website_or_404
+from app.core.resources import country_param_or_400, get_website_or_404
 from app.db.session import get_db
-from app.growth.execution import NotExecutable, send_to_execution, sync_completed
+from app.growth import lifecycle
+from app.growth.execution import NotExecutable, send_to_execution, sync_completed, verify_live
 from app.growth.service import generate_growth_recommendations
 from app.models.audit_event import AuditEvent
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationStatus
@@ -18,9 +19,15 @@ _BASE = "/organizations/{organization_id}/websites/{website_id}/growth-recommend
 _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
-def _sorted(rows: list[GrowthRecommendation]) -> list[GrowthRecommendationResponse]:
+def _one(db: Session, website, row: GrowthRecommendation) -> GrowthRecommendationResponse:
+    response = GrowthRecommendationResponse.model_validate(row)
+    response.lifecycle = lifecycle.describe(db, website, row)
+    return response
+
+
+def _sorted(db: Session, website, rows: list[GrowthRecommendation]) -> list[GrowthRecommendationResponse]:
     rows = sorted(rows, key=lambda r: _PRIORITY_ORDER[r.priority.value])
-    return [GrowthRecommendationResponse.model_validate(r) for r in rows]
+    return [_one(db, website, r) for r in rows]
 
 
 @router.post(f"{_BASE}/generate", response_model=list[GrowthRecommendationResponse])
@@ -32,9 +39,9 @@ def generate(
     _membership: Membership = Depends(RequireRole(MembershipRole.editor)),
 ) -> list[GrowthRecommendationResponse]:
     website = get_website_or_404(db, organization_id, website_id)
-    rows = generate_growth_recommendations(db, website, country=country)
+    rows = generate_growth_recommendations(db, website, country=country_param_or_400(country))
     db.commit()
-    return _sorted(rows)
+    return _sorted(db, website, rows)
 
 
 @router.get(_BASE, response_model=list[GrowthRecommendationResponse])
@@ -45,7 +52,7 @@ def list_recommendations(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
 ) -> list[GrowthRecommendationResponse]:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     query = db.query(GrowthRecommendation).filter(GrowthRecommendation.website_id == website_id)
     if status_filter is not None:
         query = query.filter(GrowthRecommendation.status == status_filter)
@@ -54,7 +61,7 @@ def list_recommendations(
     db.commit()
     if status_filter is not None:
         rows = [r for r in rows if r.status == status_filter]
-    return _sorted(rows)
+    return _sorted(db, website, rows)
 
 
 @router.patch(f"{_BASE}/{{recommendation_id}}", response_model=GrowthRecommendationResponse)
@@ -66,7 +73,7 @@ def update_recommendation(
     db: Session = Depends(get_db),
     membership: Membership = Depends(RequireRole(MembershipRole.editor)),
 ) -> GrowthRecommendationResponse:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     row = (
         db.query(GrowthRecommendation)
         .filter(GrowthRecommendation.id == recommendation_id, GrowthRecommendation.website_id == website_id)
@@ -87,7 +94,7 @@ def update_recommendation(
     )
     db.commit()
     db.refresh(row)
-    return GrowthRecommendationResponse.model_validate(row)
+    return _one(db, website, row)
 
 
 @router.post(f"{_BASE}/{{recommendation_id}}/send-to-execution", response_model=GrowthRecommendationResponse)
@@ -122,4 +129,39 @@ def send_recommendation_to_execution(
     )
     db.commit()
     db.refresh(row)
-    return GrowthRecommendationResponse.model_validate(row)
+    return _one(db, website, row)
+
+
+@router.post(f"{_BASE}/{{recommendation_id}}/verify-live")
+def verify_recommendation_live(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    recommendation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.editor)),
+) -> dict:
+    """Re-fetch the public page and check it shows the applied change."""
+    website = get_website_or_404(db, organization_id, website_id)
+    row = (
+        db.query(GrowthRecommendation)
+        .filter(GrowthRecommendation.id == recommendation_id, GrowthRecommendation.website_id == website_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Recommendation not found")
+    try:
+        result = verify_live(db, website, row)
+    except NotExecutable as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="growth_recommendation.live_check",
+            resource_type="growth_recommendation",
+            resource_id=str(row.id),
+            metadata_json={"matched": result["matched"]},
+        )
+    )
+    db.commit()
+    return result

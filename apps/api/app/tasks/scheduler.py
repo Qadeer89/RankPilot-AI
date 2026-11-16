@@ -17,7 +17,7 @@ from app.crawler.orchestrator import CrawlTrigger, create_crawl_job
 from app.db.session import SessionLocal
 from app.config import get_settings
 from app.execution.connections import get_github_credentials
-from app.integrations.ga4_sync import sync_ga4_metrics
+from app.integrations.ga4_sync import sync_ga4_landing_pages, sync_ga4_metrics
 from app.integrations.performance_sync import sync_performance_metrics
 from app.integrations.search_console_sync import sync_search_performance
 from app.integrations.url_inspection_sync import sync_url_inspection_status
@@ -116,6 +116,12 @@ def daily_sync_search_signals_for_all_websites() -> int:
                     db.commit()
                 except Exception:
                     logger.exception("Failed to sync GA4 data for website %s", website.id)
+                    db.rollback()
+                try:
+                    sync_ga4_landing_pages(db, website)
+                    db.commit()
+                except Exception:
+                    logger.exception("Failed to sync GA4 landing pages for website %s", website.id)
                     db.rollback()
         return synced
     finally:

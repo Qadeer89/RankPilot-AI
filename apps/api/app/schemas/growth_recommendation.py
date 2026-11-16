@@ -29,6 +29,8 @@ class GrowthRecommendationResponse(BaseModel):
     evidence_json: dict
     status: RecommendationStatus
     updated_at: datetime
+    # Derived from the execution pipeline's own records (app/growth/lifecycle.py).
+    lifecycle: dict = {}
 
     model_config = {"from_attributes": True}
 

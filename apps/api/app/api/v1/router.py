@@ -16,6 +16,7 @@ from app.api.v1.endpoints import (
     keyword_ideas,
     onboarding,
     opportunities,
+    reference,
     organizations,
     reporting,
     search_console,
@@ -42,3 +43,4 @@ api_router.include_router(keyword_ideas.router)
 api_router.include_router(competitors.router)
 api_router.include_router(growth_recommendations.router)
 api_router.include_router(growth_insights.router)
+api_router.include_router(reference.router)

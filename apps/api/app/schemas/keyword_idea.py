@@ -9,7 +9,7 @@ from app.models.keyword_idea import KeywordDataClassification, KeywordIdeaSource
 
 
 class RunKeywordDiscoveryRequest(BaseModel):
-    country: str | None = Field(default=None, min_length=2, max_length=2)
+    country: str | None = Field(default=None, max_length=3)
     max_ideas: int = Field(default=20, ge=1, le=50)
 
 

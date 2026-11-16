@@ -68,3 +68,60 @@ def sync_completed(db: Session, recs: list[GrowthRecommendation]) -> None:
     for (opportunity_id,) in completed:
         linked[opportunity_id].status = RecommendationStatus.done
     db.flush()
+
+
+LIVE_CHECK_FIELDS = {"set_title": "title", "set_meta_description": "meta_description"}
+
+
+def verify_live(db: Session, website: Website, rec: GrowthRecommendation) -> dict:
+    """Re-fetch the public page and confirm it now shows each applied
+    value. The pipeline's own validation reads the value back from the
+    CMS; this checks what a visitor or crawler actually receives, which
+    can lag behind (caching, a build that has not finished).
+    """
+    from datetime import datetime, timezone
+
+    from app.crawler.extract import extract_page
+    from app.crawler.fetch import FetchError, safe_fetch
+    from app.models.change_record import ChangeRecord
+    from app.models.seo_task import SEOTask
+
+    if rec.opportunity_id is None:
+        raise NotExecutable("Nothing has been applied for this recommendation yet.")
+    tasks = db.query(SEOTask).filter(SEOTask.opportunity_id == rec.opportunity_id).all()
+    checks = []
+    for task in tasks:
+        change = (
+            db.query(ChangeRecord)
+            .filter(ChangeRecord.seo_task_id == task.id)
+            .order_by(ChangeRecord.executed_at.desc())
+            .first()
+        )
+        field = LIVE_CHECK_FIELDS.get(task.task_type)
+        target_url = task.proposed_change_json.get("target_url")
+        if change is None or field is None or not target_url:
+            continue
+        expected = change.after_state_json.get("value")
+        try:
+            fetched = safe_fetch(target_url)
+            found = getattr(extract_page(fetched.body, base_url=fetched.final_url, site_hostname=website.hostname), field)
+            checks.append(
+                {"operation": task.task_type, "url": target_url, "expected": expected, "found": found,
+                 "matched": (found or "").strip() == (expected or "").strip(), "error": None}
+            )
+        except FetchError as exc:
+            checks.append(
+                {"operation": task.task_type, "url": target_url, "expected": expected, "found": None,
+                 "matched": False, "error": str(exc)}
+            )
+    if not checks:
+        raise NotExecutable("Nothing has been applied for this recommendation yet.")
+
+    result = {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "matched": all(c["matched"] for c in checks),
+        "checks": checks,
+    }
+    rec.evidence_json = {**rec.evidence_json, "live_check": result}
+    db.flush()
+    return result

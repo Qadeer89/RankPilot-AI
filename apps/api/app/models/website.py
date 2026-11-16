@@ -106,13 +106,16 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # Country-based SEO intelligence (SEO Growth Engine spec, section 5
     # "Country-Based SEO Intelligence"). ISO 3166-1 alpha-2 for countries
-    # (matching Search Console's own country dimension values), ISO 639-1
+    # (the internal form, see app/core/countries.py), ISO 639-1
     # for language. None/empty means "no country target configured yet" --
     # never a fabricated default market.
     target_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     additional_target_countries: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     target_language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     target_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Preferred language per target country, e.g. {"CA": "fr"}. A country
+    # with no entry uses target_language.
+    target_languages_by_country: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     # Short user-provided description of the business/products/services
     # (SEO Growth Engine spec section 4A "seed keyword generation") --
     # used only as AI prompt context, never surfaced as a fact about
@@ -134,3 +137,8 @@ class Website(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             if country not in countries:
                 countries.append(country)
         return countries
+
+    def language_for(self, country: str | None) -> str | None:
+        if country and country in self.target_languages_by_country:
+            return self.target_languages_by_country[country]
+        return self.target_language

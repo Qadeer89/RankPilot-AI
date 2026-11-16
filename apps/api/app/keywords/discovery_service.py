@@ -42,7 +42,7 @@ def _persist_seed_ideas(db: Session, website: Website, seeds: list[str], *, coun
             source=KeywordIdeaSource.seed,
             data_classification=KeywordDataClassification.verified_first_party,
             country=country,
-            language=website.target_language,
+            language=website.language_for(country),
             relevance=1.0,
             confidence=1.0,
             rationale="Derived from the site's own crawled content or Search Console queries.",
@@ -70,7 +70,7 @@ def run_keyword_discovery(
 
     try:
         result = discover_keyword_ideas(
-            db, website, seeds, country=target_country, language=website.target_language, max_ideas=max_ideas
+            db, website, seeds, country=target_country, language=website.language_for(target_country), max_ideas=max_ideas
         )
     except (OpenAIError, AINotConfigured):
         # AI expansion is additive -- the seeds themselves (already
@@ -110,7 +110,7 @@ def run_keyword_discovery(
             source=KeywordIdeaSource.ai_generated,
             data_classification=KeywordDataClassification.ai_generated_idea,
             country=target_country,
-            language=website.target_language,
+            language=website.language_for(target_country),
             relevance=draft.confidence,
             confidence=draft.confidence,
             recommended_content_type=draft.recommended_content_type,

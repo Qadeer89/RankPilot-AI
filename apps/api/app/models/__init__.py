@@ -7,6 +7,7 @@ from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, 
 from app.models.crawl_frontier import CrawlFrontier, FrontierState
 from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.ga4_daily_metric import Ga4DailyMetric
+from app.models.ga4_landing_page_metric import Ga4LandingPageMetric
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationLevel, RecommendationStatus
 from app.models.keyword_idea import (
     KeywordDataClassification,
@@ -71,6 +72,7 @@ __all__ = [
     "CrawlStatus",
     "CrawlTrigger",
     "Ga4DailyMetric",
+    "Ga4LandingPageMetric",
     "GrowthRecommendation",
     "RecommendationLevel",
     "RecommendationStatus",

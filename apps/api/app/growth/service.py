@@ -44,7 +44,7 @@ def _upsert(db: Session, website: Website, existing: dict[str, GrowthRecommendat
 def generate_growth_recommendations(
     db: Session, website: Website, *, country: str | None = None
 ) -> list[GrowthRecommendation]:
-    """`country` is a Search Console country code (e.g. "usa") and scopes
+    """`country` is an internal alpha-2 country code (e.g. "US") and scopes
     the Search-Console-derived recommendations to that one market.
     Re-running updates open recommendations in place; approved, rejected
     and done ones are left as the user set them.
