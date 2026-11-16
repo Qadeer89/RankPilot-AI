@@ -126,8 +126,12 @@ def edge_case_checks() -> None:
     page, secs = one("https://httpbin.org/redirect-to?url=http://169.254.169.254/latest/meta-data/")
     record("crawl.edge.redirect_to_private_address_blocked", "PASS" if page.error and "unsafe_url" in page.error else "FAIL", {"error": page.error})
 
-    page, secs = one("https://httpbin.org/delay/15")
-    record("crawl.edge.timeout_retried_then_reported", "PASS" if page.error and secs >= 20 else "FAIL", {"error": (page.error or "")[:120], "seconds": secs})
+    # A real timeout cannot be provoked deterministically from a public host:
+    # httpbin caps /delay at 10s, which equals the client's own 10s timeout
+    # (a coin flip), and anything slower would need a server we control.
+    # Timeout + single-retry behaviour is covered by tests/test_competitor_crawl_edge_cases.py.
+    record("crawl.edge.timeout_retried_then_reported", "SKIPPED",
+           "No deterministic real-network way to trigger a timeout; unit-tested with a scripted fetch.")
 
     started = time.monotonic()
     pages = fetch_competitor_pages("https://www.iana.org", max_pages=3)

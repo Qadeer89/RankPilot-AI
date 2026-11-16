@@ -157,3 +157,65 @@ def test_safe_fetch_follows_a_safe_redirect_to_completion(monkeypatch):
     assert result.status_code == 200
     assert result.body == "final page"
     assert result.redirect_chain == ["https://example.com/start"]
+
+
+def _record_requests(monkeypatch, responses):
+    seen = []
+
+    def fake_send(self, request):
+        seen.append(str(request.url))
+        return responses.pop(0)
+
+    monkeypatch.setattr(httpx.Client, "send", fake_send)
+    return seen
+
+
+def test_default_fetch_still_drops_the_query_string(monkeypatch):
+    """The owned-site crawler's long-standing behaviour: unchanged unless a
+    caller opts in."""
+    _stub_dns(monkeypatch, {"example.com": "93.184.216.34"})
+    seen = _record_requests(monkeypatch, [_FakeResponse(body=b"x")])
+
+    result = safe_fetch("https://example.com/page?utm=1&x=2")
+
+    assert seen == ["https://93.184.216.34/page"]
+    assert result.final_url == "https://example.com/page"
+
+
+def test_preserve_query_fetches_and_reports_the_exact_url(monkeypatch):
+    _stub_dns(monkeypatch, {"example.com": "93.184.216.34"})
+    seen = _record_requests(monkeypatch, [_FakeResponse(body=b"x")])
+
+    result = safe_fetch("https://Example.com/page?a=1&b=two", preserve_query=True)
+
+    assert seen == ["https://93.184.216.34/page?a=1&b=two"]
+    assert result.final_url == "https://example.com/page?a=1&b=two"
+
+
+def test_preserve_query_follows_a_redirect_that_carries_a_query(monkeypatch):
+    _stub_dns(monkeypatch, {"example.com": "93.184.216.34", "other.example": "93.184.216.35"})
+    seen = _record_requests(
+        monkeypatch,
+        [
+            _FakeResponse(status_code=302, headers={"location": "https://other.example/landing?lang=en"}, is_redirect=True),
+            _FakeResponse(body=b"ok"),
+        ],
+    )
+
+    result = safe_fetch("https://example.com/go?to=x", preserve_query=True)
+
+    assert seen == ["https://93.184.216.34/go?to=x", "https://93.184.216.35/landing?lang=en"]
+    assert result.final_url == "https://other.example/landing?lang=en"
+
+
+def test_preserve_query_still_blocks_a_redirect_into_a_private_address(monkeypatch):
+    _stub_dns(monkeypatch, {"example.com": "93.184.216.34"})
+    seen = _record_requests(
+        monkeypatch,
+        [_FakeResponse(status_code=302, headers={"location": "http://169.254.169.254/latest/meta-data/?x=1"}, is_redirect=True)],
+    )
+
+    with pytest.raises(FetchError, match="unsafe_url"):
+        safe_fetch("https://example.com/go?to=x", preserve_query=True)
+
+    assert seen == ["https://93.184.216.34/go?to=x"]  # the private hop was never requested

@@ -38,6 +38,11 @@ class SafeUrl:
     # validation and connection (DNS rebinding), and a second resolution
     # would bypass every check this function just did.
     resolved_ip: str
+    # The same URL including its query string. `normalized_url` drops the
+    # query on purpose (it is what a website is registered/verified under);
+    # a fetch that needs the exact URL asked for (a redirect target such as
+    # /login?next=/x) uses this one. Defaults to the normalized URL.
+    request_url: str = ""
 
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -58,6 +63,14 @@ def normalize_url(raw_url: str) -> str:
     netloc = parts.netloc.lower()
     path = parts.path or "/"
     return urlunsplit((scheme, netloc, path, "", ""))
+
+
+def _with_query(raw_url: str, normalized: str) -> str:
+    query = urlsplit(raw_url.strip()).query
+    if not query:
+        return normalized
+    parts = urlsplit(normalized)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
 
 
 def validate_public_url(raw_url: str) -> SafeUrl:
@@ -88,7 +101,10 @@ def validate_public_url(raw_url: str) -> SafeUrl:
     if literal_ip is not None:
         if _is_disallowed_ip(literal_ip):
             raise UnsafeUrlError("URL host is a private, loopback, or otherwise disallowed address.")
-        return SafeUrl(normalized_url=normalized, hostname=hostname, resolved_ip=str(literal_ip))
+        return SafeUrl(
+            normalized_url=normalized, hostname=hostname, resolved_ip=str(literal_ip),
+            request_url=_with_query(raw_url, normalized),
+        )
 
     try:
         resolved = socket.getaddrinfo(hostname, None)
@@ -109,10 +125,13 @@ def validate_public_url(raw_url: str) -> SafeUrl:
     if chosen_ip is None:
         raise UnsafeUrlError(f"Host '{hostname}' did not resolve to any address.")
 
-    return SafeUrl(normalized_url=normalized, hostname=hostname, resolved_ip=chosen_ip)
+    return SafeUrl(
+        normalized_url=normalized, hostname=hostname, resolved_ip=chosen_ip,
+        request_url=_with_query(raw_url, normalized),
+    )
 
 
-def build_pinned_url(safe_url: SafeUrl) -> str:
+def build_pinned_url(safe_url: SafeUrl, *, preserve_query: bool = False) -> str:
     """The same URL as `safe_url.normalized_url`, with its hostname
     replaced by the specific IP address that was validated, so an actual
     connection can be pinned to it (RP13-007: prevents DNS rebinding
@@ -120,7 +139,7 @@ def build_pinned_url(safe_url: SafeUrl) -> str:
     `Host` header and TLS SNI to `safe_url.hostname` so virtual hosting
     and certificate verification still target the real hostname.
     """
-    parts = urlsplit(safe_url.normalized_url)
+    parts = urlsplit(safe_url.request_url or safe_url.normalized_url if preserve_query else safe_url.normalized_url)
     host_literal = f"[{safe_url.resolved_ip}]" if ":" in safe_url.resolved_ip else safe_url.resolved_ip
     netloc = f"{host_literal}:{parts.port}" if parts.port else host_literal
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))

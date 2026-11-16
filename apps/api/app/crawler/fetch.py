@@ -54,8 +54,14 @@ def safe_fetch(
     user_agent: str = DEFAULT_USER_AGENT,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     max_redirects: int = MAX_REDIRECTS,
+    preserve_query: bool = False,
 ) -> FetchResult:
-    """Fetch `url`, manually re-validating every redirect hop for SSRF safety."""
+    """Fetch `url`, manually re-validating every redirect hop for SSRF safety.
+
+    By default the query string is dropped (the long-standing behaviour the
+    owned-site crawler relies on). With `preserve_query=True` the exact URL
+    asked for, and every redirect target, is fetched with its query string,
+    and `final_url` includes it."""
     redirect_chain: list[str] = []
     current_url = url
 
@@ -70,7 +76,7 @@ def safe_fetch(
         # reopening the DNS-rebinding window validate_public_url just
         # closed. The Host header and SNI extension keep virtual hosting
         # and TLS certificate verification targeting the real hostname.
-        pinned_url = build_pinned_url(safe_url)
+        pinned_url = build_pinned_url(safe_url, preserve_query=preserve_query)
         try:
             with httpx.Client(timeout=timeout, follow_redirects=False) as client:
                 request = client.build_request(
@@ -85,13 +91,14 @@ def safe_fetch(
             location = response.headers.get("location")
             if not location:
                 raise FetchError("Redirect response had no Location header.")
-            redirect_chain.append(safe_url.normalized_url)
-            current_url = str(httpx.URL(safe_url.normalized_url).join(location))
+            redirect_base = (safe_url.request_url or safe_url.normalized_url) if preserve_query else safe_url.normalized_url
+            redirect_chain.append(redirect_base)
+            current_url = str(httpx.URL(redirect_base).join(location))
             continue
 
         body = _read_bounded_text(response)
         return FetchResult(
-            final_url=safe_url.normalized_url,
+            final_url=(safe_url.request_url or safe_url.normalized_url) if preserve_query else safe_url.normalized_url,
             status_code=response.status_code,
             headers=dict(response.headers),
             body=body,

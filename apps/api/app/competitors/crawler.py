@@ -82,15 +82,15 @@ def _fetch_with_one_retry(url: str) -> FetchResult:
     is never retried.
     """
     try:
-        result = safe_fetch(url)
+        result = safe_fetch(url, preserve_query=True)
     except FetchError as exc:
         if not str(exc).startswith("Request failed"):
             raise
         _sleep(DEFAULT_RETRY_WAIT_SECONDS)
-        return safe_fetch(url)
+        return safe_fetch(url, preserve_query=True)
     if result.status_code in RETRY_STATUS_CODES:
         _sleep(_retry_wait(result))
-        return safe_fetch(url)
+        return safe_fetch(url, preserve_query=True)
     return result
 
 
