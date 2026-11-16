@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     ai_agents,
     analytics,
     auth,
+    billing,
     chat,
     competitors,
     crawls,
@@ -44,3 +45,4 @@ api_router.include_router(competitors.router)
 api_router.include_router(growth_recommendations.router)
 api_router.include_router(growth_insights.router)
 api_router.include_router(reference.router)
+api_router.include_router(billing.router)
