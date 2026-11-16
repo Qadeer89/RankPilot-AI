@@ -208,3 +208,31 @@ def test_change_without_a_target_url_is_not_crawled(db_session):
     task.proposed_change_json = {"value": "x"}
     assert schedule_post_change_crawl(db_session, website, change) is None
     assert change.after_state_json["recrawl"]["status"] == "not_started"
+
+
+def test_a_title_template_suffix_after_the_applied_value_still_validates(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    # the fake site's page title is "Home - Example": the value we wrote is the part before the template suffix
+    website, rec, task, change = _applied_change(db_session, value="Home")
+    job = schedule_post_change_crawl(db_session, website, change)
+    run_crawl(db_session, website, job, trigger=CrawlTrigger.post_change, only_urls=[TARGET])
+
+    result = record_recrawl_result(db_session, job, change)
+
+    assert result["status"] == "validated" and result["found"] == "Home - Example"
+    assert result["warning"] is None
+
+
+def test_a_doubled_brand_is_flagged_on_the_recrawl_result(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website, rec, task, change = _applied_change(db_session, value="Home - Example")
+    job = schedule_post_change_crawl(db_session, website, change)
+    run_crawl(db_session, website, job, trigger=CrawlTrigger.post_change, only_urls=[TARGET])
+    snapshot = db_session.query(PageSnapshot).filter(PageSnapshot.crawl_job_id == job.id).one()
+    snapshot.title = "Home | Example | Example"  # what a template + a brand-bearing title produce
+    change.after_state_json = {"value": "Home | Example"}
+
+    result = record_recrawl_result(db_session, job, change)
+
+    assert result["status"] == "validated"
+    assert result["warning"] == "The live title shows the brand twice."

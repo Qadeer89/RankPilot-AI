@@ -13,6 +13,8 @@ import json
 
 from sqlalchemy.orm import Session
 
+from app.seo_rules.site_title import site_title_suffix
+from app.seo_rules.title_template import TitleSuffix, strip_title_suffix
 from app.ai.runner import run_ai_agent
 from app.ai.schema_validation import validate_schema_json
 from app.ai.schemas import RESPONSE_JSON_SCHEMA, OpportunityProposal
@@ -201,6 +203,15 @@ to false only when confidence is high and the change is purely additive
 
 MAX_EVIDENCE_FIELD_LENGTH = 300
 
+TITLE_TEMPLATE_RULE = """
+TITLE TEMPLATE: when PAGE EVIDENCE has "site_title_suffix", this website's
+template adds that text to the end of every page title automatically.
+"current_title" is shown WITHOUT it. For set_title, write only the page's own
+part: do not include the suffix, the brand or the site name, and do not
+end with a separator. Keep the page's own part short enough that it plus the
+suffix stays within about 60 characters.
+"""
+
 
 def _truncate(value: str | None) -> str:
     if not value:
@@ -208,10 +219,17 @@ def _truncate(value: str | None) -> str:
     return value[:MAX_EVIDENCE_FIELD_LENGTH]
 
 
-def _build_user_prompt(website: Website, opportunity: SEOOpportunity, snapshot: PageSnapshot | None) -> str:
+def _build_user_prompt(
+    website: Website,
+    opportunity: SEOOpportunity,
+    snapshot: PageSnapshot | None,
+    title_suffix: TitleSuffix | None = None,
+) -> str:
+    current_title = _truncate(strip_title_suffix(snapshot.title, title_suffix) if snapshot and snapshot.title else None)
     evidence = {
         "page_url": snapshot.canonical_url if snapshot else None,
-        "current_title": _truncate(snapshot.title if snapshot else None),
+        **({"site_title_suffix": title_suffix.joined} if title_suffix is not None else {}),
+        "current_title": current_title,
         "current_meta_description": _truncate(snapshot.meta_description if snapshot else None),
         "first_h1": _truncate((snapshot.headings_json.get("h1") or [None])[0]) if snapshot else "",
     }
@@ -373,13 +391,20 @@ def propose_content_fix(
         return propose_canonical_fix(db, website, opportunity, snapshot)
     if rule_code in SCHEMA_RULE_CODES:
         return propose_schema_fix(db, website, opportunity, snapshot)
-    return run_ai_agent(
+    title_suffix = site_title_suffix(db, website)
+    proposal = run_ai_agent(
         db,
         website,
         AgentType.content_optimization,
         opportunity.id,
-        system_prompt=SYSTEM_PROMPT,
-        user_prompt=_build_user_prompt(website, opportunity, snapshot),
+        system_prompt=SYSTEM_PROMPT + (TITLE_TEMPLATE_RULE if title_suffix is not None else ""),
+        user_prompt=_build_user_prompt(website, opportunity, snapshot, title_suffix),
         response_json_schema=RESPONSE_JSON_SCHEMA,
         parse_fn=_parse_proposal,
     )
+    # Whatever the model wrote, never store the brand the template adds
+    # again: that is what produced "X | Brand | Brand" on live pages.
+    for action in proposal.proposed_actions:
+        if action.operation == "set_title" and isinstance(action.value, str):
+            action.value = strip_title_suffix(action.value, title_suffix)
+    return proposal

@@ -102,6 +102,7 @@ def verify_live(db: Session, website: Website, rec: GrowthRecommendation) -> dic
         if change is None or field is None or not target_url:
             continue
         from app.growth.recrawl import applied_value
+        from app.seo_rules.title_template import title_matches
 
         expected = applied_value(change, task)
         try:
@@ -109,7 +110,7 @@ def verify_live(db: Session, website: Website, rec: GrowthRecommendation) -> dic
             found = getattr(extract_page(fetched.body, base_url=fetched.final_url, site_hostname=website.hostname), field)
             checks.append(
                 {"operation": task.task_type, "url": target_url, "expected": expected, "found": found,
-                 "matched": (found or "").strip() == (expected or "").strip(), "error": None}
+                 "matched": title_matches(expected, found) if field == "title" else (found or "").strip() == (expected or "").strip(), "error": None}
             )
         except FetchError as exc:
             checks.append(

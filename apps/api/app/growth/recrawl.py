@@ -25,6 +25,7 @@ from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.page_snapshot import PageSnapshot
 from app.models.seo_task import SEOTask
 from app.models.website import Website
+from app.seo_rules.title_template import has_duplicate_brand, title_matches
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +124,10 @@ def record_recrawl_result(db: Session, job: CrawlJob, change: ChangeRecord) -> d
 
     expected = applied_value(change, task)
     found = getattr(snapshot, field)
-    matched = (found or "").strip() == (expected or "").strip()
+    # A site-wide title template may append the brand after the value we
+    # wrote ("<applied> | Brand"); that still counts as the change showing.
+    matched = title_matches(expected, found) if field == "title" else (found or "").strip() == (expected or "").strip()
+    warning = "The live title shows the brand twice." if field == "title" and has_duplicate_brand(found) else None
     return _set_recrawl(
         change,
         status="validated" if matched else "mismatch",
@@ -131,5 +135,6 @@ def record_recrawl_result(db: Session, job: CrawlJob, change: ChangeRecord) -> d
         http_status=snapshot.status_code,
         expected=expected,
         found=found,
+        warning=warning,
         error=None,
     )

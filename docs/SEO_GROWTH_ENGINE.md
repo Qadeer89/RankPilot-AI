@@ -216,3 +216,14 @@ is the reference to follow before publishing.
 
 I could not verify Google's review timelines from an authoritative page; treat any number you read elsewhere as
 an estimate.
+
+### Site title templates (fix for "brand shown twice")
+Many sites append their name to every page title in the page template. The crawled `<title>` includes that
+suffix; the CMS title field RankPilot writes to does not. Before this fix the model saw the rendered title,
+wrote a full new title with its own brand, and the template added the brand again ("X | Brand | Brand"), which
+made titles longer and kept "Shorten an overlong page title" open. Now (`app/seo_rules/title_template.py`):
+the template is learned from the site's own crawled titles (needs at least 3 pages sharing a trailing segment);
+the model is told about it and is shown the title without it; and, whatever the model writes, a brand segment
+the template already adds is stripped from `set_title` values in code. Verification (re-crawl, live check,
+`scripts/check_applied_changes.py`) accepts the applied value followed by the template suffix, and flags a
+doubled brand. Titles already damaged on live sites are not rewritten automatically.
