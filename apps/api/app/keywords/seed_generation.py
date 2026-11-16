@@ -18,6 +18,22 @@ MAX_SEEDS = 60
 MIN_HEADING_LENGTH = 3
 MAX_HEADING_LENGTH = 80
 
+_STOPWORDS = frozenset(
+    "a an and are as at be by do does for from how in is it of on or the to what when where which who why with your you this that these those".split()
+)
+
+
+def _topic_words(text: str | None) -> set[str]:
+    """Lower-cased content words with a crude plural strip, so "stairs"
+    and "stair" match. Used only to check a heading is about the page."""
+    words = set()
+    for raw in (text or "").lower().replace("|", " ").replace("-", " ").split():
+        word = raw.strip(".,:;!?()[]\"'")
+        if len(word) < 3 or word in _STOPWORDS:
+            continue
+        words.add(word[:-1] if word.endswith("s") and len(word) > 3 else word)
+    return words
+
 
 def _latest_snapshots(db: Session, website_id) -> list[PageSnapshot]:
     # One snapshot per page: the most recently fetched one for each
@@ -72,8 +88,15 @@ def generate_seed_keywords(db: Session, website: Website, *, extra_seeds: list[s
 
     for snapshot in _latest_snapshots(db, website.id):
         add(snapshot.title)
-        for level in ("h1", "h2"):
-            for text in snapshot.headings_json.get(level, []):
+        page_topic = _topic_words(snapshot.title)
+        for text in snapshot.headings_json.get("h1", []):
+            add(text)
+            page_topic |= _topic_words(text)
+        # Generic section headings ("In this article", "What usually
+        # helps") are not keywords; keep an h2 only if it is about the
+        # same topic as the page's own title/h1.
+        for text in snapshot.headings_json.get("h2", []):
+            if _topic_words(text) & page_topic:
                 add(text)
         if len(seeds) >= MAX_SEEDS:
             break

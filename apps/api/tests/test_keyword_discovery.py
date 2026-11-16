@@ -97,7 +97,7 @@ def test_generate_seed_keywords_pulls_from_pages_and_gsc_queries(db_session):
     seeds = generate_seed_keywords(db_session, website)
     assert "Dental Implants Austin" in seeds
     assert "Dental Implants" in seeds
-    assert "Pricing" in seeds
+    assert "Pricing" not in seeds  # generic h2, unrelated to the page topic
     assert "teeth whitening austin" in seeds
 
 
