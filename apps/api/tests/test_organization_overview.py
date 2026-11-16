@@ -40,7 +40,7 @@ def test_overview_summarizes_multiple_client_websites(client, monkeypatch, db_se
     # One website that never gets crawled.
     client.post(
         f"/api/v1/organizations/{org_id}/websites",
-        json={"url": "https://example.com/", "display_name": "Uncrawled Client"},
+        json={"url": "https://uncrawled-client.example/", "display_name": "Uncrawled Client"},
         headers=headers,
     )
 
