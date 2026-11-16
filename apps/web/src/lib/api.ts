@@ -1426,7 +1426,18 @@ export type LifecycleStatus =
   | "failed"
   | "rolled_back";
 
+export interface RecrawlResult {
+  status: "queued" | "running" | "validated" | "mismatch" | "failed" | "not_applicable" | "not_started";
+  url?: string;
+  expected?: string | null;
+  found?: string | null;
+  http_status?: number | null;
+  error?: string | null;
+  completed_at?: string | null;
+}
+
 export interface LifecycleTask {
+  recrawl?: RecrawlResult | null;
   task_id: string;
   operation: string;
   target_url: string | null;
@@ -1615,4 +1626,17 @@ export interface CountryOption {
 
 export function listCountries(token: string) {
   return request<CountryOption[]>(`/reference/countries`, { headers: authHeaders(token) });
+}
+
+
+export function recrawlGrowthRecommendation(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  recommendationId: string
+) {
+  return request<GrowthRecommendation>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}/recrawl`,
+    { method: "POST", headers: authHeaders(token) }
+  );
 }

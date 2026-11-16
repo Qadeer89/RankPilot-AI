@@ -62,8 +62,12 @@ def trigger_crawl(
     # RP13-011: a concurrent request must not create a second active crawl.
     existing = (
         db.query(CrawlJob)
-        .filter(CrawlJob.website_id == website_id, CrawlJob.status.in_(_ACTIVE_CRAWL_STATUSES))
-        .one_or_none()
+        .filter(
+            CrawlJob.website_id == website_id,
+            CrawlJob.status.in_(_ACTIVE_CRAWL_STATUSES),
+            CrawlJob.trigger != CrawlTrigger.post_change,
+        )
+        .first()
     )
     if existing is not None:
         raise HTTPException(

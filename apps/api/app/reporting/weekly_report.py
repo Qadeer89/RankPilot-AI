@@ -16,7 +16,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.change_record import ChangeRecord, ValidationStatus
-from app.models.crawl_job import CrawlJob
+from app.models.crawl_job import CrawlJob, CrawlTrigger
 from app.models.ga4_daily_metric import Ga4DailyMetric
 from app.models.keyword_observation import KeywordObservation
 from app.models.report import Report, ReportType
@@ -35,7 +35,12 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
 
     crawl_jobs = (
         db.query(CrawlJob)
-        .filter(CrawlJob.website_id == website.id, CrawlJob.created_at >= start_dt, CrawlJob.created_at < end_dt)
+        .filter(
+            CrawlJob.website_id == website.id,
+            CrawlJob.created_at >= start_dt,
+            CrawlJob.created_at < end_dt,
+            CrawlJob.trigger != CrawlTrigger.post_change,
+        )
         .all()
     )
 

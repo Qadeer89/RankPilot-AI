@@ -63,7 +63,7 @@ def daily_crawl_all_active_websites() -> int:
         for website in websites:
             last_crawl = (
                 db.query(CrawlJob)
-                .filter(CrawlJob.website_id == website.id)
+                .filter(CrawlJob.website_id == website.id, CrawlJob.trigger != CrawlTrigger.post_change)
                 .order_by(CrawlJob.created_at.desc())
                 .first()
             )

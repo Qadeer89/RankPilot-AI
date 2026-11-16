@@ -289,7 +289,43 @@ def create_crawl_job(db: Session, website: Website, *, trigger: CrawlTrigger = C
     return crawl_job
 
 
-def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, *, trigger: CrawlTrigger = CrawlTrigger.manual) -> CrawlJob:
+def _prepare_targeted_frontier(db: Session, website: Website, urls: list[str]) -> set[str]:
+    """For a one-URL verification crawl: make sure each URL has a pending
+    frontier entry, touching no other entry of the website."""
+    targeted: set[str] = set()
+    for url in urls:
+        normalized = normalize_frontier_url(url)
+        targeted.add(normalized)
+        entry = (
+            db.query(CrawlFrontier)
+            .filter(CrawlFrontier.website_id == website.id, CrawlFrontier.url == normalized)
+            .one_or_none()
+        )
+        if entry is None:
+            db.add(
+                CrawlFrontier(
+                    website_id=website.id,
+                    url=normalized,
+                    priority=100,
+                    discovered_from="post_change",
+                    state=FrontierState.pending,
+                )
+            )
+        else:
+            entry.state = FrontierState.pending
+            entry.next_fetch_at = None
+    db.flush()
+    return targeted
+
+
+def run_crawl(
+    db: Session,
+    website: Website,
+    crawl_job: CrawlJob | None = None,
+    *,
+    trigger: CrawlTrigger = CrawlTrigger.manual,
+    only_urls: list[str] | None = None,
+) -> CrawlJob:
     """Run one bounded crawl of `website` and persist pages/snapshots.
 
     If `crawl_job` is omitted, one is created here (convenient for direct,
@@ -309,23 +345,30 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
     crawl_job.started_at = datetime.now(timezone.utc)
     db.commit()
 
+    targeted_urls: set[str] | None = None
     try:
-        _purge_non_crawlable_frontier_entries(db, website)
+        if only_urls is None:
+            _purge_non_crawlable_frontier_entries(db, website)
 
-        # The frontier is a long-lived, per-website structure (one row per
-        # URL ever seen), not per-crawl: without this, a URL already fetched
-        # by an earlier crawl would never be considered "pending" again, and
-        # a second crawl of the same site would fetch nothing at all.
-        db.query(CrawlFrontier).filter(CrawlFrontier.website_id == website.id).update(
-            {"state": FrontierState.pending}
-        )
+            # The frontier is a long-lived, per-website structure (one row per
+            # URL ever seen), not per-crawl: without this, a URL already fetched
+            # by an earlier crawl would never be considered "pending" again, and
+            # a second crawl of the same site would fetch nothing at all.
+            db.query(CrawlFrontier).filter(CrawlFrontier.website_id == website.id).update(
+                {"state": FrontierState.pending}
+            )
 
         robots_policy = fetch_robots_policy(website.canonical_url, user_agent=USER_AGENT)
         known_urls: set[str] = {
             row[0]
             for row in db.query(CrawlFrontier.url).filter(CrawlFrontier.website_id == website.id).all()
         }
-        _seed_frontier(db, website, robots_policy, known_urls)
+        if only_urls is None:
+            _seed_frontier(db, website, robots_policy, known_urls)
+        else:
+            # Verification crawl of specific URLs only: no sitemap seeding,
+            # no link discovery, no other frontier entry is touched.
+            targeted_urls = _prepare_targeted_frontier(db, website, only_urls)
 
         pages_fetched = 0
         pages_requested = 0
@@ -356,12 +399,14 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             # at least once, the least-recently-fetched URL goes first
             # (next_fetch_at ASC) so coverage rotates across crawls instead
             # of a fixed priority tier starving everything below it.
+            pending_query = db.query(CrawlFrontier).filter(
+                CrawlFrontier.website_id == website.id,
+                CrawlFrontier.state == FrontierState.pending,
+            )
+            if targeted_urls is not None:
+                pending_query = pending_query.filter(CrawlFrontier.url.in_(targeted_urls))
             frontier_entry = (
-                db.query(CrawlFrontier)
-                .filter(
-                    CrawlFrontier.website_id == website.id,
-                    CrawlFrontier.state == FrontierState.pending,
-                )
+                pending_query
                 .order_by(
                     CrawlFrontier.next_fetch_at.is_(None).desc(),
                     CrawlFrontier.next_fetch_at.asc(),
@@ -444,7 +489,7 @@ def run_crawl(db: Session, website: Website, crawl_job: CrawlJob | None = None, 
             pages_fetched += 1
 
             remaining_budget = website.crawl_budget - pages_requested
-            if remaining_budget > 0:
+            if remaining_budget > 0 and targeted_urls is None:
                 for link in extraction.internal_links[:remaining_budget]:
                     _add_frontier_entry(
                         db,

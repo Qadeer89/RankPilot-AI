@@ -157,3 +157,84 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         raise
     finally:
         db.close()
+
+
+class _OtherCrawlRunning(Exception):
+    pass
+
+
+POST_CHANGE_MAX_RETRIES = 6
+POST_CHANGE_RETRY_SECONDS = 45
+
+
+@celery_app.task(name="app.tasks.crawl.run_post_change_crawl", bind=True, max_retries=POST_CHANGE_MAX_RETRIES)
+def run_post_change_crawl(self, website_id: str, crawl_job_id: str, change_record_id: str) -> str:
+    """One-URL verification crawl after a change was applied
+    (app/growth/recrawl.py). Waits (retries) while a full crawl of the same
+    site is running, so the two never fight over the shared crawl frontier."""
+    from app.growth.recrawl import _set_recrawl, record_recrawl_result
+    from app.models.change_record import ChangeRecord
+    from app.models.crawl_job import CrawlTrigger
+
+    db = SessionLocal()
+    try:
+        website = db.get(Website, uuid.UUID(website_id))
+        job = db.get(CrawlJob, uuid.UUID(crawl_job_id))
+        change = db.get(ChangeRecord, uuid.UUID(change_record_id))
+        if website is None or job is None or change is None:
+            return "not_found"
+        if job.status in (CrawlStatus.completed, CrawlStatus.failed, CrawlStatus.cancelled):
+            return job.status.value
+
+        busy = (
+            db.query(CrawlJob)
+            .filter(
+                CrawlJob.website_id == website.id,
+                CrawlJob.id != job.id,
+                CrawlJob.status == CrawlStatus.running,
+            )
+            .first()
+        )
+        if busy is not None:
+            raise _OtherCrawlRunning()
+
+        _set_recrawl(change, status="running")
+        db.commit()
+
+        target_url = (change.after_state_json.get("recrawl") or {}).get("url")
+        run_crawl(db, website, job, trigger=CrawlTrigger.post_change, only_urls=[target_url] if target_url else [])
+        db.commit()
+
+        record_recrawl_result(db, job, change)
+        db.commit()
+        return job.status.value
+    except _OtherCrawlRunning as exc:
+        db.rollback()
+        try:
+            raise self.retry(exc=exc, countdown=POST_CHANGE_RETRY_SECONDS)
+        except self.MaxRetriesExceededError:
+            job = db.get(CrawlJob, uuid.UUID(crawl_job_id))
+            change = db.get(ChangeRecord, uuid.UUID(change_record_id))
+            if job is not None:
+                job.status = CrawlStatus.failed
+                job.error_summary = "Another crawl kept running; the verification crawl was not started."
+                job.completed_at = datetime.now(timezone.utc)
+            if change is not None:
+                _set_recrawl(change, status="failed", error="Another crawl kept running; use Re-crawl page to try again.")
+            db.commit()
+            return "deferred_too_long"
+    except Exception:
+        db.rollback()
+        logger.exception("run_post_change_crawl failed for change %s", change_record_id)
+        job = db.get(CrawlJob, uuid.UUID(crawl_job_id))
+        change = db.get(ChangeRecord, uuid.UUID(change_record_id))
+        if job is not None and job.status not in (CrawlStatus.completed, CrawlStatus.cancelled):
+            job.status = CrawlStatus.failed
+            job.error_summary = "The verification crawl crashed."
+            job.completed_at = datetime.now(timezone.utc)
+        if change is not None:
+            _set_recrawl(change, status="failed", error="The verification crawl crashed. See server logs.")
+        db.commit()
+        return "failed"
+    finally:
+        db.close()

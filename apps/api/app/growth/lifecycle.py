@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.execution.connections import get_connected_content_connector
 from app.execution.service import get_connector_capabilities
 from app.growth.execution import EXECUTABLE_TYPES
+from app.growth.recrawl import IN_FLIGHT, applied_value
 from app.models.change_record import ChangeRecord, ValidationStatus
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationStatus
 from app.models.rollback_record import RollbackRecord, RollbackStatus
@@ -83,6 +84,7 @@ def describe(db: Session, website: Website, rec: GrowthRecommendation) -> dict:
             .first()
             is not None
         )
+        recrawl = (change.after_state_json or {}).get("recrawl") if change is not None else None
         if rolled_back:
             state = "rolled_back"
         elif change is not None:
@@ -91,6 +93,13 @@ def describe(db: Session, website: Website, rec: GrowthRecommendation) -> dict:
                 ValidationStatus.failed: "failed",
                 ValidationStatus.pending: "validation_pending",
             }[change.validation_status]
+            # The CMS read-back passing is not the end of validation: the
+            # change counts as validated only once a crawler has seen it on
+            # the public page. A mismatch or a failed crawl never marks the
+            # change itself "failed" (page caches lag); it stays pending,
+            # with the reason shown, until a re-crawl confirms it.
+            if state == "validated" and (recrawl is None or recrawl.get("status") not in ("validated", "not_applicable")):
+                state = "validation_pending"
         elif task.status == SEOTaskStatus.failed:
             state = "failed"
         elif task.status == SEOTaskStatus.rejected:
@@ -110,7 +119,8 @@ def describe(db: Session, website: Website, rec: GrowthRecommendation) -> dict:
                 "state": state,
                 "change_record_id": str(change.id) if change else None,
                 "before_value": change.before_state_json.get("value") if change else None,
-                "applied_value": change.after_state_json.get("value") if change else None,
+                "applied_value": applied_value(change, task) if change else None,
+                "recrawl": recrawl,
                 "connector": change.connector_type.value if change else None,
             }
         )

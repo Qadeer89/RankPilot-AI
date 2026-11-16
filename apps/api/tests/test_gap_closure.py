@@ -129,6 +129,10 @@ def test_lifecycle_walks_every_state(db_session):
 
     change.validation_status = ValidationStatus.passed
     db_session.flush()
+    # the CMS read-back passed, but no crawler has confirmed it yet
+    assert describe(db_session, website, rec)["lifecycle_status"] == "validation_pending"
+    change.after_state_json = {**change.after_state_json, "recrawl": {"status": "validated"}}
+    db_session.flush()
     info = describe(db_session, website, rec)
     assert info["lifecycle_status"] == "validated"
     assert info["tasks"][0]["before_value"] == "Old" and info["tasks"][0]["applied_value"] == "Dental Implants"

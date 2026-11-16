@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import RequireRole
 from app.core.resources import get_organization_or_404
 from app.db.session import get_db
-from app.models.crawl_job import CrawlJob
+from app.models.crawl_job import CrawlJob, CrawlTrigger
 from app.models.membership import Membership, MembershipRole
 from app.models.seo_finding import FindingStatus, SEOFinding
 from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
@@ -79,7 +79,7 @@ def get_organization_overview(
     last_crawl_by_website: dict[uuid.UUID, CrawlJob] = {}
     for crawl_job in (
         db.query(CrawlJob)
-        .filter(CrawlJob.website_id.in_(website_ids))
+        .filter(CrawlJob.website_id.in_(website_ids), CrawlJob.trigger != CrawlTrigger.post_change)
         .order_by(CrawlJob.website_id, CrawlJob.created_at.desc())
         .all()
     ):

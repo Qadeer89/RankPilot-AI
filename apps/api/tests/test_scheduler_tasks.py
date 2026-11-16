@@ -172,3 +172,33 @@ def test_daily_crawl_enqueues_a_never_before_crawled_website_immediately(db_sess
     count = scheduler_module.daily_crawl_all_active_websites()
     assert count == 1
     assert len(enqueued) == 1
+
+
+def test_a_recent_post_change_crawl_does_not_postpone_the_scheduled_full_crawl(db_session, monkeypatch):
+    from datetime import datetime, timezone
+
+    from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
+
+    website = _make_website(db_session, verified=True, status=WebsiteStatus.active)
+    # a verification crawl that finished a minute ago must not count as the site's last crawl
+    db_session.add(
+        CrawlJob(website_id=website.id, trigger=CrawlTrigger.post_change, status=CrawlStatus.completed,
+                 started_at=datetime.now(timezone.utc))
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    enqueued = []
+
+    class _FakeRunSiteCrawl:
+        @staticmethod
+        def delay(website_id, crawl_job_id):
+            enqueued.append(website_id)
+
+    import app.tasks.crawl as crawl_module
+
+    monkeypatch.setattr(crawl_module, "run_site_crawl", _FakeRunSiteCrawl)
+
+    assert scheduler_module.daily_crawl_all_active_websites() == 1
+    assert enqueued == [str(website.id)]

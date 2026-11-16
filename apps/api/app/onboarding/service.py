@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models.crawl_job import CrawlJob, CrawlStatus
+from app.models.crawl_job import CrawlJob, CrawlStatus, CrawlTrigger
 from app.models.oauth_connection import OAuthConnection, OAuthConnectionStatus, OAuthProvider
 from app.models.onboarding_state import OnboardingState
 from app.models.seo_finding import SEOFinding
@@ -132,7 +132,7 @@ def _compute_step(
     if key == "configure_crawling":
         if not website_ids:
             return False, "Add a website first."
-        has_crawl = db.query(CrawlJob).filter(CrawlJob.website_id.in_(website_ids)).first() is not None
+        has_crawl = db.query(CrawlJob).filter(CrawlJob.website_id.in_(website_ids), CrawlJob.trigger != CrawlTrigger.post_change).first() is not None
         return has_crawl, "A crawl has been started." if has_crawl else "No crawl started yet."
 
     if key == "first_audit":
@@ -140,7 +140,11 @@ def _compute_step(
             return False, "Add a website first."
         completed_crawl = (
             db.query(CrawlJob)
-            .filter(CrawlJob.website_id.in_(website_ids), CrawlJob.status == CrawlStatus.completed)
+            .filter(
+                CrawlJob.website_id.in_(website_ids),
+                CrawlJob.status == CrawlStatus.completed,
+                CrawlJob.trigger != CrawlTrigger.post_change,
+            )
             .first()
             is not None
         )
@@ -156,7 +160,11 @@ def _compute_step(
         )
         completed_crawl = (
             db.query(CrawlJob)
-            .filter(CrawlJob.website_id.in_(website_ids), CrawlJob.status == CrawlStatus.completed)
+            .filter(
+                CrawlJob.website_id.in_(website_ids),
+                CrawlJob.status == CrawlStatus.completed,
+                CrawlJob.trigger != CrawlTrigger.post_change,
+            )
             .first()
             is not None
         )

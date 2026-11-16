@@ -101,7 +101,9 @@ def verify_live(db: Session, website: Website, rec: GrowthRecommendation) -> dic
         target_url = task.proposed_change_json.get("target_url")
         if change is None or field is None or not target_url:
             continue
-        expected = change.after_state_json.get("value")
+        from app.growth.recrawl import applied_value
+
+        expected = applied_value(change, task)
         try:
             fetched = safe_fetch(target_url)
             found = getattr(extract_page(fetched.body, base_url=fetched.final_url, site_hostname=website.hostname), field)

@@ -165,3 +165,56 @@ def verify_recommendation_live(
     )
     db.commit()
     return result
+
+
+@router.post(f"{_BASE}/{{recommendation_id}}/recrawl")
+def recrawl_recommendation_pages(
+    organization_id: uuid.UUID,
+    website_id: uuid.UUID,
+    recommendation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    membership: Membership = Depends(RequireRole(MembershipRole.editor)),
+) -> GrowthRecommendationResponse:
+    """Queue a one-URL verification crawl for each applied change of this
+    recommendation (skipping any whose crawl is already queued/running)."""
+    from app.growth.recrawl import IN_FLIGHT, enqueue_post_change_crawl
+    from app.models.change_record import ChangeRecord
+    from app.models.seo_task import SEOTask
+
+    website = get_website_or_404(db, organization_id, website_id)
+    row = (
+        db.query(GrowthRecommendation)
+        .filter(GrowthRecommendation.id == recommendation_id, GrowthRecommendation.website_id == website_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Recommendation not found")
+    if row.opportunity_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Nothing has been applied for this recommendation yet.")
+
+    changes = (
+        db.query(ChangeRecord)
+        .join(SEOTask, SEOTask.id == ChangeRecord.seo_task_id)
+        .filter(SEOTask.opportunity_id == row.opportunity_id)
+        .all()
+    )
+    if not changes:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Nothing has been applied for this recommendation yet.")
+    queued = 0
+    for change in changes:
+        if ((change.after_state_json or {}).get("recrawl") or {}).get("status") in IN_FLIGHT:
+            continue
+        if enqueue_post_change_crawl(db, website, change) is not None:
+            queued += 1
+    db.add(
+        AuditEvent(
+            organization_id=organization_id,
+            actor_user_id=membership.user_id,
+            action="growth_recommendation.recrawl",
+            resource_type="growth_recommendation",
+            resource_id=str(row.id),
+            metadata_json={"queued": queued},
+        )
+    )
+    db.commit()
+    return _one(db, website, row)

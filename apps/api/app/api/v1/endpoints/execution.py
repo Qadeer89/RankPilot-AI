@@ -32,7 +32,8 @@ from app.execution.service import (
     verify_github_deployment,
 )
 from app.models.audit_event import AuditEvent
-from app.models.change_record import ChangeRecord
+from app.growth.recrawl import enqueue_post_change_crawl
+from app.models.change_record import ChangeRecord, ValidationStatus
 from app.models.membership import Membership, MembershipRole
 from app.models.rollback_record import RollbackRecord
 from app.models.seo_opportunity import SEOOpportunity
@@ -531,6 +532,17 @@ def execute(
         )
     )
     db.commit()
+
+    # A growth recommendation's change is only "validated" once a crawler
+    # has seen it on the public page, so queue a one-URL verification crawl
+    # (app/growth/recrawl.py). Best-effort: it can never fail this response.
+    if (
+        change_record.validation_status == ValidationStatus.passed
+        and task.opportunity is not None
+        and task.opportunity.category == "growth"
+    ):
+        enqueue_post_change_crawl(db, website, change_record)
+        db.refresh(change_record)
     return ChangeRecordResponse.model_validate(change_record)
 
 

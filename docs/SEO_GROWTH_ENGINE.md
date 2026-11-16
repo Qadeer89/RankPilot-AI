@@ -150,3 +150,28 @@ roll back). Every other type shows why it cannot be applied automatically. Nothi
 `scripts/validate_growth_engine.py` runs the real OpenAI agents (discovery, prompt-injection resistance,
 insufficient data), SSRF blocking, and real competitor crawling for each `--competitor URL`. Crawling needs
 outbound DNS, so run it on the VPS/staging.
+
+### Post-change verification crawl
+After a growth recommendation's change is applied (CMS read-back passed), RankPilot queues a one-URL crawl job
+(`trigger = post_change`, `app/growth/recrawl.py`, Celery task `run_post_change_crawl`). It reuses the normal
+crawler on just that URL: no sitemap seeding, no link discovery, no rules, no health score, and it never counts
+as the site's "last crawl". The snapshot's title/meta description is compared with the applied value and stored on
+the change record (`after_state_json.recrawl`: queued, running, validated, mismatch, failed, not_applicable).
+A recommendation is **validated** only when the CMS read-back passed and the crawl confirmed the value. A
+mismatch (for example a page cache) or a failed crawl never marks the change failed; it stays *validation pending*
+with the reason, and "Re-crawl page" retries. The task waits while a full crawl of the same site is running.
+Limitations: only growth-recommendation changes trigger it, and only title and meta description are compared.
+
+### AI failure handling
+Discovery and competitor analysis report `ai_status`/`ai_message` (`ok`, `skipped_no_input`, `unavailable`,
+`invalid_response`, `input_too_large`, `budget_blocked`). A timeout, rate limit, provider error, malformed or
+schema-violating response, a response that mentions fabricated metrics, an oversized prompt, a missing key or an
+exhausted budget never produces a 500: first-party seeds and crawled competitor evidence are still saved, and the
+UI says why no AI ideas were added.
+
+### Competitor crawler behaviour
+Public pages only, robots.txt per host, SSRF-safe at every redirect hop. HTTP 4xx/5xx and non-HTML responses are
+reported, not treated as content; blocked pages are listed with the reason; requests are at least 1s apart
+(honouring a Crawl-delay up to 10s); one retry for timeouts and 429/502/503/504; a 60s ceiling per domain;
+`example.com` and `www.example.com` are treated as one site. JavaScript is **not** executed for competitor sites:
+a page with no server-rendered title or headings is reported as such.

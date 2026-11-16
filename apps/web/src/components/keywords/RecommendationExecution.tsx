@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   DryRunResult,
   GrowthRecommendation,
+  LifecycleTask,
   approveTask,
   createProposal,
   createTasks,
   dryRunTask,
   executeTask,
+  recrawlGrowthRecommendation,
   rejectTask,
   rollbackChange,
   sendGrowthRecommendationToExecution,
@@ -38,6 +40,28 @@ export default function RecommendationExecution({ token, organizationId, website
   const life = rec.lifecycle ?? {};
   const status = life.lifecycle_status ?? "pending";
   const tasks = life.tasks ?? [];
+  const crawling = tasks.some((t) => t.recrawl && (t.recrawl.status === "queued" || t.recrawl.status === "running"));
+
+  // While the verification crawl is queued or running, check back every few
+  // seconds so the result appears without a manual refresh (bounded, so a
+  // stuck worker does not poll forever).
+  const onChangedRef = useRef(onChanged);
+  useEffect(() => {
+    onChangedRef.current = onChanged;
+  });
+  useEffect(() => {
+    if (!crawling) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (attempts > 40) {
+        clearInterval(timer);
+        return;
+      }
+      void onChangedRef.current();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [crawling]);
 
   async function run(key: string, action: () => Promise<unknown>) {
     setBusy(key);
@@ -104,6 +128,7 @@ export default function RecommendationExecution({ token, organizationId, website
                 </tbody>
               </table>
             )}
+            {task.recrawl && <p className={styles.freshnessNote} data-testid="recrawl-status">{recrawlText(task.recrawl)}</p>}
             <div className={styles.domainActions}>
               {task.state === "in_progress" && task.approval_status === "pending" && (
                 <>
@@ -141,6 +166,10 @@ export default function RecommendationExecution({ token, organizationId, website
 
       {tasks.some((t) => t.change_record_id) && (
         <div className={styles.domainActions}>
+          <button type="button" className={styles.secondaryButton} disabled={busy !== null || crawling}
+            onClick={() => run("recrawl", () => recrawlGrowthRecommendation(token, organizationId, websiteId, rec.id))}>
+            {crawling ? "Re-crawl running…" : "Re-crawl page"}
+          </button>
           <button type="button" className={styles.secondaryButton} disabled={busy !== null}
             onClick={() => run("live", () => verifyGrowthRecommendationLive(token, organizationId, websiteId, rec.id))}>
             {busy === "live" ? "Checking…" : "Check the live page"}
@@ -160,4 +189,23 @@ export default function RecommendationExecution({ token, organizationId, website
 
 function STATE_TEXT(state: string): string {
   return STATUS_LABEL[state] ?? state;
+}
+
+function recrawlText(r: NonNullable<LifecycleTask["recrawl"]>): string {
+  switch (r.status) {
+    case "queued":
+      return "Re-crawl queued: RankPilot will fetch the page and confirm the change is visible.";
+    case "running":
+      return "Re-crawl running…";
+    case "validated":
+      return "Re-crawl confirmed: the crawled page shows the new value.";
+    case "mismatch":
+      return `Re-crawl did not see the change yet (found "${r.found ?? "nothing"}"). A cache or a pending deploy can cause this. Try "Re-crawl page" again shortly.`;
+    case "failed":
+      return `Re-crawl could not verify the change: ${r.error ?? "the page could not be crawled."}`;
+    case "not_applicable":
+      return "Re-crawl finished. This kind of change is not visible in a crawl snapshot, so it was not compared.";
+    default:
+      return `Re-crawl was not started: ${r.error ?? "unknown reason."}`;
+  }
 }

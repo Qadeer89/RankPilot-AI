@@ -19,6 +19,11 @@ class CrawlTrigger(str, enum.Enum):
     # via the generic secret-authenticated webhook endpoint (RankPilot AI
     # Phase 7 "Change Detection" -- deployment/webhook-triggered re-crawl).
     webhook = "webhook"
+    # A one-URL verification crawl queued after RankPilot applies a change
+    # to that page (app/growth/recrawl.py). Not a full-site crawl: it runs
+    # no rules, computes no health score, and does not count as the
+    # website's "last crawl" for scheduling.
+    post_change = "post_change"
 
 
 class CrawlStatus(str, enum.Enum):

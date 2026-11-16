@@ -97,8 +97,12 @@ def trigger_deploy_webhook(
 
     existing = (
         db.query(CrawlJob)
-        .filter(CrawlJob.website_id == website_id, CrawlJob.status.in_(_ACTIVE_CRAWL_STATUSES))
-        .one_or_none()
+        .filter(
+            CrawlJob.website_id == website_id,
+            CrawlJob.status.in_(_ACTIVE_CRAWL_STATUSES),
+            CrawlJob.trigger != CrawlTrigger.post_change,
+        )
+        .first()
     )
     if existing is not None:
         raise HTTPException(
