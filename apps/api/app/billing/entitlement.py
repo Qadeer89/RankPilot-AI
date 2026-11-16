@@ -119,14 +119,19 @@ class EntitlementRequired(BudgetExceeded):
         self.entitlement, self.feature = entitlement, feature
 
 
-def enforcement_mode() -> str:
-    mode = (get_settings().billing_enforcement or "off").lower()
+def enforcement_mode(db: Session | None = None) -> str:
+    if db is not None:
+        from app.admin.runtime_settings import get_value
+
+        mode = str(get_value(db, "billing_enforcement") or "off").lower()
+    else:
+        mode = (get_settings().billing_enforcement or "off").lower()
     return mode if mode in ("off", "log", "enforce") else "off"
 
 
 def check(db: Session, website: Website, feature: str) -> Entitlement:
     """Raise EntitlementRequired when paid use is not allowed (enforce mode only)."""
-    mode = enforcement_mode()
+    mode = enforcement_mode(db)
     if mode == "off":
         return Entitlement(True, "billing_off")
     result = evaluate(db, website)

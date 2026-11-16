@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy.orm import Session
+
+from app.admin import runtime_settings
 from app.config import get_settings
 from app.models.billing import BillingInterval
 
@@ -25,16 +28,22 @@ class Plan:
         return self.price_cents * 12 if self.interval == BillingInterval.month else self.price_cents
 
 
-def get_plan(interval: BillingInterval) -> Plan:
+def get_plan(interval: BillingInterval, db: Session | None = None) -> Plan:
+    """The plan as it should be offered to NEW buyers. With a session, a Super Admin override wins over the environment."""
     settings = get_settings()
-    price = settings.price_monthly_cents if interval == BillingInterval.month else settings.price_annual_cents
-    return Plan(interval=interval, price_cents=price, currency=settings.billing_currency, trial_days=settings.trial_days)
+    if db is not None:
+        price = runtime_settings.get_value(db, "price_monthly_cents" if interval == BillingInterval.month else "price_annual_cents")
+        trial_days = runtime_settings.get_value(db, "trial_days")
+    else:
+        price = settings.price_monthly_cents if interval == BillingInterval.month else settings.price_annual_cents
+        trial_days = settings.trial_days
+    return Plan(interval=interval, price_cents=price, currency=settings.billing_currency, trial_days=trial_days)
 
 
-def all_plans() -> list[Plan]:
-    return [get_plan(BillingInterval.month), get_plan(BillingInterval.year)]
+def all_plans(db: Session | None = None) -> list[Plan]:
+    return [get_plan(BillingInterval.month, db), get_plan(BillingInterval.year, db)]
 
 
-def annual_saving_cents() -> int:
+def annual_saving_cents(db: Session | None = None) -> int:
     """12 months at the monthly price minus the annual price."""
-    return get_plan(BillingInterval.month).price_cents * 12 - get_plan(BillingInterval.year).price_cents
+    return get_plan(BillingInterval.month, db).price_cents * 12 - get_plan(BillingInterval.year, db).price_cents

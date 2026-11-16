@@ -72,6 +72,12 @@ class WebhookOutcome:
     event_id: uuid.UUID | None = None
 
 
+def _grace_days(db: Session) -> int:
+    from app.admin.runtime_settings import get_value
+
+    return int(get_value(db, "billing_grace_days"))
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -274,7 +280,7 @@ def apply_subscription_object(
     if status in (SubscriptionStatus.active, SubscriptionStatus.trialing):
         sub.grace_ends_at = None
     if status in (SubscriptionStatus.past_due, SubscriptionStatus.unpaid) and sub.grace_ends_at is None:
-        sub.grace_ends_at = (provider_updated or _utcnow()) + timedelta(days=settings.billing_grace_days)
+        sub.grace_ends_at = (provider_updated or _utcnow()) + timedelta(days=_grace_days(db))
 
     _track_trial(db, sub, previous_status, status, at=provider_updated or _utcnow())
     _queue_state_notifications(db, sub, previous_status, status, created_now)

@@ -73,7 +73,7 @@ def start_checkout(
 ) -> CheckoutOffer:
     settings = get_settings()
     now = datetime.now(timezone.utc)
-    plan = get_plan(interval)
+    plan = get_plan(interval, db)
 
     if website.organization_id != organization.id or website.status == WebsiteStatus.deleted:
         raise CheckoutError("project_not_found", "That project was not found.", 404)

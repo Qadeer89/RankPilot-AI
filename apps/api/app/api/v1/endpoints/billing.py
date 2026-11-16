@@ -49,16 +49,16 @@ class CheckoutResponse(BaseModel):
 
 
 @router.get("/billing/plans", response_model=PlansResponse)
-def get_plans(_user: User = Depends(get_current_user)) -> PlansResponse:
+def get_plans(_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> PlansResponse:
     return PlansResponse(
         plans=[
             PlanResponse(
                 interval=p.interval.value, price_cents=p.price_cents, currency=p.currency, trial_days=p.trial_days,
                 monthly_equivalent_cents=p.monthly_equivalent_cents,
             )
-            for p in all_plans()
+            for p in all_plans(db)
         ],
-        annual_saving_cents=annual_saving_cents(),
+        annual_saving_cents=annual_saving_cents(db),
     )
 
 

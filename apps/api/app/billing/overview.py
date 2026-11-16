@@ -91,12 +91,12 @@ def build_overview(db: Session, organization_id) -> dict:
             }
         )
     return {
-        "enforcement": enforcement_mode(),
+        "enforcement": enforcement_mode(db),
         "plans": [
             {"interval": p.interval.value, "price_cents": p.price_cents, "currency": p.currency, "trial_days": p.trial_days,
              "monthly_equivalent_cents": p.monthly_equivalent_cents}
-            for p in all_plans()
+            for p in all_plans(db)
         ],
-        "annual_saving_cents": annual_saving_cents(),
+        "annual_saving_cents": annual_saving_cents(db),
         "projects": projects,
     }
