@@ -115,3 +115,87 @@ async def lemonsqueezy_webhook(
         # Recorded as failed; a 5xx makes Lemon Squeezy retry the delivery later.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Not applied yet; retry")
     return {"status": outcome.status}
+
+
+# --- project replacement ---------------------------------------------------------------------
+
+from datetime import datetime  # noqa: E402
+
+from app.billing.replacement import (  # noqa: E402
+    ReplacementError,
+    eligible_targets,
+    replace_project,
+    replacements_remaining,
+)
+from app.billing import notifications as billing_notifications  # noqa: E402
+from app.models.billing import Subscription  # noqa: E402
+
+
+class ReplaceProjectRequest(BaseModel):
+    target_website_id: uuid.UUID
+    # Two separate confirmations: a replacement is permanent and must never be a one-click accident.
+    confirm: bool = False
+    acknowledge_permanent: bool = False
+
+
+class ReplacementTarget(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    hostname: str
+
+
+class ReplacementTargetsResponse(BaseModel):
+    replacements_remaining: int
+    targets: list[ReplacementTarget]
+
+
+def _own_subscription(db: Session, organization_id: uuid.UUID, subscription_id: uuid.UUID) -> Subscription:
+    sub = db.query(Subscription).filter(Subscription.id == subscription_id, Subscription.organization_id == organization_id).one_or_none()
+    if sub is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail={"code": "subscription_not_found", "message": "That subscription was not found."})
+    return sub
+
+
+@router.get("/organizations/{organization_id}/billing/subscriptions/{subscription_id}/replacement-targets",
+            response_model=ReplacementTargetsResponse)
+def list_replacement_targets(
+    organization_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+) -> ReplacementTargetsResponse:
+    sub = _own_subscription(db, organization_id, subscription_id)
+    return ReplacementTargetsResponse(
+        replacements_remaining=replacements_remaining(sub),
+        targets=[ReplacementTarget(id=w.id, display_name=w.display_name, hostname=w.hostname) for w in eligible_targets(db, sub)],
+    )
+
+
+@router.post("/organizations/{organization_id}/billing/subscriptions/{subscription_id}/replace-project")
+def replace_subscription_project(
+    organization_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    payload: ReplaceProjectRequest,
+    db: Session = Depends(get_db),
+    _membership: Membership = Depends(RequireRole(MembershipRole.admin)),
+    user: User = Depends(get_current_user),
+) -> dict:
+    if not (payload.confirm and payload.acknowledge_permanent):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
+            "code": "confirmation_required",
+            "message": "Confirm that you understand this replacement is permanent and can only be done once.",
+        })
+    try:
+        result = replace_project(db, user=user, subscription_id=subscription_id, target_website_id=payload.target_website_id,
+                                 organization_id=organization_id)
+        db.commit()
+    except ReplacementError as exc:
+        db.rollback()
+        raise HTTPException(exc.http_status, detail={"code": exc.code, "message": exc.message}) from exc
+    billing_notifications.flush(db)
+    return {
+        "subscription_id": str(result.subscription.id),
+        "website_id": str(result.subscription.website_id),
+        "replacements_remaining": replacements_remaining(result.subscription),
+        "sequence": result.replacement.sequence,
+    }
