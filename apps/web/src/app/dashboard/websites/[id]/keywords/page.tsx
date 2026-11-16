@@ -766,7 +766,7 @@ export default function KeywordWorkspacePage() {
                   <div className={styles.cardHeader}>
                     <strong>{rec.title}</strong>
                     <span className={styles.badge}>
-                      {(rec.lifecycle?.lifecycle_status ?? rec.status).replaceAll("_", " ")} · {rec.priority} priority · {rec.difficulty} effort
+                      {rec.lifecycle?.applied_manually ? "applied (manually)" : (rec.lifecycle?.lifecycle_status ?? rec.status).replaceAll("_", " ")} · {rec.priority} priority · {rec.difficulty} effort
                     </span>
                   </div>
                   <p>
