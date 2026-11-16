@@ -117,3 +117,36 @@ same numbers.
 Run `alembic upgrade head`, restart the API, worker and scheduler,
 rebuild the web app, then re-run a Search Console sync per website so
 existing data picks up country and device.
+
+## Gap closure and validation
+
+### Country handling
+All country values are stored as ISO 3166-1 alpha-2 upper case (`US`, `GB`, `PK`), with `ZZ` for "unknown".
+`app/core/countries.py` is the only place that converts: Search Console's lower-case alpha-3 codes (`usa`) are
+normalized at sync time, API inputs (`usa`, `UK`, `gb`) are normalized at the endpoint, and
+`to_search_console_code` converts back for provider calls. Country names are not accepted as input, and there is
+no substring matching. Migration `44533486c7d9` converts existing stored codes (unmappable values are left as-is).
+`GET /reference/countries` feeds the UI dropdowns.
+
+### Target market settings
+Stored on the existing `websites` columns (no second model): `target_country`, `additional_target_countries`,
+`target_language`, `target_city`, plus `target_languages_by_country` (per-market language). Edited through
+`PATCH .../settings` (editor role, tenant-scoped, 400 on invalid codes). The Keyword Intelligence country
+selector lists the target markets and defaults to the primary country.
+
+### GA4 landing pages
+`ga4_landing_page_metrics` stores organic-search sessions, engaged sessions and conversions per landing path,
+mapped to crawled pages. The Performance tab shows them in a separate column from Search Console
+clicks/impressions/position; GA4 is engagement data, never a ranking metric.
+
+### Recommendation lifecycle
+Pending, Approved, Rejected, In progress, Applied (manual only), Validation pending, Validated, Failed, Rolled back
+are derived from the real task, change-record and rollback state (`app/growth/lifecycle.py`). Only
+`improve_existing_page` recommendations on a connected CMS that supports title/meta changes are executable
+(preview, approve, apply, CMS read-back validation, optional live-page re-fetch check at `verify-live`,
+roll back). Every other type shows why it cannot be applied automatically. Nothing publishes without approval.
+
+### Live validation
+`scripts/validate_growth_engine.py` runs the real OpenAI agents (discovery, prompt-injection resistance,
+insufficient data), SSRF blocking, and real competitor crawling for each `--competitor URL`. Crawling needs
+outbound DNS, so run it on the VPS/staging.

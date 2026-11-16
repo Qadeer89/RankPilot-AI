@@ -8,6 +8,7 @@ import {
   ApiError,
   AiUsage,
   CompetitorDomain,
+  CountryOption,
   PerformanceTimeline,
   GrowthRecommendation,
   RecommendationStatus,
@@ -22,8 +23,7 @@ import {
   generateGrowthRecommendations,
   getPerformanceTimeline,
   getWebsiteAiUsage,
-  sendGrowthRecommendationToExecution,
-  updateWebsiteSettings,
+  listCountries,
   listGrowthRecommendations,
   updateGrowthRecommendationStatus,
   getMe,
@@ -36,6 +36,8 @@ import {
   updateKeywordIdeaStatus,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import RecommendationExecution from "@/components/keywords/RecommendationExecution";
+import TargetMarketSettings from "@/components/keywords/TargetMarketSettings";
 import styles from "./keywords.module.css";
 
 type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations" | "performance";
@@ -93,9 +95,10 @@ export default function KeywordWorkspacePage() {
   const [website, setWebsite] = useState<Website | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
-  // Search Console reports countries as three-letter codes ("usa"); the
-  // website's target country is two-letter ("US"), so it is not prefilled.
+  // Internal ISO alpha-2 code ("US"). Prefilled from the project's primary
+  // target country; "" means all countries combined.
   const [country, setCountry] = useState<string>("");
+  const [countries, setCountries] = useState<CountryOption[]>([]);
 
   const [performance, setPerformance] = useState<SearchPerformance | null>(null);
   const [intelligence, setIntelligence] = useState<SearchPerformanceIntelligence | null>(null);
@@ -108,8 +111,6 @@ export default function KeywordWorkspacePage() {
   const [timeline, setTimeline] = useState<PerformanceTimeline | null>(null);
   const [windowDays, setWindowDays] = useState(28);
   const [usage, setUsage] = useState<AiUsage | null>(null);
-  const [targeting, setTargeting] = useState({ country: "", extra: "", language: "", city: "" });
-  const [savingTargeting, setSavingTargeting] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
 
   const token = getToken();
@@ -127,12 +128,8 @@ export default function KeywordWorkspacePage() {
         if (!orgId) return;
         const site = await getWebsite(activeToken, orgId, websiteId);
         setWebsite(site);
-        setTargeting({
-          country: site.target_country ?? "",
-          extra: site.additional_target_countries.join(", "),
-          language: site.target_language ?? "",
-          city: site.target_city ?? "",
-        });
+        setCountry(site.target_country ?? "");
+        listCountries(activeToken).then(setCountries).catch(() => setCountries([]));
       })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load website."));
   }, [router, websiteId]);
@@ -199,6 +196,11 @@ export default function KeywordWorkspacePage() {
     }
   }
 
+  async function refreshRecommendations() {
+    if (!token || !orgId) return;
+    setRecommendations(await listGrowthRecommendations(token, orgId, websiteId));
+  }
+
   async function handleRecommendationStatus(id: string, status: RecommendationStatus) {
     if (!token || !orgId) return;
     try {
@@ -206,40 +208,6 @@ export default function KeywordWorkspacePage() {
       setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update recommendation.");
-    }
-  }
-
-  async function handleSendToExecution(id: string) {
-    if (!token || !orgId) return;
-    setError(null);
-    try {
-      const updated = await sendGrowthRecommendationToExecution(token, orgId, websiteId, id);
-      setRecommendations((prev) => prev.map((r) => (r.id === id ? updated : r)));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not send this recommendation for an AI draft.");
-    }
-  }
-
-  async function handleSaveTargeting(event: React.FormEvent) {
-    event.preventDefault();
-    if (!token || !orgId) return;
-    setSavingTargeting(true);
-    setError(null);
-    try {
-      const updated = await updateWebsiteSettings(token, orgId, websiteId, {
-        ...(targeting.country.trim() ? { target_country: targeting.country.trim() } : {}),
-        additional_target_countries: targeting.extra
-          .split(",")
-          .map((c) => c.trim())
-          .filter(Boolean),
-        ...(targeting.language.trim() ? { target_language: targeting.language.trim() } : {}),
-        target_city: targeting.city.trim(),
-      });
-      setWebsite(updated);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save target market settings.");
-    } finally {
-      setSavingTargeting(false);
     }
   }
 
@@ -336,14 +304,26 @@ export default function KeywordWorkspacePage() {
             <label htmlFor="country-filter" style={{ fontSize: 13, color: "var(--rp-muted)" }}>
               Country
             </label>
-            <input
+            <select
               id="country-filter"
-              className={styles.input}
-              placeholder="e.g. usa (GSC code)"
+              className={styles.select}
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-              style={{ width: 160 }}
-            />
+            >
+              <option value="">All countries</option>
+              {[
+                ...(website.target_country ? [website.target_country] : []),
+                ...website.additional_target_countries,
+              ].map((code) => (
+                <option key={code} value={code}>
+                  {countries.find((c) => c.code === code)?.name ?? code} ({code})
+                </option>
+              ))}
+              {country &&
+                ![website.target_country, ...website.additional_target_countries].includes(country) && (
+                  <option value={country}>{country}</option>
+                )}
+            </select>
           </div>
         </div>
 
@@ -388,43 +368,18 @@ export default function KeywordWorkspacePage() {
                 <div className={styles.metricValue}>{competitors.length}</div>
               </div>
             </div>
-            <form className={styles.formRow} onSubmit={handleSaveTargeting} style={{ flexWrap: "wrap", alignItems: "center" }}>
-              <strong style={{ fontSize: 13 }}>Target market</strong>
-              <input
-                className={styles.input}
-                aria-label="Primary target country"
-                placeholder="Country (e.g. US)"
-                maxLength={2}
-                value={targeting.country}
-                onChange={(e) => setTargeting({ ...targeting, country: e.target.value })}
-                style={{ width: 150 }}
+            {token && orgId && (
+              <TargetMarketSettings
+                token={token}
+                organizationId={orgId}
+                website={website}
+                countries={countries}
+                onSaved={(updated) => {
+                  setWebsite(updated);
+                  setCountry(updated.target_country ?? "");
+                }}
               />
-              <input
-                className={styles.input}
-                aria-label="Additional target countries"
-                placeholder="More countries (GB, CA)"
-                value={targeting.extra}
-                onChange={(e) => setTargeting({ ...targeting, extra: e.target.value })}
-              />
-              <input
-                className={styles.input}
-                aria-label="Target language"
-                placeholder="Language (e.g. en)"
-                value={targeting.language}
-                onChange={(e) => setTargeting({ ...targeting, language: e.target.value })}
-                style={{ width: 150 }}
-              />
-              <input
-                className={styles.input}
-                aria-label="Target city"
-                placeholder="City (optional)"
-                value={targeting.city}
-                onChange={(e) => setTargeting({ ...targeting, city: e.target.value })}
-              />
-              <button type="submit" className={styles.secondaryButton} disabled={savingTargeting}>
-                {savingTargeting ? "Saving..." : "Save"}
-              </button>
-            </form>
+            )}
             {usage && (
               <p className={styles.freshnessNote}>
                 AI usage, last {usage.days} days: about ${usage.total_estimated_cost_usd.toFixed(2)} across{" "}
@@ -540,7 +495,7 @@ export default function KeywordWorkspacePage() {
           <div className={styles.card}>
             <h2>Country Analysis {country ? `— ${country}` : "(all countries combined)"}</h2>
             <p className={styles.freshnessNote}>
-              Enter a Search Console country code above (e.g. &quot;usa&quot;, &quot;gbr&quot;) to scope every signal below to one
+              Choose a country above (your target markets are listed first) to scope every signal below to one
               market -- results are never blended across countries.
             </p>
 
@@ -795,7 +750,7 @@ export default function KeywordWorkspacePage() {
                   <div className={styles.cardHeader}>
                     <strong>{rec.title}</strong>
                     <span className={styles.badge}>
-                      {rec.status} · {rec.priority} priority · {rec.difficulty} effort
+                      {(rec.lifecycle?.lifecycle_status ?? rec.status).replaceAll("_", " ")} · {rec.priority} priority · {rec.difficulty} effort
                     </span>
                   </div>
                   <p>
@@ -836,28 +791,23 @@ export default function KeywordWorkspacePage() {
                   )}
                   {rec.status === "approved" && (
                     <div className={styles.domainActions}>
-                      {rec.automation_available && !rec.opportunity_id && (
-                        <button
-                          type="button"
-                          className={styles.primaryButton}
-                          onClick={() => handleSendToExecution(rec.id)}
-                        >
-                          Send for AI draft
-                        </button>
-                      )}
-                      {rec.opportunity_id && (
-                        <Link href={`/dashboard/websites/${websiteId}`} className={styles.backLink}>
-                          In the Opportunities tab: preview, approve and publish there
-                        </Link>
-                      )}
                       <button
                         type="button"
                         className={styles.secondaryButton}
                         onClick={() => handleRecommendationStatus(rec.id, "done")}
                       >
-                        Mark as done
+                        Mark as done (I applied it myself)
                       </button>
                     </div>
+                  )}
+                  {token && orgId && (
+                    <RecommendationExecution
+                      token={token}
+                      organizationId={orgId}
+                      websiteId={websiteId}
+                      rec={rec}
+                      onChanged={refreshRecommendations}
+                    />
                   )}
                 </div>
               ))
@@ -894,6 +844,7 @@ export default function KeywordWorkspacePage() {
                     <th>Impressions</th>
                     <th>CTR</th>
                     <th>Avg. position</th>
+                    <th>GA4 organic landing sessions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -919,6 +870,10 @@ export default function KeywordWorkspacePage() {
                         <td>{pair(entry.before?.impressions, entry.after?.impressions, String)}</td>
                         <td>{pair(entry.before?.ctr, entry.after?.ctr, (n) => `${(n * 100).toFixed(1)}%`)}</td>
                         <td>{pair(entry.before?.average_position, entry.after?.average_position, (n) => n.toFixed(1))}</td>
+                        <td>
+                          {pair(entry.organic_landing_before?.sessions, entry.organic_landing_after?.sessions, String)}
+                          <div className={styles.subtitle}>GA4 engagement, not a ranking metric</div>
+                        </td>
                       </tr>
                     );
                   })}

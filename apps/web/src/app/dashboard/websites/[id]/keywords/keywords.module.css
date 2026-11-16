@@ -270,3 +270,19 @@
   color: var(--rp-ink);
   overflow-wrap: anywhere;
 }
+
+.targetForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rp-border, #e5e7eb);
+}
+
+.execPanel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--rp-border, #e5e7eb);
+  border-radius: 8px;
+}

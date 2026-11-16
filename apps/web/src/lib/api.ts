@@ -81,6 +81,7 @@ export interface Website {
   additional_target_countries: string[];
   target_language: string | null;
   target_city: string | null;
+  target_languages_by_country: Record<string, string>;
 }
 
 export interface CrawlJob {
@@ -351,6 +352,7 @@ export function updateWebsiteSettings(
     additional_target_countries?: string[];
     target_language?: string;
     target_city?: string;
+    target_languages_by_country?: Record<string, string>;
     notify_on_regression?: boolean;
     notify_on_auto_pipeline_summary?: boolean;
   }
@@ -1401,7 +1403,49 @@ export function listAdminChatFeedback(token: string, unansweredOnly: boolean) {
 
 export type RecommendationStatus = "open" | "approved" | "rejected" | "done";
 
+export type LifecycleStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "in_progress"
+  | "applied"
+  | "validation_pending"
+  | "validated"
+  | "failed"
+  | "rolled_back";
+
+export interface LifecycleTask {
+  task_id: string;
+  operation: string;
+  target_url: string | null;
+  proposed_value: string | null;
+  summary: string | null;
+  task_status: string;
+  approval_status: string;
+  state: string;
+  change_record_id: string | null;
+  before_value: string | null;
+  applied_value: string | null;
+  connector: string | null;
+}
+
+export interface LiveCheck {
+  checked_at: string;
+  matched: boolean;
+  checks: { operation: string; url: string; expected: string | null; found: string | null; matched: boolean; error: string | null }[];
+}
+
+export interface RecommendationLifecycle {
+  lifecycle_status?: LifecycleStatus;
+  supported?: boolean;
+  unsupported_reason?: string | null;
+  applied_manually?: boolean;
+  tasks?: LifecycleTask[];
+  live_check?: LiveCheck | null;
+}
+
 export interface GrowthRecommendation {
+  lifecycle: RecommendationLifecycle;
   id: string;
   recommendation_type: string;
   title: string;
@@ -1486,6 +1530,8 @@ export interface PerformanceTimelineEntry {
   before: SearchWindowStats | null;
   after: SearchWindowStats | null;
   after_window_complete: boolean;
+  organic_landing_before: { sessions: number; engaged_sessions: number; conversions: number } | null;
+  organic_landing_after: { sessions: number; engaged_sessions: number; conversions: number } | null;
   site_ga4_before: { sessions: number; conversions: number } | null;
   site_ga4_after: { sessions: number; conversions: number } | null;
 }
@@ -1520,4 +1566,41 @@ export function getWebsiteAiUsage(token: string, organizationId: string, website
   return request<AiUsage>(`/organizations/${organizationId}/websites/${websiteId}/ai-usage`, {
     headers: authHeaders(token),
   });
+}
+
+
+export function verifyGrowthRecommendationLive(
+  token: string,
+  organizationId: string,
+  websiteId: string,
+  recommendationId: string
+) {
+  return request<LiveCheck>(
+    `/organizations/${organizationId}/websites/${websiteId}/growth-recommendations/${recommendationId}/verify-live`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export interface DryRunResult {
+  operation: string;
+  target_url: string;
+  before_value: string;
+  proposed_value: string;
+  changed: boolean;
+}
+
+export function dryRunTask(token: string, organizationId: string, websiteId: string, taskId: string) {
+  return request<DryRunResult>(
+    `/organizations/${organizationId}/websites/${websiteId}/tasks/${taskId}/dry-run`,
+    { method: "POST", headers: authHeaders(token) }
+  );
+}
+
+export interface CountryOption {
+  code: string;
+  name: string;
+}
+
+export function listCountries(token: string) {
+  return request<CountryOption[]>(`/reference/countries`, { headers: authHeaders(token) });
 }
