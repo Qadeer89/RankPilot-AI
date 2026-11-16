@@ -175,3 +175,11 @@ reported, not treated as content; blocked pages are listed with the reason; requ
 (honouring a Crawl-delay up to 10s); one retry for timeouts and 429/502/503/504; a 60s ceiling per domain;
 `example.com` and `www.example.com` are treated as one site. JavaScript is **not** executed for competitor sites:
 a page with no server-rendered title or headings is reported as such.
+
+### Automated UI tests
+`apps/web/e2e/` holds Playwright tests (`npm run test:e2e` in `apps/web`) for the Keyword Intelligence workspace:
+country prefill and scoping, target market settings (add, remove, language, save, reload, rejected save), AI
+discovery and competitor-analysis failure messages, recommendation generation (counts, "nothing to recommend",
+unsupported reasons, manual completion), the full preview, approve, apply and verification-crawl flow (validated,
+mismatch, failed) and the GA4 column. They drive the real Next.js app in Chromium against a scripted fake API
+(`e2e/support/fakeApi.ts`), so they verify the frontend only, not the backend or any live provider.
