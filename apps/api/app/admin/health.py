@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.admin import runtime_settings
 from app.config import get_settings
+from app.core.deployment import deployment_problems
 from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.billing import BillingEvent, BillingEventStatus, Payment, PaymentStatus
 from app.models.change_record import ChangeRecord, ValidationStatus
@@ -87,6 +88,13 @@ def collect(db: Session, *, now: datetime | None = None) -> dict:
     cms_failed = db.query(ChangeRecord).filter(ChangeRecord.validation_status == ValidationStatus.failed, ChangeRecord.executed_at >= week_ago).count()
     checks.append(_check("cms", "warning" if (cms_bad or cms_failed) else "ok",
                          f"{cms_bad} CMS connection(s) in error; {cms_failed} change(s) failed validation in 7 days.", connections_in_error=cms_bad, failed_validations_7d=cms_failed))
+
+    problems = deployment_problems()
+    if problems:
+        worst = "error" if any(p["level"] == "error" for p in problems) else "warning"
+        checks.append(_check("configuration", worst, "; ".join(p["message"] for p in problems), problems=problems))
+    else:
+        checks.append(_check("configuration", "ok", "Environment, URLs and payment mode are consistent."))
 
     order = {"error": 3, "warning": 2, "unknown": 1, "ok": 0}
     overall = max((c["state"] for c in checks), key=lambda s: order[s])

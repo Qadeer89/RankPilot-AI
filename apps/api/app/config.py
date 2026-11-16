@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # existed at all before this).
     password_reset_token_expire_minutes: int = 60
     frontend_base_url: str = "http://localhost:3100"
+    # Public address of THIS API (used to show the exact webhook URL to register with the payment
+    # provider and to cross-check OAuth redirect URIs). Nothing is hard-wired to one domain: every
+    # externally visible address comes from these settings.
+    api_public_url: str = "http://127.0.0.1:8000"
+    # Page describing the crawler, shown in the User-Agent. Empty = "<frontend_base_url>/bot".
+    crawler_info_url: str = ""
     email_verification_token_expire_hours: int = 48
 
     # OpenAI (AI_AGENT_SPECIFICATION.md #3). Server-side only; never exposed

@@ -12,12 +12,13 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.core.deployment import crawler_user_agent
 from app.core.url_safety import UnsafeUrlError, build_pinned_url, validate_public_url
 
 MAX_REDIRECTS = 5
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
 DEFAULT_TIMEOUT_SECONDS = 10.0
-DEFAULT_USER_AGENT = "RankPilotBot/0.1 (+https://rankpilot.ai/bot)"
+DEFAULT_USER_AGENT = crawler_user_agent()
 
 
 class FetchError(Exception):

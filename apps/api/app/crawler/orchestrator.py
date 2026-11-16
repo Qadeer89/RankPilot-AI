@@ -16,6 +16,7 @@ from urllib.parse import urldefrag, urlsplit, urlunsplit
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.deployment import crawler_user_agent
 from app.crawler.extract import extract_page
 from app.crawler.fetch import FetchError, safe_fetch
 from app.crawler.render import RenderError, looks_js_rendered, render_page
@@ -32,7 +33,7 @@ from app.models.website import Website, WebsiteStatus
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "RankPilotBot/0.1 (+https://rankpilot.ai/bot)"
+USER_AGENT = crawler_user_agent()
 
 # RP13-008: a polite minimum gap between consecutive requests to the same
 # host, since one crawl job fetches many URLs on the same host in a tight

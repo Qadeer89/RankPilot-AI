@@ -20,6 +20,8 @@ from app.admin.health import collect as collect_health
 from app.billing.replacement import ReplacementError, grant_replacement_exception
 from app.billing.webhooks import reprocess_event
 from app.core.deps import require_super_admin
+from app.config import get_settings
+from app.core.deployment import deployment_problems, is_indexable, webhook_url
 from app.db.session import get_db
 from app.models.audit_event import AuditEvent
 from app.models.billing import (
@@ -470,7 +472,12 @@ def list_audit_logs(action: str | None = None, q: str | None = None, page: int =
 
 @router.get("/settings")
 def get_settings_list(db: Session = Depends(get_db)) -> dict:
+    cfg = get_settings()
     return {"items": runtime_settings.all_settings(db),
+            "deployment": {"environment": cfg.environment, "frontend_url": cfg.frontend_base_url, "api_public_url": cfg.api_public_url,
+                           "billing_webhook_url": webhook_url(cfg), "payment_mode": "test" if cfg.lemonsqueezy_test_mode else "live",
+                           "indexable": is_indexable(cfg), "provider_configured": bool(cfg.lemonsqueezy_api_key and cfg.lemonsqueezy_webhook_secret),
+                           "problems": deployment_problems(cfg)},
             "notes": ["Prices only affect NEW checkouts. Existing subscriptions keep the price they were bought at.",
                       "Changing the displayed price does not change what Lemon Squeezy charges: update the variant there too.",
                       "Secrets (API keys, webhook secret) are environment variables and are never shown or editable here."]}
