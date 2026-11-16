@@ -36,6 +36,7 @@ import {
   updateKeywordIdeaStatus,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { describeEvidence, readable } from "@/lib/recommendationText";
 import RecommendationExecution from "@/components/keywords/RecommendationExecution";
 import TargetMarketSettings from "@/components/keywords/TargetMarketSettings";
 import styles from "./keywords.module.css";
@@ -790,7 +791,7 @@ export default function KeywordWorkspacePage() {
               recommendations.map((rec) => (
                 <div key={rec.id} className={styles.recCard}>
                   <div className={styles.cardHeader}>
-                    <strong>{rec.title}</strong>
+                    <strong>{readable(rec.title)}</strong>
                     <span className={styles.badge}>
                       {rec.lifecycle?.applied_manually ? "applied (manually)" : (rec.lifecycle?.lifecycle_status ?? rec.status).replaceAll("_", " ")} · {rec.priority} priority · {rec.difficulty} effort
                     </span>
@@ -799,7 +800,7 @@ export default function KeywordWorkspacePage() {
                     <strong>Why:</strong> {rec.problem}
                   </p>
                   <p>
-                    <strong>Do:</strong> {rec.recommended_action}
+                    <strong>Do:</strong> {readable(rec.recommended_action)}
                   </p>
                   <p>
                     <strong>Expected benefit:</strong> {rec.expected_benefit}
@@ -811,7 +812,7 @@ export default function KeywordWorkspacePage() {
                     Source: {rec.data_source.replaceAll("_", " ")}
                     {rec.target_country ? ` · Country: ${rec.target_country}` : ""} ·{" "}
                     {rec.automation_available ? "Can be applied automatically" : "Manual change"} · Evidence:{" "}
-                    {JSON.stringify(rec.evidence_json)}
+                    {describeEvidence(rec.evidence_json)}
                   </p>
                   {rec.status === "open" && (
                     <div className={styles.domainActions}>

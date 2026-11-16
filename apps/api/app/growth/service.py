@@ -27,6 +27,11 @@ MIN_IDEA_CONFIDENCE = 0.6
 HIGH_IMPRESSIONS = 100
 
 
+def _content_label(content_type: str | None) -> str:
+    """"blog_post" -> "blog post" for text a person reads."""
+    return (content_type or "content").replace("_", " ").strip() or "content"
+
+
 def _upsert(db: Session, website: Website, existing: dict[str, GrowthRecommendation], **fields) -> GrowthRecommendation:
     key = fields["dedupe_key"]
     row = existing.get(key)
@@ -173,13 +178,13 @@ def generate_growth_recommendations(
                 db, website, existing,
                 dedupe_key=f"new_content:{idea.id}",
                 recommendation_type="new_content",
-                title=f'Create {idea.recommended_content_type or "content"} for "{idea.keyword}"',
+                title=f'Create {_content_label(idea.recommended_content_type)} for "{idea.keyword}"',
                 page_id=idea.target_page_id,
                 target_country=idea.country,
                 keyword=idea.keyword,
                 data_source="competitor_public_content" if from_competitor else "ai_generated_idea",
                 problem=idea.rationale,
-                recommended_action=f"Plan and write original {idea.recommended_content_type or 'content'} covering this topic.",
+                recommended_action=f"Plan and write an original {_content_label(idea.recommended_content_type)} covering this topic.",
                 expected_benefit=(
                     "Could extend topical coverage. This is an AI-generated idea, not verified search demand; "
                     "search volume unavailable."

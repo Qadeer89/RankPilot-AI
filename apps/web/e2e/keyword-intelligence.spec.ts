@@ -146,6 +146,30 @@ test.describe("growth recommendations", () => {
     await expect(page.getByTestId("unsupported-reason")).toContainText("no automated change for this kind of recommendation");
   });
 
+  test("raw type names and evidence JSON are shown as readable text", async ({ page }) => {
+    const api = new FakeApi({
+      recommendationsToGenerate: [
+        recommendation({
+          id: "rec-idea", recommendation_type: "create_blog_post", automation_available: false,
+          title: 'Create blog_post for "knee pain exercises"',
+          recommended_action: "Plan and write original blog_post covering this topic.",
+          evidence_json: { keyword_idea_id: "4305e08a-1aec-47d3-a470-63262b2f3cda", confidence: 0.85, data_classification: "ai_generated_idea" },
+        }),
+        recommendation({ id: "rec-gsc", title: "Strengthen the page", evidence_json: { impressions: 150, average_position: 14.2, window_days: 28 } }),
+      ],
+    });
+    await open(page, api);
+    await page.getByRole("button", { name: "Recommendations", exact: true }).click();
+    await page.getByRole("button", { name: "Generate from current data" }).click();
+
+    await expect(page.getByText('Create blog post for "knee pain exercises"')).toBeVisible();
+    await expect(page.getByText("Plan and write original blog post covering this topic.")).toBeVisible();
+    await expect(page.getByText(/AI confidence 85%.*AI-generated idea \(not verified demand\)/)).toBeVisible();
+    await expect(page.getByText("150 impressions · average position 14.2 · last 28 days")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("keyword_idea_id");
+    await expect(page.locator("body")).not.toContainText("blog_post");
+  });
+
   test("without a connected CMS the reason is shown instead of an apply button", async ({ page }) => {
     const api = new FakeApi({ cmsConnected: false, recommendationsToGenerate: [recommendation({ status: "approved" })] });
     await open(page, api);
