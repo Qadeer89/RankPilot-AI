@@ -1,6 +1,20 @@
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.audit_event import AuditEvent
+from app.models.billing import (
+    BillingEvent,
+    BillingEventStatus,
+    BillingInterval,
+    CheckoutSession,
+    CheckoutStatus,
+    Payment,
+    PaymentStatus,
+    ProjectReplacement,
+    Subscription,
+    SubscriptionProvider,
+    SubscriptionStatus,
+    TrialHistory,
+)
 from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
 from app.models.competitor import CompetitorDomain, CompetitorPageSnapshot
 from app.models.chat import ChatConversation, ChatFeedback, ChatFeedbackRating, ChatMessage, ChatRole
@@ -73,6 +87,18 @@ __all__ = [
     "CrawlTrigger",
     "Ga4DailyMetric",
     "Ga4LandingPageMetric",
+    "BillingEvent",
+    "BillingEventStatus",
+    "BillingInterval",
+    "CheckoutSession",
+    "CheckoutStatus",
+    "Payment",
+    "PaymentStatus",
+    "ProjectReplacement",
+    "Subscription",
+    "SubscriptionProvider",
+    "SubscriptionStatus",
+    "TrialHistory",
     "GrowthRecommendation",
     "RecommendationLevel",
     "RecommendationStatus",

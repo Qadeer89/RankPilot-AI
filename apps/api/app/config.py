@@ -121,6 +121,40 @@ class Settings(BaseSettings):
     audit_event_retention_days: int = 365
     notification_retention_days: int = 180
 
+    # --- Commercial system (docs/COMMERCIAL_SYSTEM.md) ---------------------
+    # Prices live here once; every API and screen reads them from
+    # app/billing/plans.py. Integer cents. Existing subscriptions keep the
+    # price stored on them when they were bought.
+    price_monthly_cents: int = 1500
+    price_annual_cents: int = 15000
+    billing_currency: str = "USD"
+    trial_days: int = 7
+    # Days a past-due subscription keeps access while payment recovers.
+    billing_grace_days: int = 7
+    # "off": nothing is gated (the state before billing existed), "log": the
+    # decision is computed and logged but nobody is blocked, "enforce": paid
+    # features require an entitlement. Existing projects must be granted a
+    # complimentary entitlement before "enforce" is switched on.
+    billing_enforcement: str = "off"
+
+    # Lemon Squeezy. Secrets are server-side only. Test and live use
+    # different keys/stores/variants/secrets (set per environment).
+    lemonsqueezy_api_base: str = "https://api.lemonsqueezy.com"
+    lemonsqueezy_api_key: str | None = None
+    lemonsqueezy_store_id: str | None = None
+    lemonsqueezy_webhook_secret: str | None = None
+    lemonsqueezy_test_mode: bool = True
+    lemonsqueezy_variant_monthly: str | None = None
+    lemonsqueezy_variant_annual: str | None = None
+    # Variants WITHOUT a trial, used when a project already had its one trial.
+    lemonsqueezy_variant_monthly_no_trial: str | None = None
+    lemonsqueezy_variant_annual_no_trial: str | None = None
+    lemonsqueezy_request_timeout_seconds: float = 20.0
+
+    # The one account allowed into the Super Admin dashboard. Matched
+    # case-insensitively AND the account's email must be verified.
+    super_admin_email: str = "qaqadeer@gmail.com"
+
     @model_validator(mode="after")
     def _forbid_default_jwt_secret_in_production(self) -> "Settings":
         """RP13-002: fail closed rather than silently sign production
