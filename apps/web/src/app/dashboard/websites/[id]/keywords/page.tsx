@@ -108,6 +108,7 @@ export default function KeywordWorkspacePage() {
   const [discovering, setDiscovering] = useState(false);
   const [recommendations, setRecommendations] = useState<GrowthRecommendation[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [generateNote, setGenerateNote] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<PerformanceTimeline | null>(null);
   const [windowDays, setWindowDays] = useState(28);
   const [usage, setUsage] = useState<AiUsage | null>(null);
@@ -186,9 +187,19 @@ export default function KeywordWorkspacePage() {
     if (!token || !orgId) return;
     setGenerating(true);
     setError(null);
+    setGenerateNote(null);
     try {
-      await generateGrowthRecommendations(token, orgId, websiteId, country || undefined);
+      const generated = await generateGrowthRecommendations(token, orgId, websiteId, country || undefined);
       setRecommendations(await listGrowthRecommendations(token, orgId, websiteId));
+      const scope = country ? ` for ${country}` : "";
+      setGenerateNote(
+        generated.length > 0
+          ? `${generated.length} recommendation${generated.length === 1 ? "" : "s"} generated${scope}.`
+          : `Nothing to recommend${scope} yet. Recommendations need real signals from the last 28 days: ` +
+              "a query ranking on page 2 of Google (positions 11-20) with at least 10 impressions, a page losing " +
+              "clicks, a query shared by several pages, or saved keyword ideas (run AI Discovery first). " +
+              "Try \"All countries\" in the Country filter if this market has little data."
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not generate recommendations.");
     } finally {
@@ -742,6 +753,11 @@ export default function KeywordWorkspacePage() {
               Built from your Search Console data and stored keyword ideas. Nothing here is a promise of a
               ranking or traffic result, and each change needs your approval.
             </p>
+            {generateNote && (
+              <p className={styles.freshnessNote} role="status">
+                {generateNote}
+              </p>
+            )}
             {recommendations.length === 0 ? (
               <p className={styles.empty}>No recommendations yet.</p>
             ) : (
