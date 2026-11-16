@@ -183,3 +183,36 @@ discovery and competitor-analysis failure messages, recommendation generation (c
 unsupported reasons, manual completion), the full preview, approve, apply and verification-crawl flow (validated,
 mismatch, failed) and the GA4 column. They drive the real Next.js app in Chromium against a scripted fake API
 (`e2e/support/fakeApi.ts`), so they verify the frontend only, not the backend or any live provider.
+
+### Google OAuth: expired connections and the production checklist
+**What the code does today.** The consent request uses `access_type=offline` and `prompt=consent` (needed so Google
+returns a refresh token every time) and asks for read-only scopes (`analytics.readonly` for GA4, plus the Search
+Console read scope). When Google rejects a stored refresh token with `invalid_grant`, RankPilot now raises
+`GoogleReauthRequired` with a plain "reconnect" message and marks that connection `error`, so scheduled syncs stop
+calling Google with a dead token until the account is reconnected. Other refresh failures (5xx, network) are
+treated as transient and do not disconnect anything.
+
+**Why a connection can die.** Per Google's own help page on
+[managing the app audience](https://support.google.com/cloud/answer/15549945), authorizations granted by test users
+of an app whose publishing status is **Testing** expire after seven days (and the refresh token with them), and a
+Testing app is capped at 100 test users. Moving the app to **In production** is the documented way to avoid that 7-day limit, but a connection can
+still die for other reasons (for example the user revokes access in their Google account), which is why the
+reconnect handling above exists. Google's
+[production-readiness checklist](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview)
+is the reference to follow before publishing.
+
+**Before publishing, check in the Cloud Console (APIs & Services, OAuth consent screen):**
+1. *Data access*: confirm the exact scopes listed and how Google classifies each (non-sensitive, sensitive or
+   restricted). Do not rely on this document for the classification of `analytics.readonly` or the Search Console
+   scope: the sources I could find did not state it. If a scope is sensitive, Google may require app verification
+   before the "unverified app" warning goes away.
+2. *Branding and domains*: app name, support email, logo, home page, privacy policy and terms URLs on a domain you
+   own (verified in Search Console), and the authorized redirect URIs for both integrations
+   (`google_search_console` and `google_ga4`) matching production exactly.
+3. *Audience*: switch from Testing to **In production**. While unverified, users see an "unverified app" screen.
+4. *Existing users*: every user connected while the app was in Testing must reconnect once after publishing; their
+   old refresh tokens cannot be extended. After that, the sync should stop failing with `invalid_grant`.
+5. Keep read-only scopes only; adding a broader scope later forces a new consent and may trigger re-verification.
+
+I could not verify Google's review timelines from an authoritative page; treat any number you read elsewhere as
+an estimate.

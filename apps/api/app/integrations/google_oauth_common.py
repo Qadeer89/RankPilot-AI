@@ -32,6 +32,13 @@ class GoogleApiError(RuntimeError):
     pass
 
 
+class GoogleReauthRequired(GoogleApiError):
+    """Google rejected the stored refresh token (`invalid_grant`): it was
+    revoked, expired (a Google Cloud app still in "Testing" mode expires
+    refresh tokens after 7 days) or the user changed their password/access.
+    Retrying cannot help; the account has to be reconnected."""
+
+
 @dataclass(frozen=True)
 class TokenSet:
     access_token: str
@@ -120,6 +127,15 @@ def refresh_access_token(refresh_token: str, *, default_scope: str) -> TokenSet:
         timeout=15.0,
     )
     if response.status_code != 200:
+        try:
+            error_code = response.json().get("error")
+        except ValueError:
+            error_code = None
+        if error_code == "invalid_grant":
+            raise GoogleReauthRequired(
+                "Google no longer accepts this connection (the access was revoked or expired). "
+                "Reconnect the account in Integrations."
+            )
         raise GoogleApiError(f"Token refresh failed: HTTP {response.status_code} {response.text[:300]}")
     body = response.json()
     return TokenSet(

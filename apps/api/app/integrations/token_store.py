@@ -15,7 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.encryption import decrypt_text, encrypt_text
-from app.integrations.google_oauth_common import TokenSet
+from app.integrations.google_oauth_common import GoogleReauthRequired, TokenSet
 from app.models.oauth_connection import OAuthConnection, OAuthConnectionStatus, OAuthProvider
 
 
@@ -103,7 +103,16 @@ def get_valid_access_token(
         db.flush()
         raise LookupError("Access token expired and no refresh token is available; reconnect required.")
 
-    refreshed = refresh_fn(stored["refresh_token"])
+    try:
+        refreshed = refresh_fn(stored["refresh_token"])
+    except GoogleReauthRequired:
+        # Permanent: stop treating this connection as usable (so scheduled
+        # syncs stop retrying a dead token and the account shows as needing
+        # a reconnect) and commit that now, because callers roll back on the
+        # exception that follows.
+        connection.status = OAuthConnectionStatus.error
+        db.commit()
+        raise
     connection.encrypted_token_reference = _serialize(refreshed)
     connection.expires_at = refreshed.expires_at
     db.flush()
