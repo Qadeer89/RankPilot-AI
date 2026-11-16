@@ -58,7 +58,8 @@ def test_fetch_competitor_pages_respects_robots_disallow(monkeypatch):
     monkeypatch.setattr(competitor_crawler, "safe_fetch", _fail_if_called)
 
     results = competitor_crawler.fetch_competitor_pages("competitor.example")
-    assert results == []
+    # nothing is fetched, and the page is reported rather than silently dropped
+    assert [r.error for r in results] == ["Blocked by this site's robots.txt."]
 
 
 def test_fetch_competitor_pages_records_fetch_errors_without_crashing(monkeypatch):
