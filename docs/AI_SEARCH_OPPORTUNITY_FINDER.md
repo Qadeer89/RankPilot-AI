@@ -51,3 +51,72 @@ The CMS pipeline can change title, meta description, canonical, alt text and JSO
 
 ## 7. Monitoring
 Query+page stats for equal windows before and after the implementation day (7/28/90 days), the after window flagged incomplete until Search Console has reported all of it. The numbers are a correlation, never proof of cause.
+
+---
+
+## 8. Delivery report
+
+### What was built
+| Area | Where |
+|---|---|
+| Paged Search Console fetch (25,000 rows/page, truncation reported) | `integrations/google_search_console.py`, `search_console_sync.py` |
+| Query classifier + RE2 validator | `ai_search/classify.py` |
+| Discovery, scoring, tiers, cannibalisation, data-coverage warnings | `ai_search/discovery.py` |
+| Live page reading, answer analysis, readiness checklist | `ai_search/page_content.py`, `answer_analysis.py`, `geo.py` |
+| AI direct-answer agent + deterministic quality pass | `ai_search/agent.py` (new agent type `ai_search_answer`) |
+| Findings, approval, verification, monitoring | `models/ai_search_finding.py`, `ai_search/service.py`, `monitoring.py` |
+| API (`/organizations/{org}/websites/{site}/ai-search/...`) | `api/v1/endpoints/ai_search.py` |
+| UI: Keyword Intelligence → **AI Search Opportunities** | `components/ai-search/AiSearchFinder.tsx` |
+| Live validation on real data | `scripts/validate_ai_search.py` |
+
+Database: one new table `ai_search_findings` (migration `887338fe6a21`) and one new enum value; Search Console metrics are **not** duplicated (they stay in `KeywordObservation`). Recommendations reuse `GrowthRecommendation`.
+
+### Test results (this environment)
+Backend 1162 passed (about 110 new: classification, scoring with hand-computed values, discovery, page analysis, quality checks, API lifecycle, tenant isolation, roles, prompt-injection handling). Frontend: type-check and lint clean, 55 browser tests passed (10 new).
+
+### Classification of each requirement
+| Requirement | Status |
+|---|---|
+| Question / long-tail / conversational / comparison / problem queries, configurable regex, RE2 validation | Implemented and tested |
+| AI-based classification of queries | **Partial**: the per-query AI analysis returns the search intent and whether the page fits it; it is not run over every query (cost, no evidence of value) |
+| Paged GSC retrieval, date presets and custom range, country/device/page filters | Implemented and tested with fake Search Console responses |
+| Search type other than web, anonymised queries | **Not available** (Search Console limitation / not synced) |
+| Explainable scoring, tiers, own-site CTR benchmark | Implemented and tested |
+| Page mapping, cannibalisation → review, no invented page | Implemented and tested |
+| Live page analysis, direct answer, heading, FAQ only when useful, internal links restricted to the page's real links | Implemented and tested; **AI call verified once against the real model on a synthetic page** (found and fixed a schema-length bug) |
+| Quality checks (figures, superlatives, invented links/contacts, stuffing, duplication, readability, intent) | Implemented and tested |
+| GEO / AI-search readiness | Implemented as a transparent checklist; AI-platform visibility shown as **unmeasured** |
+| Dashboard, filters, detail view, generate button | Implemented and UI-tested (fake API) |
+| Statuses New … Completed | Implemented (derived) |
+| Approval required, nothing published | Implemented and tested (no ChangeRecord/SEOTask is ever created) |
+| **Apply through the CMS** | **Not implemented, by design**: no CMS operation edits body content. The person adds the approved text and marks it implemented; RankPilot re-reads the public page to verify |
+| Targeted crawl after the change | **Not run**: the existing post-change crawl is tied to CMS change records. A live fetch of the page is used instead |
+| Monitoring before/after, confounders, caveats | Implemented and tested with hand-computed numbers |
+| **Validation on real GulsRehab Search Console data** | **Not done: blocked here.** This sandbox has no access to the project's Search Console data. Run `scripts/validate_ai_search.py` on the VPS (below); it reports "BLOCKED: insufficient real data" rather than inventing anything |
+| CMS execution evidence | None (see above) |
+
+### Run the real validation (VPS)
+```bash
+cd /opt/RankPilot-AI/apps/api && source .venv/bin/activate
+python scripts/validate_ai_search.py --site gulsrehab --window 3m
+python scripts/validate_ai_search.py --site gulsrehab --window 3m --analyze-top 1 --save
+```
+For 3-/6-month windows the stored history must reach that far; the screen and script say how far the stored data goes.
+
+### Known limitations
+1. Search Console omits anonymised and very rare queries, so some long-tail searches never appear.
+2. Only web-search data is synced; the stored window starts when syncing started.
+3. CTR is judged against this site's own median at similar positions; with fewer than 5 comparable queries the factor is not scored.
+4. Query/page coverage in the list uses the page's title and headings only; the full-text analysis happens when a person asks for a recommendation.
+5. Body-content changes are manual. A WordPress "insert section" operation is possible but writes post content and should be a separate, approved piece of work.
+6. Queries in languages other than English are classified only by length (Roman-Urdu question starters are recognised).
+7. The AI draft is a recommendation. Facts it could not find on the page are listed as "needs your input", not invented.
+
+### Deployment and rollback
+```bash
+cd /opt/RankPilot-AI && git pull origin claude/serene-goodall-32a2wo
+cd apps/api && source .venv/bin/activate && alembic upgrade head   # -> 887338fe6a21
+cd ../web && npm run build
+pm2 restart rankpilot-api rankpilot-worker rankpilot-scheduler rankpilot-web
+```
+Rollback: restart the previous commit; the new table and enum value are ignored by old code. `alembic downgrade 31eaadaff61a` drops `ai_search_findings` (the enum value remains, which is harmless). Existing sync behaviour changed in one way: it now pages through all Search Console rows instead of the first 1,000, so the next sync can store more rows than before.

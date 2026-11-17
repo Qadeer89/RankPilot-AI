@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { FakeApi, ORG, SITE } from "./support/fakeApi";
+import { FakeApi, SITE } from "./support/fakeApi";
 
 type Json = Record<string, unknown>;
 const PAGE_URL = `/dashboard/websites/${SITE}/keywords`;
