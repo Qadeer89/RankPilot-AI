@@ -43,6 +43,7 @@ __all__ = [
     "refresh_access_token",
     "list_sites",
     "query_search_analytics",
+    "query_search_analytics_paged",
     "inspect_url",
 ]
 
@@ -111,6 +112,46 @@ def query_search_analytics(
     if response.status_code != 200:
         raise GoogleApiError(f"Search analytics query failed: HTTP {response.status_code} {response.text[:300]}")
     return response.json().get("rows", [])
+
+
+GSC_PAGE_SIZE = 25000  # the API's maximum rowLimit per request
+
+
+def query_search_analytics_paged(
+    access_token: str,
+    site_url: str,
+    *,
+    start_date: date,
+    end_date: date,
+    dimensions: list[str],
+    max_rows: int = 200_000,
+    search_type: str = "web",
+) -> tuple[list[dict], bool]:
+    """Pages through every row Search Console returns (startRow/rowLimit), up to `max_rows`.
+    Returns (rows, truncated). `truncated` is True when the cap stopped the download, so a caller can
+    say the data is incomplete instead of presenting a partial set as the whole."""
+    url = f"{SEARCH_CONSOLE_API_BASE}/sites/{quote(site_url, safe='')}/searchAnalytics/query"
+    rows: list[dict] = []
+    start_row = 0
+    while True:
+        response = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={
+                "startDate": start_date.isoformat(), "endDate": end_date.isoformat(), "dimensions": dimensions,
+                "rowLimit": GSC_PAGE_SIZE, "startRow": start_row, "type": search_type,
+            },
+            timeout=60.0,
+        )
+        if response.status_code != 200:
+            raise GoogleApiError(f"Search analytics query failed: HTTP {response.status_code} {response.text[:300]}")
+        batch = response.json().get("rows", [])
+        rows.extend(batch)
+        if len(batch) < GSC_PAGE_SIZE:
+            return rows, False
+        start_row += GSC_PAGE_SIZE
+        if len(rows) >= max_rows:
+            return rows[:max_rows], True
 
 
 def inspect_url(access_token: str, site_url: str, inspection_url: str) -> dict:

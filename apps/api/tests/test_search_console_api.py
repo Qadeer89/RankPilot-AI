@@ -92,8 +92,8 @@ def test_select_property_then_sync_and_read_performance(client, monkeypatch, db_
 
     monkeypatch.setattr(
         search_console_endpoint.search_console_sync,
-        "query_search_analytics",
-        fake_query_search_analytics,
+        "query_search_analytics_paged",
+        lambda *a, **k: (fake_query_search_analytics(*a, **k), False),
     )
 
     sync_response = client.post(

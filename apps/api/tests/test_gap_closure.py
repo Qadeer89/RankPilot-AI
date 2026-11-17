@@ -38,7 +38,7 @@ def test_gsc_sync_normalizes_country_and_merges_codes(db_session, monkeypatch):
         {"keys": ["dental implants", page.canonical_url, day, "gbr", "MOBILE"], "clicks": 1, "impressions": 10, "position": 5.0},
         {"keys": ["dental implants", page.canonical_url, day, "", "MOBILE"], "clicks": 1, "impressions": 10, "position": 5.0},
     ]
-    monkeypatch.setattr(search_console_sync, "query_search_analytics", lambda *a, **k: rows)
+    monkeypatch.setattr(search_console_sync, "query_search_analytics_paged", lambda *a, **k: (rows, False))
 
     search_console_sync.sync_search_performance(db_session, website)
 

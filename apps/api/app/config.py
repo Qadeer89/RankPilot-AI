@@ -158,6 +158,12 @@ class Settings(BaseSettings):
     lemonsqueezy_variant_annual_no_trial: str | None = None
     lemonsqueezy_request_timeout_seconds: float = 20.0
 
+    # AI Search Opportunity Finder (docs/AI_SEARCH_OPPORTUNITY_FINDER.md). All thresholds are configurable.
+    ai_search_long_tail_min_words: int = 5
+    ai_search_long_query_regex: str = r"^(?:\S+\s+){7,}\S+$"  # 8+ words, RE2-compatible
+    ai_search_min_impressions: int = 10
+    ai_search_benchmark_min_samples: int = 5
+
     # The one account allowed into the Super Admin dashboard. Matched
     # case-insensitively AND the account's email must be verified.
     super_admin_email: str = "qaqadeer@gmail.com"

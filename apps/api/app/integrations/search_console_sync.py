@@ -8,6 +8,7 @@ are complete.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
@@ -15,11 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.countries import UNKNOWN_COUNTRY, normalize_country
 from app.crawler.orchestrator import normalize_frontier_url
 from app.integrations import token_store
-from app.integrations.google_search_console import query_search_analytics, refresh_access_token
+from app.integrations.google_search_console import query_search_analytics_paged, refresh_access_token
 from app.models.keyword_observation import KeywordObservation
 from app.models.oauth_connection import OAuthProvider
 from app.models.page import Page
 from app.models.website import Website
+
+logger = logging.getLogger(__name__)
 
 REPORTING_LAG_DAYS = 3
 DEFAULT_WINDOW_DAYS = 28
@@ -44,13 +47,17 @@ def sync_search_performance(
     # has no page to hand the AI content agent for a title/meta fix.
     # "country"/"device" support the SEO Growth Engine's country-based
     # intelligence (never fabricated -- exactly what GSC itself reports).
-    rows = query_search_analytics(
+    # Paged: a single request returns at most 25,000 rows, and the old 1,000-row cap silently dropped most
+    # long-tail queries on busier sites.
+    rows, truncated = query_search_analytics_paged(
         access_token,
         website.search_console_site_url,
         start_date=start_date,
         end_date=end_date,
         dimensions=["query", "page", "date", "country", "device"],
     )
+    if truncated:
+        logger.warning("Search Console sync for website %s stopped at the row cap; the window is incomplete.", website.id)
 
     pages_by_normalized_url = {
         p.normalized_url: p.id for p in db.query(Page).filter(Page.website_id == website.id).all()

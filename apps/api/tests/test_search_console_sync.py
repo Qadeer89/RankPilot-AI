@@ -55,7 +55,7 @@ def test_sync_attributes_observation_to_a_matching_crawled_page(db_session, monk
             }
         ]
 
-    monkeypatch.setattr(search_console_sync, "query_search_analytics", fake_query_search_analytics)
+    monkeypatch.setattr(search_console_sync, "query_search_analytics_paged", lambda *a, **k: (fake_query_search_analytics(*a, **k), False))
     monkeypatch.setattr(search_console_sync.token_store, "get_valid_access_token", lambda *a, **kw: "access-1")
 
     synced = search_console_sync.sync_search_performance(db_session, website)
@@ -80,7 +80,7 @@ def test_sync_leaves_page_id_null_when_no_crawled_page_matches(db_session, monke
             }
         ]
 
-    monkeypatch.setattr(search_console_sync, "query_search_analytics", fake_query_search_analytics)
+    monkeypatch.setattr(search_console_sync, "query_search_analytics_paged", lambda *a, **k: (fake_query_search_analytics(*a, **k), False))
     monkeypatch.setattr(search_console_sync.token_store, "get_valid_access_token", lambda *a, **kw: "access-1")
 
     search_console_sync.sync_search_performance(db_session, website)

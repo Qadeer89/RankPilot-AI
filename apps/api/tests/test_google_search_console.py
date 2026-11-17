@@ -104,3 +104,30 @@ def test_query_search_analytics(monkeypatch):
     assert rows[0]["keys"] == ["rankpilot", "2026-10-01"]
     assert "sites/https%3A%2F%2Fexample.com%2F/searchAnalytics/query" in captured["url"]
     assert captured["json"]["dimensions"] == ["query", "date"]
+
+
+def test_query_search_analytics_paged_walks_every_page_and_reports_truncation(monkeypatch):
+    calls = []
+
+    class Resp:
+        status_code = 200
+
+        def __init__(self, n):
+            self._n = n
+
+        def json(self):
+            return {"rows": [{"keys": ["q"], "clicks": 1, "impressions": 2, "ctr": 0.5, "position": 3}] * self._n}
+
+    sizes = iter([gsc.GSC_PAGE_SIZE, gsc.GSC_PAGE_SIZE, 7])
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append(json["startRow"])
+        return Resp(next(sizes))
+
+    monkeypatch.setattr(gsc.httpx, "post", fake_post)
+    rows, truncated = gsc.query_search_analytics_paged("t", "sc-domain:x.com", start_date=date(2026, 1, 1), end_date=date(2026, 1, 2), dimensions=["query"])
+    assert calls == [0, 25000, 50000] and len(rows) == 2 * 25000 + 7 and truncated is False
+
+    sizes = iter([gsc.GSC_PAGE_SIZE, gsc.GSC_PAGE_SIZE, gsc.GSC_PAGE_SIZE])
+    rows, truncated = gsc.query_search_analytics_paged("t", "sc-domain:x.com", start_date=date(2026, 1, 1), end_date=date(2026, 1, 2), dimensions=["query"], max_rows=30000)
+    assert len(rows) == 30000 and truncated is True
