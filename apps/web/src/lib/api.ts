@@ -1774,3 +1774,137 @@ export function replaceSubscriptionProject(
     }
   );
 }
+
+
+// ---------------------------------------------------------------- AI Search Opportunity Finder
+
+export type AiSearchTier = "high_opportunity" | "content_gap" | "ranking_improvement" | "low_priority";
+export type AiSearchStatus = "new" | "ready_for_review" | "approved" | "rejected" | "implemented" | "validation_failed" | "monitoring" | "completed";
+
+export interface AiSearchFactor { factor: string; points: number; max: number; note: string }
+
+export interface AiSearchOpportunity {
+  query: string;
+  categories: string[];
+  category_signals: string[];
+  country: string | null;
+  countries: Record<string, number>;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  average_position: number;
+  score: number;
+  tier: AiSearchTier;
+  factors: AiSearchFactor[];
+  needs_review: boolean;
+  trend: string;
+  landing_page: { page_id: string; url: string } | null;
+  other_pages: { page_id: string; url: string; impressions: number }[];
+  finding_id: string | null;
+  status: AiSearchStatus;
+}
+
+export interface AiSearchSummary {
+  window: { start: string; end: string };
+  data_coverage: { first_day: string | null; last_day: string | null; rows: number };
+  warnings: string[];
+  explanation: string;
+  totals: {
+    conversational_queries: number; question_queries: number; long_tail_queries: number; comparison_queries: number;
+    problem_solution_queries: number; classified_queries: number; high_opportunity: number; potential_content_gaps: number;
+    pages_with_opportunities: number;
+  };
+  ai_platform_visibility: string;
+}
+
+export interface AiSearchOpportunityList {
+  items: AiSearchOpportunity[]; page: number; page_size: number; total: number; pages: number;
+  warnings: string[]; explanation: string;
+}
+
+export interface AiSearchCheck { check: string; status: string; evidence?: string; advice?: string; detail?: string }
+
+export interface AiSearchDraft {
+  search_intent: string; user_question: string; page_matches_intent: boolean; intent_note: string; current_answer_assessment: string;
+  missing_information: string[]; needs_owner_input: string[]; direct_answer: string; suggested_heading: string; faq_recommended: boolean;
+  faq_suggestions: { question: string; answer: string }[]; supporting_examples: string[];
+  internal_links: { anchor_text: string; target_url: string }[]; schema_review_note: string; rationale: string; confidence: number;
+}
+
+export interface AiSearchFinding {
+  id: string; query: string; status: AiSearchStatus; tier: AiSearchTier; score: number; needs_review: boolean;
+  target_page: { page_id: string | null; url: string | null };
+  answer_analysis: { level: string; reason: string; matching_heading?: string | null; missing_terms?: string[] };
+  ai_search_readiness: { label: string; checks: AiSearchCheck[]; passed?: number; total?: number; disclaimer?: string; ai_visibility: string };
+  ai_status: string; ai_error: string | null; draft: AiSearchDraft | null;
+  quality: { checks: AiSearchCheck[]; blocked: boolean; label: string } | null;
+  confidence: number | null; edited_by_user: boolean; label: string;
+  recommendation: { id: string; status: string; priority: string; difficulty: string; problem: string; recommended_action: string;
+    expected_benefit: string; requires_approval: boolean; validation_method: string } | null;
+  execution: { automated: boolean; reason: string };
+  implemented_at: string | null; implementation_note: string | null;
+  live_check: { matched: boolean | null; error: string | null; checked_at: string } | null;
+}
+
+export interface AiSearchDetail {
+  opportunity: AiSearchOpportunity;
+  history: { date: string; impressions: number; clicks: number; average_position: number | null }[];
+  finding: AiSearchFinding | null;
+}
+
+export interface AiSearchMonitoring {
+  implemented_on: string; window_days: number; caveat: string; note: string; after_window_complete: boolean;
+  before: { clicks: number; impressions: number; ctr: number | null; average_position: number | null } | null;
+  after: { clicks: number; impressions: number; ctr: number | null; average_position: number | null } | null;
+  change: { clicks: number; impressions: number; ctr: number | null; average_position: number | null } | null;
+  other_changes_in_window: { kind: string; at: string }[];
+}
+
+export interface AiSearchFilters {
+  range?: string; start?: string; end?: string; country?: string; device?: string; category?: string; tier?: string;
+  min_impressions?: string; max_position?: string; max_ctr?: string; min_score?: string; q?: string; recommendation_status?: string;
+  sort?: string; direction?: string; page?: number; page_size?: number;
+}
+
+function aiSearchQuery(params: object): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params as Record<string, string | number | undefined>)) {
+    if (v !== undefined && v !== "") sp.set(k, String(v));
+  }
+  const text = sp.toString();
+  return text ? `?${text}` : "";
+}
+
+const aiSearchBase = (org: string, site: string) => `/organizations/${org}/websites/${site}/ai-search`;
+
+export function getAiSearchSummary(token: string, org: string, site: string, filters: AiSearchFilters) {
+  return request<AiSearchSummary>(`${aiSearchBase(org, site)}/summary${aiSearchQuery({ range: filters.range, start: filters.start, end: filters.end, country: filters.country, device: filters.device })}`, { headers: authHeaders(token) });
+}
+
+export function listAiSearchOpportunities(token: string, org: string, site: string, filters: AiSearchFilters) {
+  return request<AiSearchOpportunityList>(`${aiSearchBase(org, site)}/opportunities${aiSearchQuery(filters)}`, { headers: authHeaders(token) });
+}
+
+export function getAiSearchDetail(token: string, org: string, site: string, query: string, filters: AiSearchFilters) {
+  return request<AiSearchDetail>(`${aiSearchBase(org, site)}/opportunities/detail${aiSearchQuery({ query, range: filters.range, start: filters.start, end: filters.end, country: filters.country })}`, { headers: authHeaders(token) });
+}
+
+export function analyzeAiSearchQuery(token: string, org: string, site: string, body: { query: string; country?: string; range?: string; start?: string; end?: string }) {
+  return request<AiSearchFinding>(`${aiSearchBase(org, site)}/analyze`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) });
+}
+
+export function editAiSearchDraft(token: string, org: string, site: string, id: string, body: { direct_answer?: string; suggested_heading?: string }) {
+  return request<AiSearchFinding>(`${aiSearchBase(org, site)}/findings/${id}/draft`, { method: "PATCH", headers: authHeaders(token), body: JSON.stringify(body) });
+}
+
+export function decideAiSearchFinding(token: string, org: string, site: string, id: string, decision: "approve" | "reject" | "recheck") {
+  return request<AiSearchFinding>(`${aiSearchBase(org, site)}/findings/${id}/${decision}`, { method: "POST", headers: authHeaders(token) });
+}
+
+export function markAiSearchImplemented(token: string, org: string, site: string, id: string, note: string) {
+  return request<AiSearchFinding>(`${aiSearchBase(org, site)}/findings/${id}/mark-implemented`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({ note }) });
+}
+
+export function getAiSearchMonitoring(token: string, org: string, site: string, id: string, windowDays = 28) {
+  return request<AiSearchMonitoring>(`${aiSearchBase(org, site)}/findings/${id}/monitoring?window_days=${windowDays}`, { headers: authHeaders(token) });
+}

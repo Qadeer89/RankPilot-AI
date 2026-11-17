@@ -37,11 +37,12 @@ import {
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { describeEvidence, readable } from "@/lib/recommendationText";
+import AiSearchFinder from "@/components/ai-search/AiSearchFinder";
 import RecommendationExecution from "@/components/keywords/RecommendationExecution";
 import TargetMarketSettings from "@/components/keywords/TargetMarketSettings";
 import styles from "./keywords.module.css";
 
-type Tab = "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations" | "performance";
+type Tab = "ai_search" | "overview" | "first_party" | "ai_discovery" | "country" | "clusters" | "competitors" | "opportunities" | "recommendations" | "performance";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -53,6 +54,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "opportunities", label: "Opportunities & Mapping" },
   { key: "recommendations", label: "Recommendations" },
   { key: "performance", label: "Performance" },
+  { key: "ai_search", label: "AI Search Opportunities" },
 ];
 
 function classificationBadgeClass(classification: string): string {
@@ -368,6 +370,10 @@ export default function KeywordWorkspacePage() {
             </button>
           ))}
         </div>
+
+        {tab === "ai_search" && token && orgId && (
+          <AiSearchFinder token={token} organizationId={orgId} websiteId={websiteId} country={country} />
+        )}
 
         {tab === "overview" && (
           <div className={styles.card}>
