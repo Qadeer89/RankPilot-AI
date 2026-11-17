@@ -1,6 +1,7 @@
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.admin_setting import AdminSetting
+from app.models.ai_search_finding import AiSearchFinding
 from app.models.audit_event import AuditEvent
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.billing import (
@@ -90,6 +91,7 @@ __all__ = [
     "Ga4DailyMetric",
     "Ga4LandingPageMetric",
     "AdminSetting",
+    "AiSearchFinding",
     "EmailVerificationToken",
     "BillingEvent",
     "BillingEventStatus",

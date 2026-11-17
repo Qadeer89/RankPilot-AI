@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import re
 
-from pydantic import BaseModel, Field
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, BeforeValidator, Field
 from sqlalchemy.orm import Session
 
 from app.ai.runner import run_ai_agent
@@ -27,7 +29,7 @@ Strict rules:
 1. Use ONLY facts that appear in the PAGE EVIDENCE. Never invent prices, statistics, years, success rates,
    credentials, awards, guarantees, addresses, phone numbers, medical or legal claims. If the page does not contain
    a fact the answer needs, do not state it: list it in "needs_owner_input" so the owner can supply it.
-2. "direct_answer" is at most 90 words, plain language, written to sit naturally inside the existing page in the
+2. "search_intent" is exactly one of the allowed values; keep every text field short. "direct_answer" is at most 90 words, plain language, written to sit naturally inside the existing page in the
    page's own tone. No keyword repetition, no hype, no superlatives, no promises of results.
 3. Recommend FAQs ONLY if they genuinely help a reader of this page ("faq_recommended": true); otherwise return an
    empty list. Recommend schema review only if truthful structured data would fit; never claim it boosts ranking.
@@ -41,32 +43,44 @@ Strict rules:
 Respond ONLY with JSON matching the required schema."""
 
 
+def _short(n: int):
+    """Model output is trimmed to the limit instead of rejected: a long sentence must not discard a good draft."""
+    return BeforeValidator(lambda v: v.strip()[:n].rstrip() if isinstance(v, str) else v)
+
+
+def _few(n: int):
+    return BeforeValidator(lambda v: v[:n] if isinstance(v, list) else v)
+
+
+Text = lambda n: Annotated[str, _short(n)]  # noqa: E731
+
+
 class FaqItem(BaseModel):
-    question: str = Field(max_length=300)
-    answer: str = Field(max_length=700)
+    question: Text(300)
+    answer: Text(700)
 
 
 class InternalLink(BaseModel):
-    anchor_text: str = Field(max_length=120)
-    target_url: str = Field(max_length=2048)
+    anchor_text: Text(120)
+    target_url: Text(2048)
 
 
 class AiSearchDraft(BaseModel):
-    search_intent: str = Field(max_length=40)
-    user_question: str = Field(max_length=300)
+    search_intent: Literal["informational", "commercial", "transactional", "navigational", "local"]
+    user_question: Text(300)
     page_matches_intent: bool
-    intent_note: str = Field(max_length=500)
-    current_answer_assessment: str = Field(max_length=800)
-    missing_information: list[str] = Field(max_length=8)
-    needs_owner_input: list[str] = Field(max_length=8)
-    direct_answer: str = Field(max_length=900)
-    suggested_heading: str = Field(max_length=200)
+    intent_note: Text(500)
+    current_answer_assessment: Text(800)
+    missing_information: Annotated[list[str], _few(8)]
+    needs_owner_input: Annotated[list[str], _few(8)]
+    direct_answer: Text(900)
+    suggested_heading: Text(200)
     faq_recommended: bool
-    faq_suggestions: list[FaqItem] = Field(max_length=3)
-    supporting_examples: list[str] = Field(max_length=4)
-    internal_links: list[InternalLink] = Field(max_length=4)
-    schema_review_note: str = Field(max_length=400)
-    rationale: str = Field(max_length=900)
+    faq_suggestions: Annotated[list[FaqItem], _few(3)]
+    supporting_examples: Annotated[list[str], _few(4)]
+    internal_links: Annotated[list[InternalLink], _few(4)]
+    schema_review_note: Text(400)
+    rationale: Text(900)
     confidence: float = Field(ge=0.0, le=1.0)
 
 
