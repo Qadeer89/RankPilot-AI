@@ -167,3 +167,20 @@ def test_schema_is_strict_and_has_no_metric_fields():
     for forbidden in ("search_volume", "difficulty", "cpc", "ranking_guarantee"):
         assert forbidden not in props
     assert ag.RESPONSE_JSON_SCHEMA["strict"] is True
+
+
+def test_claims_the_page_never_makes_are_surfaced_for_the_reviewer():
+    # no figures, so the number check passes, but "facials", "collagen" and "monthly" are not on the page
+    d = _draft(direct_answer="Facials may be repeated monthly, while collagen treatments need maintenance every few months, depending on your skin goals and plan.",
+               needs_owner_input=["recommended frequency per treatment"])
+    r = _qc(d)
+    assert _status(r, "Figures supported by the page") == "pass"
+    assert _status(r, "Wording supported by the page") == "warn"
+    assert _status(r, "Facts only the owner can supply") == "warn"
+    assert not r["blocked"]  # a warning for a person to weigh, not an automatic rejection
+
+
+def test_wording_taken_from_the_page_raises_no_warning():
+    r = _qc(_draft())
+    assert _status(r, "Wording supported by the page") == "pass"
+    assert not any(c["check"] == "Facts only the owner can supply" for c in r["checks"])

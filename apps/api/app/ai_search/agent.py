@@ -173,6 +173,17 @@ def quality_checks(draft: AiSearchDraft, *, query: str, content: PageContent, al
         stuffing = f"the exact query appears {phrase_count} times" if phrase_count > 1 else ""
     add("No keyword stuffing", "pass" if not stuffing else "warn", stuffing or "ok")
 
+    # Wording the page never uses: the model may be stating facts the owner never wrote. Warn, do not block,
+    # because ordinary connecting words will always be "new"; the list tells the reviewer what to confirm.
+    page_terms = content_terms(content.text + " " + (content.title or "") + " " + query)
+    novel = sorted(t for t in content_terms(answer) if t not in page_terms)
+    share = len(novel) / max(len(content_terms(answer)), 1)
+    add("Wording supported by the page", "pass" if share <= 0.3 else "warn",
+        "most wording already appears on the page" if share <= 0.3
+        else f"{len(novel)} terms are not on the page ({', '.join(novel[:8])}): confirm they are true for this business before using the text")
+    if draft.needs_owner_input:
+        add("Facts only the owner can supply", "warn", "the page lacks: " + "; ".join(draft.needs_owner_input[:4]) + ". Fill these in rather than publishing the generic wording.")
+
     existing = _ngrams(content.text, 6)
     mine = _ngrams(answer, 6)
     overlap = len(mine & existing) / len(mine) if mine else 0.0
