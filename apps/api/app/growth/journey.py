@@ -38,6 +38,7 @@ def build(db: Session, website: Website) -> dict:
     baseline, latest = snap.baseline_snapshot(db, website.id), snap.latest_crawl_snapshot(db, website.id)
     gsc_connected, ga4_connected = bool(website.search_console_site_url), bool(website.ga4_property_id)
     gsc_data = _has_gsc_data(db, website)
+    gsc_totals = bool(db.query(ProjectMetricHistory.id).filter(ProjectMetricHistory.website_id == website.id).first())
     ga4_data = bool(db.query(Ga4DailyMetric.id).filter(Ga4DailyMetric.website_id == website.id).first())
     profile = db.query(BusinessProfile).filter(BusinessProfile.website_id == website.id).one_or_none()
     cms = get_connected_content_connector(db, website)
@@ -62,7 +63,8 @@ def build(db: Session, website: Website) -> dict:
         panel("Website health and issues", baseline is not None, "RankPilot crawl", "Waiting for the first crawl to finish."),
         panel("Keyword opportunities", ideas > 0, "AI-generated ideas (not verified search data)", "Run keyword discovery to generate ideas."),
         panel("Competitor content gaps", competitors > 0, "Public competitor pages", "Add competitors to compare publicly visible content."),
-        panel("Organic clicks, impressions, position", gsc_data, "Google Search Console", "Requires Google Search Console." if not gsc_connected else "Waiting for the first sync."),
+        panel("Organic clicks, impressions, position", gsc_data,
+              "Google Search Console" if gsc_totals or not gsc_data else "Google Search Console (query-level rows only; daily totals are collected on the next sync)", "Requires Google Search Console." if not gsc_connected else "Waiting for the first sync."),
         panel("Organic sessions and conversions", ga4_data, "Google Analytics", "Requires Google Analytics." if not ga4_connected else "Waiting for the first sync."),
     ]
 

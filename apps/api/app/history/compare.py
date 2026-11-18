@@ -174,6 +174,25 @@ def _health_block(base, latest, health_a, health_b) -> dict:
     return block
 
 
+def query_data(db: Session, website: Website) -> dict:
+    """What query-level Search Console rows are stored (they exist before daily totals do)."""
+    n, latest = db.query(func.count(KeywordObservation.id), func.max(KeywordObservation.date)).filter(KeywordObservation.website_id == website.id).one()
+    return {"rows": int(n or 0), "latest_date": latest.isoformat() if latest else None}
+
+
+def _gsc_source(db: Session, website: Website, totals_rows: int) -> dict:
+    q = query_data(db, website)
+    if totals_rows:
+        return {"available": True, "reason": None, "query_rows": q["rows"]}
+    if not website.search_console_site_url:
+        return {"available": False, "reason": "Search Console is not connected. Google performance tracking starts when it is connected.", "query_rows": 0}
+    if q["rows"]:
+        return {"available": False, "query_rows": q["rows"],
+                "reason": f"Search Console is connected and {q['rows']} query-level rows are stored (latest {q['latest_date']}), but daily totals have not been collected yet. "
+                          "They are collected on the next scheduled sync, or when you press Sync now on the Integrations tab."}
+    return {"available": False, "reason": "Connected, but no Search Console data has been stored yet.", "query_rows": 0}
+
+
 def progress_overview(db: Session, website: Website) -> dict:
     snap.ensure_history(db, website)
     base, latest = snap.baseline_snapshot(db, website.id), snap.latest_crawl_snapshot(db, website.id)
@@ -202,9 +221,7 @@ def progress_overview(db: Session, website: Website) -> dict:
         },
         "data_sources": {
             "crawler": {"available": latest is not None, "reason": None if latest else "No analysis has completed yet."},
-            "google_search_console": {"available": gsc_rows > 0, "reason": None if gsc_rows else (
-                "Search Console is not connected. Google performance tracking starts when it is connected." if not website.search_console_site_url
-                else "Connected, but no Search Console totals have been stored yet.")},
+            "google_search_console": _gsc_source(db, website, gsc_rows),
             "ga4": {"available": bool(db.query(Ga4DailyMetric.id).filter(Ga4DailyMetric.website_id == website.id).first()),
                     "reason": None if db.query(Ga4DailyMetric.id).filter(Ga4DailyMetric.website_id == website.id).first() else
                     ("Google Analytics is not connected." if not website.ga4_property_id else "Connected, but no Analytics data has been stored yet.")},

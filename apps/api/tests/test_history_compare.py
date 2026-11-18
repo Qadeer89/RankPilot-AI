@@ -119,7 +119,7 @@ def test_overview_counts_real_work_and_separates_data_sources(db_session):
     assert result["issues"]["identified_total"] == 5 and result["issues"]["resolved"] == 1 and result["issues"]["still_open"] == 4 and result["issues"]["new_since_baseline"] == 1
     assert {k: result["work"][k] for k in ("pages_optimized", "recommendations_implemented", "recommendations_validated", "recommendations_failed")} == {
         "pages_optimized": 0, "recommendations_implemented": 2, "recommendations_validated": 1, "recommendations_failed": 1}  # failed work is not success
-    assert result["data_sources"]["google_search_console"] == {"available": False, "reason": "Search Console is not connected. Google performance tracking starts when it is connected."}
+    assert result["data_sources"]["google_search_console"] == {"available": False, "reason": "Search Console is not connected. Google performance tracking starts when it is connected.", "query_rows": 0}
     assert result["data_sources"]["crawler"]["available"] is True
     assert result["baseline_performance"]["available"] is False
 
@@ -385,3 +385,21 @@ def test_overall_score_with_the_same_components_is_still_compared_directly(db_se
     site, p, first, second = _two_snapshots(db_session)
     result = compare.compare_snapshots(db_session, site, first, second)
     assert not any("same components" in r["label"] for r in result["rows"]) and compare.progress_overview(db_session, site)["health"]["status"] == "improved"
+
+
+def test_search_console_availability_explains_query_rows_without_daily_totals(db_session):
+    """Regression for the live audit: Integrations showed 97 rows while History said 'no data stored'."""
+    from app.models.keyword_observation import KeywordObservation
+    site, p, first, second = _two_snapshots(db_session)
+    site.search_console_site_url = "sc-domain:example.com"
+    assert compare.progress_overview(db_session, site)["data_sources"]["google_search_console"]["reason"] == "Connected, but no Search Console data has been stored yet."
+    for i in range(3):
+        db_session.add(KeywordObservation(website_id=site.id, query=f"q{i}", date=NOW.date() - timedelta(days=3 + i), clicks=0, impressions=1, ctr=0.0, average_position=9.0))
+    db_session.flush()
+    gsc = compare.progress_overview(db_session, site)["data_sources"]["google_search_console"]
+    assert gsc["available"] is False and gsc["query_rows"] == 3 and "3 query-level rows are stored" in gsc["reason"] and "daily totals have not been collected yet" in gsc["reason"]
+    from app.growth import journey
+    panel = {x["panel"]: x for x in journey.build(db_session, site)["panels"]}["Organic clicks, impressions, position"]
+    assert "query-level rows only" in panel["source"]
+    _gsc_days(db_session, site, NOW.date() - timedelta(days=10), 3, clicks=1, impressions=10)
+    assert compare.progress_overview(db_session, site)["data_sources"]["google_search_console"]["available"] is True
