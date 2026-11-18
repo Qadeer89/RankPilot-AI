@@ -152,3 +152,50 @@ def rollback(
     credentials: ShopifyCredentials, target_ref: dict, operation: str, before_value: str, after_state: dict
 ) -> dict:
     return apply_change(credentials, target_ref, operation, before_value)
+
+
+# ---------------------------------------------------------------- read-only catalog (Shopify SEO engine)
+# Read-only: nothing here writes to the store. Written against the documented Admin REST API shape and tested against a
+# fake; not yet exercised against a real store from this environment.
+MAX_CATALOG_PAGES = 40  # 40 pages x 250 = 10,000 items per resource: a hard ceiling on requests per sync
+PAGE_LIMIT = 250
+
+
+def _next_page_info(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+    for part in link_header.split(","):
+        if 'rel="next"' in part and "page_info=" in part:
+            return part.split("page_info=", 1)[1].split(">", 1)[0].split("&", 1)[0]
+    return None
+
+
+def _paged(credentials: ShopifyCredentials, resource: str, key: str, fields: str) -> list[dict]:
+    items: list[dict] = []
+    params: dict = {"limit": PAGE_LIMIT, "fields": fields}
+    for _ in range(MAX_CATALOG_PAGES):
+        response = safe_request(pinned_request, "GET", f"{_api_base(credentials.shop_domain)}/{resource}.json", params=params,
+                                headers=credentials.headers, timeout=REQUEST_TIMEOUT_SECONDS)
+        if response.status_code != 200:
+            raise ConnectorError(f"Could not read Shopify {resource}: HTTP {response.status_code} {response.text[:200]}")
+        items.extend(response.json().get(key, []))
+        cursor = _next_page_info(getattr(response, "headers", {}).get("link") if getattr(response, "headers", None) else None)
+        if not cursor:
+            return items
+        params = {"limit": PAGE_LIMIT, "page_info": cursor}  # Shopify rejects other filters alongside page_info
+    return items
+
+
+def list_products(credentials: ShopifyCredentials) -> list[dict]:
+    return _paged(credentials, "products", "products", "id,title,handle,body_html,status,images,variants")
+
+
+def list_collections(credentials: ShopifyCredentials) -> list[dict]:
+    return (_paged(credentials, "custom_collections", "custom_collections", "id,title,handle,body_html")
+            + _paged(credentials, "smart_collections", "smart_collections", "id,title,handle,body_html"))
+
+
+def get_seo_fields(credentials: ShopifyCredentials, resource_type: str, resource_id: int) -> dict:
+    """The store's own SEO title / meta description for one resource ('' when not set)."""
+    return {"seo_title": get_current_value(credentials, {"resource_type": resource_type, "resource_id": resource_id}, "set_title"),
+            "meta_description": get_current_value(credentials, {"resource_type": resource_type, "resource_id": resource_id}, "set_meta_description")}
