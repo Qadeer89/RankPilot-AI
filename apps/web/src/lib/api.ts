@@ -1921,3 +1921,95 @@ export interface AiCrawlerAccess {
 export function getAiCrawlerAccess(token: string, org: string, site: string) {
   return request<AiCrawlerAccess>(`${aiSearchBase(org, site)}/crawler-access`, { headers: authHeaders(token) });
 }
+
+// ---------------------------------------------------------------- History & Progress
+
+export interface HistoryDelta {
+  label?: string;
+  group?: string;
+  source?: string;
+  previous: number | null;
+  current: number | null;
+  change: number | null;
+  change_pct: number | null;
+  status: "improved" | "declined" | "unchanged" | "changed" | "not_available";
+}
+
+export interface HistorySnapshotMeta {
+  id: string; taken_at: string; type: string; is_baseline: boolean; status: string; reconstructed: boolean;
+  analysis_version: string; scoring_version: string; partial_reason: string | null;
+  health_overall?: number | null; open_issues?: number | null; pages_crawled?: number | null;
+}
+
+export interface HistoryOverview {
+  baseline: HistorySnapshotMeta | null;
+  latest: HistorySnapshotMeta | null;
+  health: HistoryDelta & { initial: number | null; note: string };
+  issues: { identified_total: number; resolved: number; still_open: number; new_since_baseline: number | null; note: string };
+  work: { pages_optimized: number; recommendations_implemented: number; recommendations_validated: number; recommendations_failed: number };
+  data_sources: Record<string, { available: boolean; reason: string | null }>;
+  baseline_performance: { available: boolean; reason?: string } | null;
+}
+
+export interface HistoryCompare {
+  from: HistorySnapshotMeta;
+  to: HistorySnapshotMeta;
+  comparison_period: { start: string; end: string };
+  rows: HistoryDelta[];
+  issue_changes: { available: boolean; resolved?: number; new?: number; still_open?: number; reason?: string };
+  warnings: string[];
+}
+
+export interface HistorySearchWindow { start: string; end: string; days: number; days_with_data: number; coverage: number; available: boolean }
+
+export interface HistorySearchComparison {
+  available: boolean;
+  reason?: string;
+  against?: string;
+  previous?: HistorySearchWindow;
+  current?: HistorySearchWindow;
+  rows: HistoryDelta[];
+  warnings?: string[];
+  freshness: { latest_data_date: string | null; last_synced_at: string | null; note: string };
+  note?: string;
+}
+
+export interface HistorySeries {
+  metric: string; label: string; family: string; source: string; start: string; end: string; available: boolean; note: string;
+  points: { date: string; value: number | null; reconstructed?: boolean; origin?: string }[];
+}
+
+export interface HistoryEvent { id: string; category: string; event_type: string; title: string; occurred_at: string; detail: Record<string, unknown> }
+
+const historyBase = (org: string, site: string) => `/organizations/${org}/websites/${site}/history`;
+
+export function getHistoryOverview(token: string, org: string, site: string) {
+  return request<HistoryOverview>(`${historyBase(org, site)}/overview`, { headers: authHeaders(token) });
+}
+
+export function listHistorySnapshots(token: string, org: string, site: string) {
+  return request<{ items: HistorySnapshotMeta[]; total: number }>(`${historyBase(org, site)}/snapshots?page_size=100`, { headers: authHeaders(token) });
+}
+
+export function getHistoryCompare(token: string, org: string, site: string, from: string, to: string) {
+  return request<HistoryCompare>(`${historyBase(org, site)}/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { headers: authHeaders(token) });
+}
+
+export function getHistorySearchComparison(token: string, org: string, site: string, period: string, against: string, start?: string, end?: string) {
+  const q = new URLSearchParams({ period, against });
+  if (period === "custom" && start && end) { q.set("start", start); q.set("end", end); }
+  return request<HistorySearchComparison>(`${historyBase(org, site)}/search-comparison?${q.toString()}`, { headers: authHeaders(token) });
+}
+
+export function getHistorySeries(token: string, org: string, site: string, metric: string, days: number) {
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86400000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return request<HistorySeries>(`${historyBase(org, site)}/series?metric=${metric}&start=${iso(start)}&end=${iso(end)}`, { headers: authHeaders(token) });
+}
+
+export function getHistoryTimeline(token: string, org: string, site: string, category: string, page: number) {
+  const q = new URLSearchParams({ page: String(page), page_size: "20" });
+  if (category) q.set("category", category);
+  return request<{ items: HistoryEvent[]; page: number; pages: number; total: number }>(`${historyBase(org, site)}/timeline?${q.toString()}`, { headers: authHeaders(token) });
+}

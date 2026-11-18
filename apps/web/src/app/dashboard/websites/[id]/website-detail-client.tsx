@@ -1060,6 +1060,9 @@ export default function WebsiteDetailClient() {
           <Link href={`/dashboard/websites/${websiteId}/keywords`} className={styles.tab}>
             Keywords
           </Link>
+          <Link href={`/dashboard/websites/${websiteId}/history`} className={styles.tab}>
+            History &amp; Progress
+          </Link>
         </div>
 
         {activeTab === "overview" && (
