@@ -192,6 +192,7 @@ export default function HistoryPage() {
                   <div className={styles.stat}><div className={styles.statLabel}>Issues resolved</div><div className={styles.statValue}>{overview.issues.resolved}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>Still open</div><div className={styles.statValue}>{overview.issues.still_open}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>New since baseline</div><div className={styles.statValue}>{overview.issues.new_since_baseline ?? "Not available"}</div></div>
+                  <p className={styles.small} data-testid="issues-note" style={{ gridColumn: "1 / -1" }}>{overview.issues.note}</p>
                   {overview.health.like_for_like && (
                     <div className={styles.stat} data-testid="like-for-like"><div className={styles.statLabel}>Same components ({overview.health.like_for_like.components.join(", ").replace(/_/g, "-")})</div>
                       <div className={styles.statValue}>{overview.health.like_for_like.previous} → {overview.health.like_for_like.current}</div></div>

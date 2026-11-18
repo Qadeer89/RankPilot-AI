@@ -120,3 +120,8 @@ textarea {
     color-scheme: dark;
   }
 }
+
+/* Touch targets: interactive controls are at least 32px tall, and "back" style links get padding instead of staying text-sized. */
+button:not(:disabled),
+[role="button"] { min-height: 32px; }
+a[class*="back"] { display: inline-flex; align-items: center; min-height: 32px; }

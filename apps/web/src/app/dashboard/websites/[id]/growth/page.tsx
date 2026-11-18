@@ -30,6 +30,7 @@ export default function GrowthPage() {
   const [recs, setRecs] = useState<UnifiedRecommendationList | null>(null);
   const [priority, setPriority] = useState("");
   const [type, setType] = useState("");
+  const [stage, setStage] = useState("recommended");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -56,11 +57,11 @@ export default function GrowthPage() {
   useEffect(() => {
     if (!token || !orgId) return;
     let cancelled = false;
-    listUnifiedRecommendations(token, orgId, websiteId, { priority, type, q: query })
+    listUnifiedRecommendations(token, orgId, websiteId, { priority, type, stage, q: query })
       .then((r) => !cancelled && setRecs(r))
       .catch((e) => !cancelled && setError(msg(e)));
     return () => { cancelled = true; };
-  }, [token, orgId, websiteId, priority, type, query]);
+  }, [token, orgId, websiteId, priority, type, stage, query]);
 
   async function save() {
     if (!token || !orgId) return;
@@ -171,9 +172,14 @@ export default function GrowthPage() {
         )}
 
         <section className={styles.card} aria-label="Recommendations">
-          <h2>Recommendations {recs && <span className={styles.small}>({recs.total})</span>}</h2>
+          <h2>Recommendations {recs && <span className={styles.small} data-testid="rec-count">
+            ({recs.total} shown{stage ? ` in “${label(stage)}”` : ""} · {recs.summary.total} in total across every stage)</span>}</h2>
           <div className={styles.controls}>
             <label>Priority<select value={priority} onChange={(e) => setPriority(e.target.value)}>{PRIORITIES.map((p) => <option key={p} value={p}>{label(p)}</option>)}</select></label>
+            <label>Stage<select value={stage} onChange={(e) => setStage(e.target.value)}>
+              <option value="">All stages</option>
+              {Object.entries(recs?.summary.by_stage ?? { recommended: 0 }).map(([k, n]) => <option key={k} value={k}>{label(k)} ({n})</option>)}
+            </select></label>
             <label>Type<select value={type} onChange={(e) => setType(e.target.value)}>{TYPES.map((t) => <option key={t} value={t}>{label(t)}</option>)}</select></label>
             <label>Search<input value={query} onChange={(e) => setQuery(e.target.value)} /></label>
           </div>

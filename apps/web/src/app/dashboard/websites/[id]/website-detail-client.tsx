@@ -77,6 +77,7 @@ import {
 import { clearToken, getToken } from "@/lib/auth";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/EmptyState";
+import { ruleLabel } from "@/lib/ruleLabels";
 import { MetricGrid, type Metric as MetricCardMetric } from "@/components/MetricCard";
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./detail.module.css";
@@ -1204,7 +1205,15 @@ export default function WebsiteDetailClient() {
               <h2>Site health</h2>
               <MetricGrid
                 metrics={[
-                  { label: "Pages crawled", value: pages.length, onClick: () => goTo("pages"), hint: "See pages" },
+                  {
+                    label: "Pages found",
+                    value: pages.length,
+                    meta: (() => {
+                      const done = [...crawls].filter((c) => c.status === "completed").sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""))[0];
+                      return done && done.pages_fetched !== pages.length ? `The last crawl fetched ${done.pages_fetched} URLs; redirects and repeated URLs count there but are stored once.` : undefined;
+                    })(),
+                    onClick: () => goTo("pages"), hint: "See pages",
+                  },
                   ...(overview?.pages_indexed !== null && overview?.pages_indexed !== undefined
                     ? [{ label: "Pages indexed by Google", value: overview.pages_indexed }]
                     : []),
@@ -1214,7 +1223,7 @@ export default function WebsiteDetailClient() {
                     attention: findings.some((f) => f.status === "open" && f.severity === "critical"),
                     onClick: () => goTo("findings"), hint: "See findings",
                   },
-                  { label: "Open opportunities", value: opportunities.filter((o) => o.status === "open").length, onClick: () => goTo("opportunities"), hint: "See opportunities" },
+                  { label: "Open opportunities", value: opportunities.filter((o) => o.status === "open").length, meta: "From crawl findings. The Growth Plan also lists Search Console and AI recommendations.", onClick: () => goTo("opportunities"), hint: "See opportunities" },
                   { label: "Completed tasks", value: tasks.filter((t) => t.status === "completed").length, onClick: () => goTo("tasks"), hint: "See tasks" },
                 ]}
               />
@@ -1629,7 +1638,7 @@ export default function WebsiteDetailClient() {
                         filtered.map((finding) => (
                           <div key={finding.id} className={styles.row}>
                             <div className={styles.rowMain}>
-                              <span>{finding.rule_code}</span>
+                              <span title={finding.rule_code}>{ruleLabel(finding.rule_code)} <span className={styles.rowMeta}>({finding.rule_code})</span></span>
                               <span className={styles.rowMeta}>
                                 {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
                               </span>

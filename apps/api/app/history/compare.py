@@ -219,7 +219,8 @@ def progress_overview(db: Session, website: Website) -> dict:
         "baseline": _meta(base) if base else None, "latest": _meta(latest) if latest else None,
         "health": _health_block(base, latest, health_a, health_b),
         "issues": {"identified_total": total, "resolved": resolved, "still_open": open_now, "new_since_baseline": new_since,
-                   "note": "Counted from every issue RankPilot has detected on this project, so it can differ from the per-snapshot counts."},
+                   "note": "Counted from every issue RankPilot has detected on this project, so it can differ from the per-snapshot counts. "
+                                                                   "'New since baseline' includes issues that were found after the baseline and may already be fixed; the net change in open issues is in the before-and-after table."},
         "work": {
             "pages_optimized": done["pages_optimized"], "changes_applied": done["changes_applied"], "changes_validated": done["changes_validated"],
             "changes_failed": done["changes_failed"],

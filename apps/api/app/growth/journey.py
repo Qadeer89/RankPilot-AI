@@ -84,7 +84,7 @@ def build(db: Session, website: Website) -> dict:
     if critical:
         add("fix_critical", f"Fix {critical} critical issue(s)", "These can stop pages from being found or understood.")
     if pending:
-        add("review_recommendations", f"Review {len(pending)} recommendation(s)", "Approve, edit or dismiss each one.")
+        add("review_recommendations", f"Review {len(pending)} recommendation(s) awaiting your decision", "Approve, edit or dismiss each one. The full list, including finished ones, is below.")
     if cms is None:
         add("connect_cms", "Connect your CMS to apply approved changes from RankPilot", None)
     if competitors == 0:

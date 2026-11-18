@@ -172,7 +172,7 @@ def test_next_actions_reflect_real_state(db_session):
     db_session.flush()
     actions = {a["key"]: a for a in journey.build(db_session, site)["next_actions"]}
     assert "business_profile" not in actions and "add_competitors" not in actions
-    assert actions["fix_critical"]["text"] == "Fix 1 critical issue(s)" and actions["review_recommendations"]["text"] == "Review 1 recommendation(s)"
+    assert actions["fix_critical"]["text"] == "Fix 1 critical issue(s)" and actions["review_recommendations"]["text"] == "Review 1 recommendation(s) awaiting your decision"
 
 
 # ---------------------------------------------------------------- 30-day plan
