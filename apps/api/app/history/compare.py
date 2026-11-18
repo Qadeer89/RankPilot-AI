@@ -15,9 +15,14 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.history import snapshots as snap
-from app.models.change_record import ChangeRecord, ValidationStatus
+from app.history import work
 from app.models.ga4_daily_metric import Ga4DailyMetric
-from app.models.history import ProjectActivityEvent, ProjectMetricHistory, ProjectSnapshot, RecommendationHistory
+from app.models.history import (
+    ProjectActivityEvent,
+    ProjectMetricHistory,
+    ProjectSnapshot,
+    RecommendationHistory,
+)
 from app.models.keyword_observation import KeywordObservation
 from app.models.page import Page
 from app.models.page_snapshot import PageSnapshot
@@ -144,19 +149,21 @@ def progress_overview(db: Session, website: Website) -> dict:
     new_since = findings.filter(SEOFinding.first_detected_at > base.created_at).count() if base else None
     stages = _latest_stages(db, website)
     implemented_stages = {"implemented", "validated", "monitoring"}
-    pages_optimized = (
-        db.query(func.count(func.distinct(ChangeRecord.page_id))).filter(ChangeRecord.website_id == website.id, ChangeRecord.page_id.isnot(None),
-                                                                          ChangeRecord.validation_status != ValidationStatus.failed).scalar() or 0
-    )
+    done = work.summary(db, website)
     gsc_rows = db.query(func.count(ProjectMetricHistory.id)).filter(ProjectMetricHistory.website_id == website.id).scalar() or 0
     return {
         "baseline": _meta(base) if base else None, "latest": _meta(latest) if latest else None,
         "health": {"initial": health_a, "current": health_b, **metric_delta(health_a, health_b, better="higher"), "note": "RankPilot's own measure of website health. It is not a Google ranking."},
         "issues": {"identified_total": total, "resolved": resolved, "still_open": open_now, "new_since_baseline": new_since,
                    "note": "Counted from every issue RankPilot has detected on this project, so it can differ from the per-snapshot counts."},
-        "work": {"pages_optimized": int(pages_optimized), "recommendations_implemented": sum(1 for s in stages.values() if s in implemented_stages),
-                 "recommendations_validated": sum(1 for s in stages.values() if s in ("validated", "monitoring")),
-                 "recommendations_failed": sum(1 for s in stages.values() if s == "failed")},
+        "work": {
+            "pages_optimized": done["pages_optimized"], "changes_applied": done["changes_applied"], "changes_validated": done["changes_validated"],
+            "changes_failed": done["changes_failed"],
+            # recommendations: stage-log entries plus opportunities whose task was applied/validated/failed (no double counting)
+            "recommendations_implemented": len({k for k, v in stages.items() if v in implemented_stages} | {("seo_opportunity", str(o)) for o in done["opportunities_implemented"]}),
+            "recommendations_validated": len({k for k, v in stages.items() if v in ("validated", "monitoring")} | {("seo_opportunity", str(o)) for o in done["opportunities_validated"]}),
+            "recommendations_failed": len({k for k, v in stages.items() if v == "failed"} | {("seo_opportunity", str(o)) for o in done["opportunities_failed"]}),
+        },
         "data_sources": {
             "crawler": {"available": latest is not None, "reason": None if latest else "No analysis has completed yet."},
             "google_search_console": {"available": gsc_rows > 0, "reason": None if gsc_rows else (
@@ -332,7 +339,7 @@ def page_history(db: Session, website: Website, page_id) -> dict:
                        "internal_links": len(s.internal_links_json or [])})
     changes = [{"applied_at": c.executed_at.isoformat(), "connector": c.connector_type.value, "before": c.before_state_json, "after": c.after_state_json,
                 "validation": c.validation_status.value, "operation": c.seo_task.task_type if c.seo_task else None}
-               for c in db.query(ChangeRecord).filter(ChangeRecord.website_id == website.id, ChangeRecord.page_id == page.id).order_by(ChangeRecord.executed_at)]
+               for c, _page, _opp in work.change_rows(db, website, page.id)]
     issues = [{"rule": f.rule_code, "severity": f.severity.value, "status": f.status.value, "first_detected_at": f.first_detected_at.isoformat(),
                "resolved_at": f.resolved_at.isoformat() if f.resolved_at else None}
               for f in db.query(SEOFinding).filter(SEOFinding.website_id == website.id, SEOFinding.page_id == page.id).order_by(SEOFinding.first_detected_at)]

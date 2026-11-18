@@ -117,7 +117,8 @@ def test_overview_counts_real_work_and_separates_data_sources(db_session):
     result = compare.progress_overview(db_session, site)
     assert result["health"]["initial"] == 60.0 and result["health"]["current"] == 75.0 and result["health"]["status"] == "improved" and "not a Google ranking" in result["health"]["note"]
     assert result["issues"]["identified_total"] == 5 and result["issues"]["resolved"] == 1 and result["issues"]["still_open"] == 4 and result["issues"]["new_since_baseline"] == 1
-    assert result["work"] == {"pages_optimized": 0, "recommendations_implemented": 2, "recommendations_validated": 1, "recommendations_failed": 1}  # failed work is not success
+    assert {k: result["work"][k] for k in ("pages_optimized", "recommendations_implemented", "recommendations_validated", "recommendations_failed")} == {
+        "pages_optimized": 0, "recommendations_implemented": 2, "recommendations_validated": 1, "recommendations_failed": 1}  # failed work is not success
     assert result["data_sources"]["google_search_console"] == {"available": False, "reason": "Search Console is not connected. Google performance tracking starts when it is connected."}
     assert result["data_sources"]["crawler"]["available"] is True
     assert result["baseline_performance"]["available"] is False
@@ -330,3 +331,32 @@ def test_a_project_with_no_history_yet_says_so(client, db_session):
     assert ov["baseline"] is None and ov["health"]["status"] == "not_available" and ov["data_sources"]["crawler"]["available"] is False
     assert client.get(f"{base}/snapshots", headers=headers).json()["items"] == []
     assert client.get(f"{base}/compare", headers=headers).status_code == 404
+
+
+def test_changes_written_without_a_page_are_attributed_through_their_opportunity(db_session):
+    """Regression for the live audit: 100+ applied changes read as 'Pages optimized 0' because change records carry no page."""
+    from app.history import work
+    from app.models.seo_opportunity import OpportunityStatus, SEOOpportunity
+    from app.models.seo_task import ApprovalStatus, SEOTask, SEOTaskStatus
+    site, p, first, second = _two_snapshots(db_session)
+    p2 = make_page(db_session, site, "/second")
+    made = []
+    for page, status in ((p, ValidationStatus.passed), (p, ValidationStatus.passed), (p2, ValidationStatus.failed)):
+        opp = SEOOpportunity(website_id=site.id, page_id=page.id, category="metadata", title="t", rationale="r", impact_estimate=0.3, confidence=0.6, effort_estimate=0.2,
+                             risk_tier=1, evidence_json={}, status=OpportunityStatus.completed)
+        db_session.add(opp)
+        db_session.flush()
+        task = SEOTask(website_id=site.id, opportunity_id=opp.id, task_type="set_title", status=SEOTaskStatus.completed, risk_tier=1, proposed_change_json={},
+                       approval_status=ApprovalStatus.pending, idempotency_key=uuid.uuid4().hex)
+        db_session.add(task)
+        db_session.flush()
+        db_session.add(ChangeRecord(website_id=site.id, page_id=None, seo_task_id=task.id, connector_type=_connector(), before_state_json={"value": "a"},
+                                    after_state_json={"value": "b"}, actor_type=ChangeActorType.system, executed_at=NOW, validation_status=status))
+        made.append(opp.id)
+    db_session.flush()
+    done = work.summary(db_session, site)
+    assert (done["changes_applied"], done["changes_validated"], done["changes_failed"], done["pages_optimized"]) == (2, 2, 1, 1)
+    overview = compare.progress_overview(db_session, site)["work"]
+    assert overview["pages_optimized"] == 1 and overview["changes_applied"] == 2 and overview["recommendations_implemented"] == 2
+    assert overview["recommendations_validated"] == 2 and overview["recommendations_failed"] == 1
+    assert [c.executed_at for c, _pg, _o in work.change_rows(db_session, site, p.id)] == [NOW, NOW]  # per-page history sees them too

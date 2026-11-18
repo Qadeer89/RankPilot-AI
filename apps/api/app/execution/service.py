@@ -446,7 +446,7 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
 
             change_record = ChangeRecord(
                 website_id=website.id,
-                page_id=None,
+                page_id=task.opportunity.page_id if task.opportunity else None,
                 seo_task_id=task.id,
                 connector_type=ConnectorType.wordpress,
                 before_state_json={"operation": operation, "post_type": post_type, "post_id": post_id, "value": before_value},
@@ -498,7 +498,7 @@ def execute_task(db: Session, website: Website, task: SEOTask) -> ChangeRecord:
 
         change_record = ChangeRecord(
             website_id=website.id,
-            page_id=None,
+            page_id=task.opportunity.page_id if task.opportunity else None,
             seo_task_id=task.id,
             connector_type=connector_type,
             before_state_json={"operation": operation, "target_ref": target_ref, "value": before_value},
