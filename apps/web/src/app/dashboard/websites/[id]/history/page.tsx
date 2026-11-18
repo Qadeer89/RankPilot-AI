@@ -20,13 +20,14 @@ function fmt(value: number | null | undefined, label?: string): string {
 
 function changeText(d: HistoryDelta): string {
   if (d.status === "not_available") return "Not available";
+  if (d.status === "not_comparable") return "Not comparable";
   if (d.change === null) return "—";
   const sign = d.change > 0 ? "+" : "";
   const pct = d.change_pct === null ? "" : ` (${d.change_pct > 0 ? "+" : ""}${d.change_pct}%)`;
   return `${sign}${d.change}${pct}`;
 }
 
-const STATUS_TEXT: Record<string, string> = { improved: "Improved", declined: "Declined", unchanged: "Unchanged", changed: "Changed", not_available: "Not available" };
+const STATUS_TEXT: Record<string, string> = { improved: "Improved", declined: "Declined", unchanged: "Unchanged", changed: "Changed", not_available: "Not available", not_comparable: "Not comparable" };
 
 function Status({ s }: { s: HistoryDelta["status"] }) {
   const cls = s === "improved" ? styles.good : s === "declined" ? styles.bad : styles.neutral;
@@ -188,6 +189,13 @@ export default function HistoryPage() {
                   <div className={styles.stat}><div className={styles.statLabel}>Issues resolved</div><div className={styles.statValue}>{overview.issues.resolved}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>Still open</div><div className={styles.statValue}>{overview.issues.still_open}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>New since baseline</div><div className={styles.statValue}>{overview.issues.new_since_baseline ?? "Not available"}</div></div>
+                  {overview.health.like_for_like && (
+                    <div className={styles.stat} data-testid="like-for-like"><div className={styles.statLabel}>Same components ({overview.health.like_for_like.components.join(", ").replace(/_/g, "-")})</div>
+                      <div className={styles.statValue}>{overview.health.like_for_like.previous} → {overview.health.like_for_like.current}</div></div>
+                  )}
+                  {overview.work.changes_applied !== undefined && (
+                    <div className={styles.stat}><div className={styles.statLabel}>Changes applied</div><div className={styles.statValue}>{overview.work.changes_applied}</div></div>
+                  )}
                   <div className={styles.stat}><div className={styles.statLabel}>Pages optimized</div><div className={styles.statValue}>{overview.work.pages_optimized}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>Recommendations implemented</div><div className={styles.statValue}>{overview.work.recommendations_implemented}</div></div>
                   <div className={styles.stat}><div className={styles.statLabel}>Recommendations validated</div><div className={styles.statValue}>{overview.work.recommendations_validated}</div></div>

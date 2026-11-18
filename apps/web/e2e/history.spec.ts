@@ -203,3 +203,19 @@ test("a rebuilt baseline is labelled as such", async ({ page }) => {
   await open(page, fake);
   await expect(page.getByText("rebuilt from the health score stored at the time")).toBeVisible();
 });
+
+test("an overall score that averages different components is shown as not comparable, with the like-for-like figure", async ({ page }) => {
+  const fake = new FakeHistory();
+  fake.ov = overview({
+    health: { initial: 96.66, current: 90.85, previous: 96.66, change: null, change_pct: null, status: "not_comparable", like_for_like: { components: ["technical", "on_page", "content"], previous: 96.66, current: 95.9 },
+              note: "RankPilot's own measure of website health. It is not a Google ranking. The two overall scores average different components, so they are not directly comparable." },
+    work: { pages_optimized: 30, changes_applied: 106, changes_validated: 105, changes_failed: 1, recommendations_implemented: 40, recommendations_validated: 39, recommendations_failed: 1 },
+  });
+  await open(page, fake);
+  const card = page.getByRole("region", { name: "Overall progress" });
+  await expect(card).toContainText("Not comparable");
+  await expect(card).not.toContainText("Declined");
+  await expect(page.getByTestId("like-for-like")).toContainText("96.66 → 95.9");
+  await expect(card).toContainText("Changes applied");
+  await expect(card).toContainText("106");
+});

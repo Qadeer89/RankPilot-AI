@@ -360,3 +360,28 @@ def test_changes_written_without_a_page_are_attributed_through_their_opportunity
     assert overview["pages_optimized"] == 1 and overview["changes_applied"] == 2 and overview["recommendations_implemented"] == 2
     assert overview["recommendations_validated"] == 2 and overview["recommendations_failed"] == 1
     assert [c.executed_at for c, _pg, _o in work.change_rows(db_session, site, p.id)] == [NOW, NOW]  # per-page history sees them too
+
+
+def test_overall_score_is_not_compared_across_different_components(db_session):
+    """Regression for the live audit: performance was added after the baseline, so 96.66 -> 90.85 was shown as 'Declined'."""
+    site, p, first, second = _two_snapshots(db_session)
+    for s_ in (first, second):
+        db_session.expunge(s_)  # snapshots are immutable in the database; compare on detached copies with edited scores
+    first.summary_json = {**first.summary_json, "health": {"available": True, "overall": 96.0, "technical": 95.0, "on_page": 95.0, "content": 98.0, "performance": None}}
+    second.summary_json = {**second.summary_json, "health": {"available": True, "overall": 90.0, "technical": 95.0, "on_page": 94.0, "content": 98.0, "performance": 75.0}}
+    result = compare.compare_snapshots(db_session, site, first, second)
+    rows = {r["label"]: r for r in result["rows"]}
+    plain = rows["Overall SEO health score"]
+    assert plain["status"] == "not_comparable" and plain["change"] is None and plain["change_pct"] is None
+    same = next(r for r in result["rows"] if r["label"].startswith("Overall score on the same components"))
+    assert (same["previous"], same["current"], same["status"]) == (96.0, 95.67, "declined") and "technical, on-page, content" in same["label"]
+    assert any("not comparable" in w for w in result["warnings"])
+    health = compare._health_block(first, second, 96.0, 90.0)
+    assert health["status"] == "not_comparable" and health["change"] is None and health["like_for_like"]["components"] == ["technical", "on_page", "content"]
+    assert "not directly comparable" in health["note"]
+
+
+def test_overall_score_with_the_same_components_is_still_compared_directly(db_session):
+    site, p, first, second = _two_snapshots(db_session)
+    result = compare.compare_snapshots(db_session, site, first, second)
+    assert not any("same components" in r["label"] for r in result["rows"]) and compare.progress_overview(db_session, site)["health"]["status"] == "improved"

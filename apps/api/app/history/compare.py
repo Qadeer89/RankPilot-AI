@@ -42,6 +42,22 @@ class HistoryError(Exception):
 
 # ---------------------------------------------------------------- one metric, before and after
 
+_COMPONENTS = ("technical", "on_page", "content", "performance")
+
+
+def like_for_like(ha: dict, hb: dict) -> dict | None:
+    """The overall health score is the average of whichever components existed. When the set differs between two runs
+    (for example the performance score was added later) the two overall numbers measure different things, so they are
+    re-averaged over the components both runs have. None when the sets match (the plain numbers are comparable)."""
+    sa = {c for c in _COMPONENTS if ha.get("available", True) and ha.get(c) is not None}
+    sb = {c for c in _COMPONENTS if hb.get("available", True) and hb.get(c) is not None}
+    if sa == sb or not (sa & sb):
+        return None
+    shared = sorted(sa & sb, key=_COMPONENTS.index)
+    return {"components": shared, "previous": round(sum(ha[c] for c in shared) / len(shared), 2), "current": round(sum(hb[c] for c in shared) / len(shared), 2),
+            "only_before": sorted(sa - sb), "only_after": sorted(sb - sa)}
+
+
 def metric_delta(previous, current, *, better: str = "higher") -> dict:
     """better: "higher", "lower" or "neutral" (a change that is neither good nor bad, e.g. pages crawled)."""
     if previous is None or current is None:
@@ -95,10 +111,16 @@ def compare_snapshots(db: Session, website: Website, a: ProjectSnapshot, b: Proj
     def add(group: str, label: str, key_a, key_b, better: str, source: str = "crawler") -> None:
         rows.append({"group": group, "label": label, "source": SOURCE_LABELS[source], **metric_delta(key_a, key_b, better=better)})
 
+    group = "Health score (RankPilot's own measure, not a Google ranking)"
+    lfl = like_for_like(ha, hb)
     for key, label in (("overall", "Overall SEO health score"), ("technical", "Technical score"), ("on_page", "On-page score"), ("content", "Content score"),
                        ("performance", "Performance score")):
-        add("Health score (RankPilot's own measure, not a Google ranking)", label, ha.get(key) if ha.get("available", True) else None,
-            hb.get(key) if hb.get("available", True) else None, "higher")
+        add(group, label, ha.get(key) if ha.get("available", True) else None, hb.get(key) if hb.get("available", True) else None, "higher")
+        if key == "overall" and lfl:
+            rows[-1]["status"] = "not_comparable"  # the two overall numbers average different components
+            rows[-1]["change"] = rows[-1]["change_pct"] = None
+            names = ", ".join(c.replace("_", "-") for c in lfl["components"])
+            add(group, f"Overall score on the same components ({names})", lfl["previous"], lfl["current"], "higher")
     ia, ib = a.summary_json.get("issues", {}), b.summary_json.get("issues", {})
     add("Issues", "Open issues", ia.get("open_total"), ib.get("open_total"), "lower")
     for sev in ("critical", "warning", "info"):
@@ -115,6 +137,9 @@ def compare_snapshots(db: Session, website: Website, a: ProjectSnapshot, b: Proj
         if change else {"available": False, "reason": "Which individual issues were open is not available for one of these snapshots (it was rebuilt from stored scores)."}
     )
     warnings = []
+    if lfl:
+        warnings.append("The overall health score averages different components in these two snapshots (" + ", ".join(lfl["only_after"] + lfl["only_before"]).replace("_", "-")
+                        + " exists in only one), so the plain overall numbers are not comparable. The row 'Overall score on the same components' is.")
     if (a.analysis_version, a.scoring_version) != (b.analysis_version, b.scoring_version):
         warnings.append("These snapshots were produced with different rule or scoring versions, so small differences may come from the method rather than the website.")
     for s, name in ((a, "The earlier"), (b, "The later")):
@@ -138,6 +163,17 @@ def _latest_stages(db: Session, website: Website) -> dict[tuple[str, str], str]:
     return {k: v[1] for k, v in latest.items()}
 
 
+def _health_block(base, latest, health_a, health_b) -> dict:
+    note = "RankPilot's own measure of website health. It is not a Google ranking."
+    block = {"initial": health_a, "current": health_b, **metric_delta(health_a, health_b, better="higher"), "note": note}
+    lfl = like_for_like((base.summary_json.get("health", {}) if base else {}), (latest.summary_json.get("health", {}) if latest else {}))
+    if lfl:
+        block.update(change=None, change_pct=None, status="not_comparable", like_for_like=lfl,
+                     note=note + " The two overall scores average different components, so they are not directly comparable; "
+                                 f"on the same components ({', '.join(c.replace('_', '-') for c in lfl['components'])}) the score went from {lfl['previous']} to {lfl['current']}.")
+    return block
+
+
 def progress_overview(db: Session, website: Website) -> dict:
     snap.ensure_history(db, website)
     base, latest = snap.baseline_snapshot(db, website.id), snap.latest_crawl_snapshot(db, website.id)
@@ -153,7 +189,7 @@ def progress_overview(db: Session, website: Website) -> dict:
     gsc_rows = db.query(func.count(ProjectMetricHistory.id)).filter(ProjectMetricHistory.website_id == website.id).scalar() or 0
     return {
         "baseline": _meta(base) if base else None, "latest": _meta(latest) if latest else None,
-        "health": {"initial": health_a, "current": health_b, **metric_delta(health_a, health_b, better="higher"), "note": "RankPilot's own measure of website health. It is not a Google ranking."},
+        "health": _health_block(base, latest, health_a, health_b),
         "issues": {"identified_total": total, "resolved": resolved, "still_open": open_now, "new_since_baseline": new_since,
                    "note": "Counted from every issue RankPilot has detected on this project, so it can differ from the per-snapshot counts."},
         "work": {

@@ -1932,7 +1932,7 @@ export interface HistoryDelta {
   current: number | null;
   change: number | null;
   change_pct: number | null;
-  status: "improved" | "declined" | "unchanged" | "changed" | "not_available";
+  status: "improved" | "declined" | "unchanged" | "changed" | "not_available" | "not_comparable";
 }
 
 export interface HistorySnapshotMeta {
@@ -1944,9 +1944,9 @@ export interface HistorySnapshotMeta {
 export interface HistoryOverview {
   baseline: HistorySnapshotMeta | null;
   latest: HistorySnapshotMeta | null;
-  health: HistoryDelta & { initial: number | null; note: string };
+  health: HistoryDelta & { initial: number | null; note: string; like_for_like?: { components: string[]; previous: number; current: number } };
   issues: { identified_total: number; resolved: number; still_open: number; new_since_baseline: number | null; note: string };
-  work: { pages_optimized: number; recommendations_implemented: number; recommendations_validated: number; recommendations_failed: number };
+  work: { pages_optimized: number; changes_applied?: number; changes_validated?: number; changes_failed?: number; recommendations_implemented: number; recommendations_validated: number; recommendations_failed: number };
   data_sources: Record<string, { available: boolean; reason: string | null }>;
   baseline_performance: { available: boolean; reason?: string } | null;
 }
