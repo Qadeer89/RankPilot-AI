@@ -42,6 +42,12 @@ class FakePage:
     error = None
 
 
+@pytest.fixture(autouse=True)
+def no_network_for_robots(monkeypatch):
+    from app.ai_search import crawler_access
+    monkeypatch.setattr(crawler_access, "fetch_robots_text", lambda origin: ("User-agent: *\nAllow: /\n", None))
+
+
 @pytest.fixture
 def world(client, db_session, monkeypatch):
     headers, org = register(client, "owner@example.com")
@@ -318,3 +324,34 @@ def test_the_analyze_endpoint_is_rate_limited(client, world, monkeypatch):
     monkeypatch.setattr(ep, "enforce_rate_limit", lambda key, **kw: calls.append((key, kw)))
     _analyze(client, world)
     assert calls and calls[0][1] == {"max_attempts": 30, "window_seconds": 3600}
+
+
+def test_robots_access_endpoint_reports_each_crawler_and_is_tenant_scoped(client, world, monkeypatch):
+    from app.ai_search import crawler_access
+    monkeypatch.setattr(crawler_access, "fetch_robots_text", lambda origin: ("User-agent: GPTBot\nDisallow: /\n\nUser-agent: PerplexityBot\nDisallow: /private/\n", None))
+    r = client.get(f"{world.base}/crawler-access", headers=world.headers).json()
+    states = {row["token"]: row["state"] for row in r["rows"]}
+    assert states["GPTBot"] == "blocked" and states["OAI-SearchBot"] == "allowed" and states["Googlebot"] == "allowed"
+    assert r["summary"]["training_crawlers_blocked"] == ["GPTBot"] and r["summary"]["search_crawlers_blocked"] == []
+    assert "robots.txt only" in r["note"]
+    other, _ = register(client, "stranger2@example.com")
+    assert client.get(f"{world.base}/crawler-access", headers=other).status_code in (403, 404)
+
+
+def test_readiness_flags_blocked_search_crawlers_but_not_blocked_training_crawlers(client, world, monkeypatch):
+    from app.ai_search import crawler_access
+    monkeypatch.setattr(crawler_access, "fetch_robots_text", lambda origin: ("User-agent: GPTBot\nDisallow: /\n", None))
+    ok = _analyze(client, world).json()["ai_search_readiness"]
+    assert next(c for c in ok["checks"] if c["check"] == "AI search crawlers can reach the site")["status"] == "pass"
+    monkeypatch.setattr(crawler_access, "fetch_robots_text", lambda origin: ("User-agent: OAI-SearchBot\nDisallow: /\n", None))
+    client.post(f"{world.base}/findings/{_analyze(client, world).json()['id']}/reject", headers=world.headers)
+    blocked = _analyze(client, world).json()["ai_search_readiness"]
+    check = next(c for c in blocked["checks"] if c["check"] == "AI search crawlers can reach the site")
+    assert check["status"] == "fail" and "OAI-SearchBot" in check["evidence"]
+
+
+def test_an_unreadable_robots_file_adds_no_check_rather_than_guessing(client, world, monkeypatch):
+    from app.ai_search import crawler_access
+    monkeypatch.setattr(crawler_access, "fetch_robots_text", lambda origin: (None, "robots.txt answered HTTP 503"))
+    names = [c["check"] for c in _analyze(client, world).json()["ai_search_readiness"]["checks"]]
+    assert "AI search crawlers can reach the site" not in names

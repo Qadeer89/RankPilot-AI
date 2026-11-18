@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  AiSearchDetail, AiSearchFilters, AiSearchFinding, AiSearchMonitoring, AiSearchOpportunity, AiSearchOpportunityList, AiSearchSummary, ApiError,
-  analyzeAiSearchQuery, decideAiSearchFinding, editAiSearchDraft, getAiSearchDetail, getAiSearchMonitoring, getAiSearchSummary,
+  AiCrawlerAccess, AiSearchDetail, AiSearchFilters, AiSearchFinding, AiSearchMonitoring, AiSearchOpportunity, AiSearchOpportunityList, AiSearchSummary, ApiError,
+  analyzeAiSearchQuery, decideAiSearchFinding, editAiSearchDraft, getAiCrawlerAccess, getAiSearchDetail, getAiSearchMonitoring, getAiSearchSummary,
   listAiSearchOpportunities, markAiSearchImplemented,
 } from "@/lib/api";
 import styles from "./ai-search.module.css";
@@ -23,6 +23,47 @@ const message = (e: unknown) => (e instanceof ApiError ? e.message : "Something 
 
 function tierClass(tier: string) {
   return tier === "high_opportunity" ? styles.badgeGood : tier === "content_gap" ? styles.badgeWarn : tier === "low_priority" ? "" : styles.badgeWarn;
+}
+
+function CrawlerAccess({ token, organizationId, websiteId }: { token: string; organizationId: string; websiteId: string }) {
+  const [data, setData] = useState<AiCrawlerAccess | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAiCrawlerAccess(token, organizationId, websiteId)
+      .then((d) => !cancelled && setData(d))
+      .catch((e) => !cancelled && setError(message(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [token, organizationId, websiteId]);
+  if (error) return <p className={styles.warn} data-testid="crawler-access-error">AI crawler access could not be checked: {error}</p>;
+  if (!data) return null;
+  const blocked = data.rows.filter((r) => r.state === "blocked" || r.state === "partly_blocked");
+  return (
+    <details className={styles.note} data-testid="crawler-access">
+      <summary>
+        AI crawler access (robots.txt):{" "}
+        {data.summary.unknown
+          ? `could not be read${data.problem ? ` (${data.problem})` : ""}`
+          : data.summary.search_crawlers_blocked.length
+            ? `AI search crawlers blocked: ${data.summary.search_crawlers_blocked.join(", ")}`
+            : blocked.length
+              ? `AI search crawlers allowed; training crawlers blocked: ${data.summary.training_crawlers_blocked.join(", ") || "none"}`
+              : "all listed crawlers allowed"}
+      </summary>
+      <table className={styles.table}>
+        <thead><tr><th>Crawler</th><th>Vendor</th><th>What it does</th><th>robots.txt</th></tr></thead>
+        <tbody>
+          {data.rows.map((r) => (
+            <tr key={r.token}><td>{r.token}</td><td>{r.vendor}</td><td>{r.meaning}</td>
+              <td><span className={`${styles.badge} ${r.state === "allowed" ? styles.badgeGood : r.state === "unknown" ? "" : styles.badgeWarn}`}>{r.state.replace("_", " ")}</span></td></tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={styles.small}>{data.note}</p>
+    </details>
+  );
 }
 
 export default function AiSearchFinder({ token, organizationId, websiteId, country }: Props) {
@@ -70,6 +111,7 @@ export default function AiSearchFinder({ token, organizationId, websiteId, count
         {summary?.explanation ??
           "These are Google Search queries from Search Console, not prompts typed into ChatGPT, Gemini or other AI tools. Nothing here guarantees a ranking or an AI citation."}
       </p>
+      <CrawlerAccess token={token} organizationId={organizationId} websiteId={websiteId} />
       {error && (
         <p className={styles.error} role="alert" data-testid="ai-search-error">
           {error}{" "}

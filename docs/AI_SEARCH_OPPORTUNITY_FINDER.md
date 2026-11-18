@@ -120,3 +120,9 @@ cd ../web && npm run build
 pm2 restart rankpilot-api rankpilot-worker rankpilot-scheduler rankpilot-web
 ```
 Rollback: restart the previous commit; the new table and enum value are ignored by old code. `alembic downgrade 31eaadaff61a` drops `ai_search_findings` (the enum value remains, which is harmless). Existing sync behaviour changed in one way: it now pages through all Search Console rows instead of the first 1,000, so the next sync can store more rows than before.
+
+### Addendum: claim/source checks and AI crawler access
+Adapted, with attribution, from claude-seo (https://github.com/AgriciDaniel/claude-seo, MIT License, Copyright (c) 2026 agricidaniel):
+* `ai_search/claims.py`: finds statistics, quantities, attributions ("according to a … study"), dates and comparisons, and whether a source sits next to each. Used in two places: the AI draft's quality checks (an attribution to a source the page never mentions **blocks** the draft; an unsupported comparison warns) and the page readiness checklist ("Sources for claims"). English-only: other languages are reported as "not checked", never as "no claims". Upstream missed a sentence-initial "According"; that is fixed here.
+* `ai_search/crawler_access.py`: which AI crawlers robots.txt allows (OpenAI, Anthropic, Perplexity, Google-Extended, Applebot-Extended, Common Crawl, plus Googlebot/Bingbot as a baseline). Shown as **information**: blocking is a legitimate choice. Only a blocked AI *search* crawler is flagged in the readiness checklist. RFC 9309 error handling: 404 means no rules (allowed); 429/5xx/network failure means unknown, never "allowed". robots.txt only: firewalls/CDN rules are not tested and RankPilot does not impersonate those crawlers.
+* New endpoint `GET .../ai-search/crawler-access` and a collapsed card on the AI Search tab.

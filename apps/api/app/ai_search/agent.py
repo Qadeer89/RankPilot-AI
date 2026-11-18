@@ -173,6 +173,21 @@ def quality_checks(draft: AiSearchDraft, *, query: str, content: PageContent, al
         stuffing = f"the exact query appears {phrase_count} times" if phrase_count > 1 else ""
     add("No keyword stuffing", "pass" if not stuffing else "warn", stuffing or "ok")
 
+    from app.ai_search.claims import english_coverage, unsupported_claims
+
+    if english_coverage(answer) >= 0.6:
+        loose = unsupported_claims(answer, content.text + " " + query)
+        authority = [c for c in loose if c["kind"] == "authority"]
+        comparative = [c for c in loose if c["kind"] == "comparative"]
+        if authority:
+            add("Attributions are on the page", "fail", "an authority the page never mentions is cited: " + "; ".join(c["text"] for c in authority[:3]))
+        elif comparative:
+            add("Comparisons are supported", "warn", "comparison the page does not make: " + "; ".join(c["text"] for c in comparative[:3]))
+        else:
+            add("Attributions are on the page", "pass", "no unsourced authority or comparison claims")
+    else:
+        add("Attributions are on the page", "warn", "not checked: the claim patterns only understand English")
+
     # Wording the page never uses: the model may be stating facts the owner never wrote. Warn, do not block,
     # because ordinary connecting words will always be "new"; the list tells the reviewer what to confirm.
     page_terms = content_terms(content.text + " " + (content.title or "") + " " + query)

@@ -1908,3 +1908,16 @@ export function markAiSearchImplemented(token: string, org: string, site: string
 export function getAiSearchMonitoring(token: string, org: string, site: string, id: string, windowDays = 28) {
   return request<AiSearchMonitoring>(`${aiSearchBase(org, site)}/findings/${id}/monitoring?window_days=${windowDays}`, { headers: authHeaders(token) });
 }
+
+export interface AiCrawlerRow { token: string; vendor: string; role: string; meaning: string; state: string; note: string }
+
+export interface AiCrawlerAccess {
+  rows: AiCrawlerRow[];
+  summary: { search_crawlers_blocked: string[]; training_crawlers_blocked: string[]; unknown: boolean };
+  problem: string | null;
+  note: string;
+}
+
+export function getAiCrawlerAccess(token: string, org: string, site: string) {
+  return request<AiCrawlerAccess>(`${aiSearchBase(org, site)}/crawler-access`, { headers: authHeaders(token) });
+}

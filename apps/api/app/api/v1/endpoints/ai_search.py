@@ -121,6 +121,17 @@ def summary(
     }
 
 
+@router.get(f"{_BASE}/crawler-access")
+def crawler_access_status(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = Depends(get_db),
+                          _m: Membership = Depends(RequireRole(MembershipRole.viewer))) -> dict:
+    """Which AI crawlers the site's robots.txt allows. Information only; reads robots.txt (rate limited)."""
+    from app.ai_search import crawler_access
+
+    website = get_website_or_404(db, organization_id, website_id)
+    enforce_rate_limit(f"ai_search_robots:{website.id}", max_attempts=30, window_seconds=3600)
+    return crawler_access.check(website.canonical_url)
+
+
 @router.get(f"{_BASE}/opportunities")
 def opportunities(
     organization_id: uuid.UUID, website_id: uuid.UUID, range: str | None = None, start: date | None = None, end: date | None = None,

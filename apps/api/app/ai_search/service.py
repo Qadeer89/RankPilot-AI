@@ -111,7 +111,14 @@ def analyse(db: Session, website: Website, *, query: str, country: str | None, w
     content = fetch_content(website, op.page.url)
     finding.content_available, finding.content_json = content.available, _content_json(content)
     finding.answer_analysis = analyse_answer(op.query, content)
-    finding.readiness_json = assess_readiness(op.query, content, finding.answer_analysis)
+    try:
+        from app.ai_search import crawler_access
+
+        access = crawler_access.check(website.canonical_url, op.page.url)
+    except Exception:  # noqa: BLE001 - informational; never blocks the analysis
+        access = None
+    finding.readiness_json = assess_readiness(op.query, content, finding.answer_analysis, access)
+    finding.readiness_json["crawler_access"] = access
 
     if op.needs_review:
         finding.ai_status = "skipped"

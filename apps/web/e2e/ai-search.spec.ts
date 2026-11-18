@@ -64,6 +64,13 @@ class FakeSearch {
     try { body = req.postDataJSON() as Json | null; } catch { body = null; }
     this.calls.push({ method: req.method(), path: url.pathname, query: url.searchParams, body });
     const p = url.pathname;
+    if (p.endsWith("/crawler-access")) {
+      return this.json(route, { rows: [
+        { token: "OAI-SearchBot", vendor: "OpenAI", role: "search", meaning: "indexes pages so an AI search product can find and cite them", state: "allowed", note: "allowed" },
+        { token: "GPTBot", vendor: "OpenAI", role: "training", meaning: "collects content to train models", state: "blocked", note: "disallowed by robots.txt" }],
+        summary: { search_crawlers_blocked: [], training_crawlers_blocked: ["GPTBot"], unknown: false }, problem: null,
+        note: "robots.txt only: a firewall, CDN bot rule or login wall can still block a crawler that robots.txt allows." });
+    }
     if (p.endsWith("/summary")) {
       return this.json(route, { window: { start: "2026-10-18", end: "2026-11-14" }, data_coverage: { first_day: "2026-10-18", last_day: "2026-11-14", rows: this.summaryRows },
         warnings: this.summaryRows ? ["Search Console does not return anonymised or very rare queries, so some long-tail searches never appear."] : ["No Search Console data is stored for this project yet. Connect Search Console and sync first."],
@@ -239,4 +246,14 @@ test("competing pages are called out before anything is changed", async ({ page 
   await expect(page.getByRole("row", { name: new RegExp(QUERY) })).toContainText("pages compete");
   await page.getByRole("button", { name: QUERY }).click();
   await expect(page.getByRole("dialog").getByText("https://clinic.example/detox")).toBeVisible();
+});
+
+test("AI crawler access is shown as information with its limits", async ({ page }) => {
+  const search = new FakeSearch();
+  await open(page, search);
+  const card = page.getByTestId("crawler-access");
+  await expect(card).toContainText("AI search crawlers allowed; training crawlers blocked: GPTBot");
+  await card.locator("summary").click();
+  await expect(card.getByRole("row", { name: /GPTBot.*blocked/ })).toBeVisible();
+  await expect(card.getByText("robots.txt only: a firewall, CDN bot rule or login wall can still block")).toBeVisible();
 });
