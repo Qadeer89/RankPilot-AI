@@ -123,3 +123,28 @@ Accessibility: keyboard Tab order is logical and a 2 px outline is present on ev
 5. Improvement demonstrable with evidence? **No, not yet.**
 6. Incomplete or broken: History work counts, Search Console totals, weekly report impressions, like-for-like score, task detail.
 7. Fix next: ISSUE-01 to 04.
+
+---
+
+## K. Fix status (same day)
+
+All fixes are covered by automated tests (backend 1329 passed, UI 75 passed). **They are not yet verified on the live site**; re-run the audit after deploying.
+
+| Issue | Status | What changed |
+|---|---|---|
+| ISSUE-01 | Fixed | Root cause: execution wrote change records with no page, so every count that used the page read 0. New records now carry the page; a migration fills the page for existing records; counts and per-page history resolve through the task's opportunity. History now also shows "Changes applied". |
+| ISSUE-02 | Fixed | When the overall score averages different components (performance added later) it is shown as "Not comparable", with a like-for-like figure over the shared components. |
+| ISSUE-03 | Fixed (wording + consistency) | History and Growth Plan now agree: stored query rows are reported, with the reason that daily totals are collected on the next scheduled sync or Sync now. **Daily totals themselves still appear only after that sync runs.** |
+| ISSUE-04 | Fixed for new reports | A week with no stored rows is "Not available", never 0. **The already-stored report for 9-16 Nov keeps its old zeros**; it is a stored record and was not rewritten. The next weekly report is correct. |
+| ISSUE-05 | Fixed | Task rows show a readable action, target page and new value. |
+| ISSUE-06 | Fixed | Snapshot pickers show date, time and score. |
+| ISSUE-07 | Fixed | Open issues derived from stored per-severity counts when the total was not kept. |
+| ISSUE-08 | Fixed | Stage filter, "N shown of M in total", clearer wording, note on the Overview tile. |
+| ISSUE-09 | Explained | The 358 is correct by definition (includes issues already fixed); the History page now says so. Not a calculation bug. |
+| ISSUE-10 | Fixed | Overview tile renamed "Pages found" with a note when the last crawl fetched more URLs (146 fetched vs 143 stored). |
+| ISSUE-11 | Fixed | Plain-language rule names beside the code. |
+| ISSUE-12 | Fixed (CSS) | Minimum 32 px height for enabled buttons and back links. Not re-measured. |
+| ISSUE-13 | Not done | Onboarding steps were not audited. |
+| ISSUE-14 | Mitigated | The scheduler now performs the history back-fill off the request path; the history pages still do it once, lazily, for projects it has not reached yet. |
+
+Deploy: `git pull`, `alembic upgrade head` (new head `565348bb39ef`), rebuild web, restart api, worker, scheduler and web.

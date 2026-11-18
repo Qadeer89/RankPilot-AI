@@ -106,6 +106,16 @@ def daily_sync_search_signals_for_all_websites() -> int:
         for website in websites:
             if not billing_allowed(db, website, "scheduled_sync"):
                 continue
+            try:
+                # Back-fill history for projects that predate it here, off the request path (the history pages still do it
+                # once, lazily, if a person opens them before this has run). Idempotent.
+                from app.history.snapshots import ensure_history
+
+                ensure_history(db, website)
+                db.commit()
+            except Exception:
+                logger.exception("History back-fill failed for website %s", website.id)
+                db.rollback()
             if website.search_console_site_url:
                 try:
                     sync_search_performance(db, website)
