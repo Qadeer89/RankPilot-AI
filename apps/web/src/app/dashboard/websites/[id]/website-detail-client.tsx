@@ -1063,6 +1063,9 @@ export default function WebsiteDetailClient() {
           <Link href={`/dashboard/websites/${websiteId}/growth`} className={styles.tab}>
             Growth Plan
           </Link>
+          <Link href={`/dashboard/websites/${websiteId}/shopify`} className={styles.tab}>
+            Shopify SEO
+          </Link>
           <Link href={`/dashboard/websites/${websiteId}/history`} className={styles.tab}>
             History &amp; Progress
           </Link>

@@ -2073,3 +2073,23 @@ export function saveBusinessProfile(token: string, org: string, site: string, bo
 export function suggestBusinessProfile(token: string, org: string, site: string) {
   return request<BusinessProfile>(`${growthBase(org, site)}/business-profile/suggest`, { method: "POST", headers: authHeaders(token) });
 }
+
+// ---- Shopify SEO: catalog, AI proposals (read-only sync; changes only after approval)
+export interface ShopifyIssue { code: string; severity: string; message: string; field: string }
+export interface ShopifyItem { id: string; external_id: string; handle: string | null; url: string | null; title: string | null; seo_title: string | null; meta_description: string | null; issues: ShopifyIssue[]; captured_at: string }
+export interface ShopifySummary { products: number; collections: number; products_with_issues: number; issue_counts: Record<string, number>; last_synced_at: string | null }
+export interface ShopifyProposal {
+  id: string; external_id: string; title: string | null; field: string; before_value: string | null; proposed_value: string; rationale: string | null;
+  status: string; verified: boolean | null; failure: string | null; label: string;
+}
+const shopBase = (org: string, site: string) => `/organizations/${org}/websites/${site}/shopify`;
+export const getShopifySummary = (t: string, o: string, s: string) => request<ShopifySummary>(`${shopBase(o, s)}/summary`, { headers: authHeaders(t) });
+export const syncShopify = (t: string, o: string, s: string) => request<{ products: number; collections: number; summary: ShopifySummary }>(`${shopBase(o, s)}/sync`, { method: "POST", headers: authHeaders(t) });
+export const getShopifyCatalog = (t: string, o: string, s: string, kind: "products" | "collections") =>
+  request<{ items: ShopifyItem[]; total: number }>(`${shopBase(o, s)}/catalog?kind=${kind}&page_size=100`, { headers: authHeaders(t) });
+export const listShopifyProposals = (t: string, o: string, s: string) => request<{ items: ShopifyProposal[] }>(`${shopBase(o, s)}/proposals`, { headers: authHeaders(t) });
+export const proposeShopify = (t: string, o: string, s: string, externalId: string) => request<{ items: ShopifyProposal[] }>(`${shopBase(o, s)}/products/${externalId}/propose`, { method: "POST", headers: authHeaders(t) });
+export const decideShopify = (t: string, o: string, s: string, id: string, action: "approve" | "reject", edited?: string) =>
+  request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/decision`, { method: "POST", headers: authHeaders(t), body: JSON.stringify({ action, edited_value: edited ?? null }) });
+export const applyShopify = (t: string, o: string, s: string, id: string) => request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/apply`, { method: "POST", headers: authHeaders(t) });
+export const rollbackShopify = (t: string, o: string, s: string, id: string) => request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/rollback`, { method: "POST", headers: authHeaders(t) });
