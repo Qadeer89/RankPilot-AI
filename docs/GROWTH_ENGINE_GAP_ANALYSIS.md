@@ -61,3 +61,48 @@ been run against a real Shopify store.
 ## 5. Decisions needed from the owner
 1. A **Shopify development store** (free through a Shopify Partner account) and a custom-app Admin API token with product and content read/write scopes, supplied through the secure credential form, to make Phase 3-5 testable for real. Without it, Shopify phases ship as "implemented, tested against a fake".
 2. Whether Phase 1 and 2 should start now (they need no external access).
+
+---
+
+# Part 2: the History & Progress requirement, and one merged roadmap
+
+## 6. What already stores history (verified in the code)
+| Need | Existing | Finding |
+|---|---|---|
+| Health score over time | `SiteHealthScore` row per crawl (overall + technical/on-page/content/performance + critical/warning/info/passed counts) | Append-only, so a score series exists. **No scoring/analysis version, no crawl configuration, no "baseline" marker** |
+| Page state over time | `PageSnapshot` per page per crawl (title, meta, canonical, headings, schema, internal links, word count, fingerprint) | Good raw material, **but a daily job deletes snapshots older than 90 days** (see 7) |
+| Issues over time | `SEOFinding`, one row per (page, rule), updated in place (`first_detected_at`, `last_detected_at`, open/resolved) | **The set of issues as of an earlier crawl is not stored**, so "baseline: 65 issues, now 28, resolved 37" can only be shown as counts (from `SiteHealthScore`), not as which issues. No `resolved_at` |
+| Search performance | `KeywordObservation` (daily, per query/page/country/device), GA4 daily and landing-page tables | Retained and date-stamped. Source/date-range provenance and "imported history vs collected by RankPilot" are not recorded |
+| Implementation history | `ChangeRecord` (before/after), `RollbackRecord`, `SEOTask`, `GrowthRecommendation`, `AiSearchFinding` | Have, but spread over several tables with different vocabularies |
+| Activity timeline | `AuditEvent` (about 40 actions: registers, connects, approvals, executes, crawls) | Partial: no baseline, snapshot, "GSC connected", issue-detected, milestone or integration-expired events; and **audit events are deleted after 365 days** |
+| Page identity across URL changes | `Page` keyed by normalised URL | A moved URL becomes a new page; no mapping |
+| Shopify product/collection history | none | Missing (depends on the Shopify catalog work) |
+| Downloadable/shareable progress report | `Report` (weekly, JSON) | Partial: no baseline-vs-now report, no PDF/shareable form |
+
+## 7. Conflicts between the requirements, and how I propose to resolve them
+1. **Retention vs permanent history (urgent).** `tasks/retention.py` runs daily at 03:00 UTC on the VPS and deletes page snapshots after 90 days, audit events after 365 days, notifications after 180. The history requirement says historical records must not be deleted and no arbitrary deletion policy may be introduced. Page snapshots from this project's first crawls (October 2026) would start disappearing in early January 2027. Setting the days to 0 today would delete *everything* (cutoff = now), so it cannot be fixed with configuration alone. Proposal: treat 0 as "keep forever", make "keep forever" the default for the history tables, and control storage growth by **not storing an unchanged page twice** (store a new page snapshot only when its content fingerprint or measured fields change) instead of deleting. Legal deletion on account/project removal stays, because the requirement cannot override a user's right to erase their data.
+2. **Immutable baseline vs findings updated in place.** Resolved by storing a **per-crawl finding snapshot** (a compact record of the open issues at each crawl) and marking the first completed crawl as the baseline snapshot; nothing ever updates a snapshot.
+3. **"No duplicate snapshots" vs one snapshot per crawl.** Resolved with an idempotency key (project + analysis type + crawl/job id or date range + analysis version): the same completed run can never produce two snapshots; a new crawl always produces a new one.
+4. **Internal health score vs Google performance.** Kept visibly separate everywhere (different panels, different labels), as the requirement says.
+
+## 8. Overlap between the two prompts (build once)
+* Before/after per recommendation, the lifecycle (adds failed, dismissed, reopened), and the progress report appear in both. One recommendation record and one history model serve both.
+* Shopify product/collection history cannot exist before the Shopify catalog does. The history model is built first, with product/collection snapshot tables that the Shopify phases then fill, so nothing is retrofitted.
+* The 30-day plan and "progress since baseline" both read the baseline snapshot.
+* Integration events (connected, expired) feed both the timeline and the dashboard prompts.
+
+## 9. Merged roadmap (history first, because the rest writes into it)
+| Phase | Scope | Needs |
+|---|---|---|
+| **H0** | Stop deleting history: "0 = keep forever", default for history tables; page snapshots stored only when changed; keep legal deletion | nothing |
+| **H1** | History foundation: `ProjectSnapshot` (baseline flag, analysis/scoring version, crawl config, sources, status, idempotency key, immutable), per-crawl finding snapshots with `resolved_at`, `ProjectMetricHistory` (source, date range, imported vs collected, partial/missing flags), `ProjectActivityEvent`, `DataSourceSyncHistory`, page identity/URL mapping, product and collection snapshot tables (empty until Shopify) | nothing |
+| **H2** | Snapshot automation (baseline on first completed analysis, scheduled health/GSC/GA4 snapshots, retries, partial marking, no duplicate jobs, off the request path) | nothing |
+| **H3** | History & Progress dashboard: overall progress, any-two-snapshot comparison, comparison periods, trend charts, page history, activity timeline; "Not available" never zero | nothing |
+| **H4** | Business profile + baseline state + journey dashboard + honest data labels | nothing |
+| **H5** | Unified recommendation record and lifecycle (with history), 30-day plan | nothing |
+| **H6** | Shopify catalog read + product SEO analysis (writes product/collection snapshots) | Shopify dev store + token to verify for real |
+| **H7** | Product keyword intelligence, AI product optimizer, bulk review/approve/apply/verify with before/after | same |
+| **H8** | Collection SEO, content growth engine upgrade | same |
+| **H9** | Customer progress report (downloadable/shareable), scenario tests A-F and the 15 history acceptance tests, per-recommendation measurement | — |
+
+H0-H5 need no external access. Phases H6-H8 ship as "implemented, tested against a faithful fake" until a real store is connected.
