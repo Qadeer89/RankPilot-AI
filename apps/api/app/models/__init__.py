@@ -3,6 +3,7 @@ from app.models.approval import Approval, ApprovalDecision
 from app.models.admin_setting import AdminSetting
 from app.models.ai_search_finding import AiSearchFinding
 from app.models.business_profile import BusinessProfile
+from app.models.shopify_proposal import ShopifyProposal
 from app.models.history import (
     CollectionSnapshot, DataSourceSyncHistory, ProductSnapshot, ProjectActivityEvent, ProjectMetricHistory, ProjectSnapshot,
     RecommendationHistory, SnapshotFindings,
@@ -98,6 +99,7 @@ __all__ = [
     "AdminSetting",
     "AiSearchFinding",
     "BusinessProfile",
+    "ShopifyProposal",
     "CollectionSnapshot", "DataSourceSyncHistory", "ProductSnapshot", "ProjectActivityEvent", "ProjectMetricHistory", "ProjectSnapshot",
     "RecommendationHistory", "SnapshotFindings",
     "EmailVerificationToken",
