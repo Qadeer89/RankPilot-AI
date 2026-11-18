@@ -77,7 +77,7 @@ def test_run_retention_cleanup_returns_counts(db_session, monkeypatch):
     monkeypatch.setattr(db_session, "close", lambda: None)
 
     result = scheduler_module.run_retention_cleanup()
-    assert set(result.keys()) == {"deleted_page_snapshots", "deleted_audit_events", "deleted_notifications"}
+    assert set(result.keys()) == {"deleted_page_snapshots", "deleted_audit_events", "deleted_notifications", "compacted_page_snapshots"}
 
 
 def test_daily_crawl_skips_a_website_whose_frequency_has_not_elapsed(db_session, monkeypatch):

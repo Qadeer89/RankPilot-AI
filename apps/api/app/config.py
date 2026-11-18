@@ -124,8 +124,16 @@ class Settings(BaseSettings):
     # Retention (RP-0807, SECURITY_SPECIFICATION.md #8). Point-in-time
     # defaults for the founder pilot; make these plan-specific before
     # onboarding external customers.
-    page_snapshot_retention_days: int = 90
-    audit_event_retention_days: int = 365
+    #
+    # History is kept forever by default: 0 (or less) means "never delete". A positive number is an explicit
+    # opt-in to deleting rows older than that many days. Storage is controlled by compaction instead, which
+    # removes only exact repeats and loses no information.
+    page_snapshot_retention_days: int = 0
+    audit_event_retention_days: int = 0
+    # Page snapshots older than this are compacted: a snapshot identical to the one before it is dropped,
+    # because the earlier one already records that state. 0 turns compaction off.
+    page_snapshot_compaction_days: int = 30
+    # Notifications are transient messages, not history, so they still expire.
     notification_retention_days: int = 180
 
     # --- Commercial system (docs/COMMERCIAL_SYSTEM.md) ---------------------

@@ -157,10 +157,12 @@ per-website. If every website needs to stop at once, use levers 1–2.
 
 ### 3.5 "Disk is full" / suspected unbounded growth
 
-Page snapshots are the only place raw-ish crawled content accumulates
-(`app/tasks/retention.py` deletes them past `RANKPILOT_PAGE_SNAPSHOT_RETENTION_DAYS`, 90 days
-by default). If retention cleanup isn't running (check `rankpilot-scheduler` is up, per 3.1),
-that's the first thing to fix, not a manual `DELETE`.
+Page snapshots are the only place raw-ish crawled content accumulates. History is kept forever by default:
+`app/tasks/retention.py` only **compacts** them (drops a snapshot identical to the one before it, once it is older
+than `RANKPILOT_PAGE_SNAPSHOT_COMPACTION_DAYS`, 30 by default; nothing is lost) and deletes by age only if an operator
+sets `RANKPILOT_PAGE_SNAPSHOT_RETENTION_DAYS` to a positive number (0 means never; do not use 0 expecting "delete all").
+If compaction isn't running (check `rankpilot-scheduler` is up, per 3.1), that's the first thing to fix, not a manual
+`DELETE`. Check size with `SELECT pg_size_pretty(pg_total_relation_size('page_snapshots'));`.
 
 ### 3.6 "A secret may have leaked" (API key, OAuth token, WordPress Application Password)
 

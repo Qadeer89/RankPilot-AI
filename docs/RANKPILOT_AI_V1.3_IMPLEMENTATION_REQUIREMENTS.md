@@ -605,7 +605,9 @@ Backend uses Pydantic Settings with `env_prefix="RANKPILOT_"`. The inspected con
 | `RANKPILOT_SMTP_PASSWORD` | Optional | SMTP password |
 | `RANKPILOT_SMTP_FROM_EMAIL` | `no-reply@rankpilot.ai` | Sender |
 | `RANKPILOT_SMTP_USE_TLS` | `true` | SMTP TLS |
-| `RANKPILOT_PAGE_SNAPSHOT_RETENTION_DAYS` | `90` | Snapshot retention |
+| `RANKPILOT_PAGE_SNAPSHOT_RETENTION_DAYS` | `0` | Snapshot retention. `0` = keep forever (default). A positive number deletes older snapshots: opt-in only |
+| `RANKPILOT_AUDIT_EVENT_RETENTION_DAYS` | `0` | Same rule for the activity trail |
+| `RANKPILOT_PAGE_SNAPSHOT_COMPACTION_DAYS` | `30` | Older snapshots identical to the previous one are dropped (lossless); `0` disables |
 | `RANKPILOT_AUDIT_EVENT_RETENTION_DAYS` | `365` | Audit retention |
 | `RANKPILOT_NOTIFICATION_RETENTION_DAYS` | `180` | Notification retention |
 
