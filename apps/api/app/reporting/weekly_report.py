@@ -77,12 +77,16 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
     changes_passed = sum(1 for c in changes if c.validation_status == ValidationStatus.passed)
     changes_failed = sum(1 for c in changes if c.validation_status == ValidationStatus.failed)
 
-    search_performance = None
+    # A week with no stored rows is "not available", never zero: Search Console data arrives 2-3 days late and a report
+    # generated before the sync would otherwise record 0 clicks / 0 impressions for days that simply were not loaded yet.
+    search_performance, search_note = None, None
     if website.search_console_site_url:
         totals = (
             db.query(
                 func.coalesce(func.sum(KeywordObservation.clicks), 0),
                 func.coalesce(func.sum(KeywordObservation.impressions), 0),
+                func.count(KeywordObservation.id),
+                func.max(KeywordObservation.date),
             )
             .filter(
                 KeywordObservation.website_id == website.id,
@@ -91,15 +95,19 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
             )
             .one()
         )
-        search_performance = {"clicks": int(totals[0]), "impressions": int(totals[1])}
+        if totals[2]:
+            search_performance = {"clicks": int(totals[0]), "impressions": int(totals[1]), "rows": int(totals[2]), "latest_data_date": totals[3].isoformat()}
+        else:
+            search_note = "No Search Console data was stored for this period when the report was generated (Google reports with a delay of a few days)."
 
-    ga4_summary = None
+    ga4_summary, ga4_note = None, None
     if website.ga4_property_id:
         ga4_totals = (
             db.query(
                 func.coalesce(func.sum(Ga4DailyMetric.sessions), 0),
                 func.coalesce(func.sum(Ga4DailyMetric.total_users), 0),
                 func.coalesce(func.sum(Ga4DailyMetric.conversions), 0),
+                func.count(Ga4DailyMetric.id),
             )
             .filter(
                 Ga4DailyMetric.website_id == website.id,
@@ -108,11 +116,10 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
             )
             .one()
         )
-        ga4_summary = {
-            "sessions": int(ga4_totals[0]),
-            "total_users": int(ga4_totals[1]),
-            "conversions": int(ga4_totals[2]),
-        }
+        if ga4_totals[3]:
+            ga4_summary = {"sessions": int(ga4_totals[0]), "total_users": int(ga4_totals[1]), "conversions": int(ga4_totals[2]), "rows": int(ga4_totals[3])}
+        else:
+            ga4_note = "No Google Analytics data was stored for this period when the report was generated."
 
     content = {
         "crawls": {
@@ -130,7 +137,9 @@ def generate_weekly_report(db: Session, website: Website, *, period_end: date | 
             "failed_validation": changes_failed,
         },
         "search_performance": search_performance,
+        "search_performance_note": search_note,
         "ga4": ga4_summary,
+        "ga4_note": ga4_note,
         "disclaimer": (
             "Search performance and GA4 figures are delayed/aggregated data and are "
             "not attributed to any specific change in this report."

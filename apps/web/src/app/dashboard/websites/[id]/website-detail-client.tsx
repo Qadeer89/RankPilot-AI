@@ -2464,6 +2464,8 @@ export default function WebsiteDetailClient() {
                 opportunities?: { open_now: number };
                 changes?: { executed: number; passed_validation: number; failed_validation: number };
                 search_performance?: { clicks: number; impressions: number } | null;
+                search_performance_note?: string | null;
+                ga4_note?: string | null;
                 ga4?: { sessions: number; total_users: number; conversions: number } | null;
                 disclaimer?: string;
               };
@@ -2497,11 +2499,15 @@ export default function WebsiteDetailClient() {
               if (content.search_performance) {
                 metrics.push({ label: "Search clicks", value: content.search_performance.clicks });
                 metrics.push({ label: "Search impressions", value: content.search_performance.impressions });
+              } else if (content.search_performance_note) {
+                metrics.push({ label: "Search clicks", value: "Not available", meta: content.search_performance_note });
               }
               if (content.ga4) {
                 metrics.push({ label: "GA4 sessions", value: content.ga4.sessions });
                 metrics.push({ label: "GA4 users", value: content.ga4.total_users });
                 metrics.push({ label: "GA4 conversions", value: content.ga4.conversions });
+              } else if (content.ga4_note) {
+                metrics.push({ label: "GA4 sessions", value: "Not available", meta: content.ga4_note });
               }
               return (
                 <div key={report.id} className={styles.reportBlock}>
@@ -2510,6 +2516,7 @@ export default function WebsiteDetailClient() {
                   </p>
                   {metrics.length > 0 && <MetricGrid metrics={metrics} />}
                   {content.disclaimer && <p className={styles.rowMeta}>{content.disclaimer}</p>}
+                  <p className={styles.rowMeta}>Figures are what was stored when this report was generated. Google data arrives a few days late, so the most recent week can be incomplete.</p>
                 </div>
               );
             })}

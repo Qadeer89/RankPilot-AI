@@ -67,7 +67,8 @@ def test_weekly_report_includes_search_performance_when_connected(db_session, mo
     db_session.flush()
 
     report = generate_weekly_report(db_session, website)
-    assert report.content_json["search_performance"] == {"clicks": 5, "impressions": 100}
+    sp = report.content_json["search_performance"]
+    assert (sp["clicks"], sp["impressions"], sp["rows"]) == (5, 100, 1) and sp["latest_data_date"] and report.content_json["search_performance_note"] is None
 
 
 def test_weekly_report_includes_ga4_when_connected(db_session, monkeypatch):
@@ -92,4 +93,16 @@ def test_weekly_report_includes_ga4_when_connected(db_session, monkeypatch):
     db_session.flush()
 
     report = generate_weekly_report(db_session, website)
-    assert report.content_json["ga4"] == {"sessions": 42, "total_users": 30, "conversions": 5}
+    assert report.content_json["ga4"] == {"sessions": 42, "total_users": 30, "conversions": 5, "rows": 1}
+
+
+def test_a_connected_week_without_stored_rows_is_not_available_rather_than_zero(db_session, monkeypatch):
+    """Regression for the live audit: a report built before the sync recorded 0 clicks / 0 impressions for a week that had data."""
+    patch_crawler_network(monkeypatch)
+    website = _make_website(db_session)
+    website.search_console_site_url = "https://example.com/"
+    website.ga4_property_id = "properties/111"
+    db_session.flush()
+    content = generate_weekly_report(db_session, website).content_json
+    assert content["search_performance"] is None and "No Search Console data was stored" in content["search_performance_note"]
+    assert content["ga4"] is None and "No Google Analytics data was stored" in content["ga4_note"]
