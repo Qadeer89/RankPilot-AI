@@ -172,6 +172,10 @@ def _sync_recommendation(db: Session, website: Website, finding: AiSearchFinding
     if rec is None:
         rec = GrowthRecommendation(website_id=website.id, dedupe_key=dedupe, **fields)
         db.add(rec)
+        db.flush()
+        from app.history import recommendations
+
+        recommendations.record_transition(db, website, "ai_search_finding", finding.id, "recommended", summary=rec.title)
     else:
         for name, value in fields.items():
             setattr(rec, name, value)
@@ -228,6 +232,18 @@ def edit_draft(db: Session, website: Website, finding: AiSearchFinding, *, direc
     return finding
 
 
+def _log(db: Session, finding: AiSearchFinding, stage: str, summary: str, *, user_id=None) -> None:
+    """Lifecycle history + timeline for this finding. Never raises."""
+    from app.history import activity, recommendations
+
+    website = db.get(Website, finding.website_id)
+    recommendations.record_transition(db, website, "ai_search_finding", finding.id, stage, actor_user_id=user_id, summary=summary,
+                                      detail={"query": finding.query, "page_url": finding.page_url})
+    category = "implementation" if stage in ("implemented", "validated", "failed") else "recommendation"
+    activity.record_event(db, website, category, f"ai_search_{stage}", f"AI search recommendation {stage}: {finding.query}"[:300],
+                          detail={"finding_id": str(finding.id)}, dedupe_key=f"ai_search_{stage}:{finding.id}")
+
+
 def decide(db: Session, finding: AiSearchFinding, *, approve: bool) -> GrowthRecommendation:
     rec = db.get(GrowthRecommendation, finding.growth_recommendation_id) if finding.growth_recommendation_id else None
     if rec is None:
@@ -240,6 +256,7 @@ def decide(db: Session, finding: AiSearchFinding, *, approve: bool) -> GrowthRec
         raise AnalysisError("needs_review", "Several pages compete for this query; resolve that by hand rather than approving a change.")
     rec.status = RecommendationStatus.approved if approve else RecommendationStatus.rejected
     db.flush()
+    _log(db, finding, "approved" if approve else "rejected", rec.title)
     return rec
 
 
@@ -278,6 +295,11 @@ def mark_implemented(db: Session, website: Website, finding: AiSearchFinding, *,
     finding.live_check_json = live_check(website, finding)
     rec.status = RecommendationStatus.done
     db.flush()
+    _log(db, finding, "implemented", rec.title, user_id=user_id)
+    if (finding.live_check_json or {}).get("matched") is True:
+        _log(db, finding, "validated", rec.title)
+    elif (finding.live_check_json or {}).get("matched") is False:
+        _log(db, finding, "failed", rec.title)
     return finding
 
 
@@ -286,4 +308,6 @@ def recheck(db: Session, website: Website, finding: AiSearchFinding) -> AiSearch
         raise AnalysisError("not_implemented", "Nothing has been implemented yet.")
     finding.live_check_json = live_check(website, finding)
     db.flush()
+    if finding.live_check_json.get("matched") is True:
+        _log(db, finding, "validated", finding.query)
     return finding

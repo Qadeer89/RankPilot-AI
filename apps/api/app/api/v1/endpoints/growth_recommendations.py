@@ -81,7 +81,17 @@ def update_recommendation(
     )
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Recommendation not found")
+    previous = row.status.value
     row.status = payload.status
+    stage = {"approved": "approved", "rejected": "rejected", "done": "implemented", "open": "reopened"}[payload.status.value]
+    from app.history import activity, recommendations
+
+    recommendations.record_transition(db, website, "growth_recommendation", row.id, stage, previous=previous, actor_user_id=membership.user_id,
+                                      summary=row.title)
+    if payload.status.value in ("approved", "rejected", "done"):
+        activity.record_event(db, website, "recommendation" if stage != "implemented" else "implementation", f"recommendation_{stage}",
+                              f"Recommendation {stage.replace('_', ' ')}: {row.title}"[:300], detail={"recommendation_id": str(row.id)},
+                              dedupe_key=f"rec_{stage}:{row.id}:{row.updated_at.isoformat() if row.updated_at else ''}")
     db.add(
         AuditEvent(
             organization_id=organization_id,

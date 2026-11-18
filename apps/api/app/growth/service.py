@@ -39,6 +39,13 @@ def _upsert(db: Session, website: Website, existing: dict[str, GrowthRecommendat
         row = GrowthRecommendation(website_id=website.id, **fields)
         db.add(row)
         existing[key] = row
+        db.flush()
+        from app.history import activity, recommendations
+
+        recommendations.record_transition(db, website, "growth_recommendation", row.id, "recommended", summary=row.title,
+                                          detail={"type": row.recommendation_type, "priority": row.priority.value})
+        activity.record_event(db, website, "recommendation", "recommendation_generated", f"Recommendation: {row.title}"[:300],
+                              detail={"recommendation_id": str(row.id), "type": row.recommendation_type}, dedupe_key=f"rec_generated:{row.id}")
         return row
     if row.status == RecommendationStatus.open:
         for name, value in fields.items():

@@ -72,6 +72,10 @@ def register_website(
             metadata_json={"url": safe_url.normalized_url, "purpose": payload.purpose},
         )
     )
+    from app.history.activity import record_event
+
+    record_event(db, website, "project", "project_created", f"Project created: {website.display_name}",
+                 detail={"url": safe_url.normalized_url}, dedupe_key=f"project_created:{website.id}")
     db.commit()
     return WebsiteResponse.model_validate(website)
 

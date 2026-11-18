@@ -90,6 +90,18 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         compute_health_score(db, website, crawl_job)
         db.commit()
 
+        # Permanent history: an immutable snapshot of this completed analysis. Best-effort and idempotent, so a
+        # failure here can never fail the crawl and a redelivered task cannot create a second snapshot.
+        try:
+            from app.history.snapshots import ensure_history, record_crawl_snapshot
+
+            ensure_history(db, website)
+            record_crawl_snapshot(db, website, crawl_job)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("run_site_crawl: could not save the history snapshot for website %s", website_id)
+
         # Best-effort: a regression (new critical finding or a health-score
         # category dropping sharply) is worth surfacing right away rather
         # than only on the next manual dashboard visit

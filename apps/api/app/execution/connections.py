@@ -133,6 +133,10 @@ def _upsert_connection(
             last_verified_at=now,
         )
         db.add(connection)
+        from app.history.activity import record_event
+
+        record_event(db, website, "integration", "cms_connected", f"{connector_type.value.replace('_', ' ').title()} connected",
+                     detail={"connector": connector_type.value}, dedupe_key=f"cms_connected:{connector_type.value}:{now.date().isoformat()}")
     else:
         connection.encrypted_secret_reference = encrypted_secret
         connection.config_json = config

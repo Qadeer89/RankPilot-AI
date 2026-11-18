@@ -98,6 +98,10 @@ def enqueue_post_change_crawl(db: Session, website: Website, change: ChangeRecor
         return None
 
 
+def job_target(task) -> str | None:
+    return (task.proposed_change_json or {}).get("target_url")
+
+
 def record_recrawl_result(db: Session, job: CrawlJob, change: ChangeRecord) -> dict:
     """Compare the page snapshot this crawl took with the applied value."""
     task = change.seo_task
@@ -128,7 +132,7 @@ def record_recrawl_result(db: Session, job: CrawlJob, change: ChangeRecord) -> d
     # wrote ("<applied> | Brand"); that still counts as the change showing.
     matched = title_matches(expected, found) if field == "title" else (found or "").strip() == (expected or "").strip()
     warning = "The live title shows the brand twice." if field == "title" and has_duplicate_brand(found) else None
-    return _set_recrawl(
+    result = _set_recrawl(
         change,
         status="validated" if matched else "mismatch",
         completed_at=now,
@@ -138,3 +142,13 @@ def record_recrawl_result(db: Session, job: CrawlJob, change: ChangeRecord) -> d
         warning=warning,
         error=None,
     )
+    if matched:
+        # A crawler has now seen the change on the public page: this is the evidence that makes it "validated".
+        from app.history import activity, recommendations
+
+        website = change.website
+        recommendations.record_transition(db, website, "seo_task", task.id, "validated", previous="implemented",
+                                          summary=f"Change confirmed on the live page: {task.task_type}", detail={"target_url": job_target(task)})
+        activity.record_event(db, website, "implementation", "change_validated", f"Change confirmed on the live page: {task.task_type.replace('_', ' ')}",
+                              detail={"task_id": str(task.id), "target_url": job_target(task)}, dedupe_key=f"change_validated:{task.id}")
+    return result

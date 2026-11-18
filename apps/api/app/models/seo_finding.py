@@ -50,6 +50,8 @@ class SEOFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     evidence_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the issue stopped being detected. None while open, and for issues resolved before this was recorded.
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[FindingStatus] = mapped_column(
         Enum(FindingStatus, name="finding_status"), default=FindingStatus.open, nullable=False
     )

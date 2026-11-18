@@ -112,6 +112,10 @@ def select_ga4_property(
 ) -> WebsiteResponse:
     website = get_website_or_404(db, organization_id, website_id)
     website.ga4_property_id = payload.property_id
+    from app.history.activity import record_event
+
+    record_event(db, website, "integration", "ga4_connected", "Google Analytics connected",
+                 detail={"property": payload.property_id}, dedupe_key=f"ga4_connected:{payload.property_id}")
     db.commit()
     return WebsiteResponse.model_validate(website)
 

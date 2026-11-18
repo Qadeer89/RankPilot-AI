@@ -130,6 +130,10 @@ def select_search_console_property(
 ) -> WebsiteResponse:
     website = get_website_or_404(db, organization_id, website_id)
     website.search_console_site_url = payload.site_url
+    from app.history.activity import record_event
+
+    record_event(db, website, "integration", "gsc_connected", "Google Search Console connected",
+                 detail={"property": payload.site_url}, dedupe_key=f"gsc_connected:{payload.site_url}")
     db.commit()
     return WebsiteResponse.model_validate(website)
 
@@ -147,6 +151,9 @@ def sync_search_console(
     website = get_website_or_404(db, organization_id, website_id)
     try:
         rows_synced = search_console_sync.sync_search_performance(db, website)
+        from app.history.metrics import sync_search_history
+
+        sync_search_history(db, website)
         refresh_ctr_opportunities(db, website)
         db.commit()
         return SyncResultResponse(rows_synced=rows_synced)

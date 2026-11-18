@@ -204,6 +204,7 @@ def _persist_findings(
             existing.evidence_json = candidate.evidence
             existing.last_detected_at = now
             existing.status = FindingStatus.open
+            existing.resolved_at = None
             finding = existing
         persisted.append(finding)
 
@@ -229,6 +230,7 @@ def _persist_findings(
                 in_scope = False
             if in_scope and (finding.page_id, finding.rule_code) not in touched_keys:
                 finding.status = FindingStatus.resolved
+                finding.resolved_at = now
 
     # Flush so a caller that immediately runs another read (e.g.
     # refresh_opportunities_for_website, in the same transaction) sees these

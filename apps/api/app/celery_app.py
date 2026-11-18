@@ -47,6 +47,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.generate_weekly_reports",
         "schedule": crontab(hour=5, minute=0, day_of_week=1),
     },
+    "history-maintenance-daily": {
+        "task": "app.tasks.scheduler.run_history_maintenance",
+        "schedule": crontab(hour=3, minute=30),
+    },
     "retention-cleanup-daily": {
         "task": "app.tasks.scheduler.run_retention_cleanup",
         "schedule": crontab(hour=3, minute=0),

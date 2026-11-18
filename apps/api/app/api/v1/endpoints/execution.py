@@ -56,6 +56,17 @@ from app.schemas.execution import (
     WritesEnabledRequest,
 )
 
+def _history(db, website, task, stage: str, user_id, summary: str, category: str, event_type: str) -> None:
+    """Records the lifecycle step and a timeline event. Never raises."""
+    from app.history import activity, recommendations
+
+    target = (task.proposed_change_json or {}).get("target_url")
+    recommendations.record_transition(db, website, "seo_task", task.id, stage, actor_user_id=user_id, summary=f"{summary}: {task.task_type}",
+                                      detail={"operation": task.task_type, "target_url": target})
+    activity.record_event(db, website, category, event_type, f"{summary}: {task.task_type.replace('_', ' ')}",
+                          detail={"task_id": str(task.id), "target_url": target}, dedupe_key=f"{event_type}:{task.id}")
+
+
 router = APIRouter(tags=["execution"])
 
 
@@ -414,12 +425,13 @@ def approve(
     db: Session = Depends(get_db),
     membership: Membership = Depends(RequireRole(MembershipRole.admin)),
 ) -> SEOTaskResponse:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     task = _get_task_or_404(db, website_id, task_id)
     try:
         approve_task(db, task, decided_by=membership.user_id, reason=payload.reason)
     except ExecutionBlocked as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _history(db, website, task, "approved", membership.user_id, "Change approved", "recommendation", "recommendation_approved")
 
     db.add(
         AuditEvent(
@@ -447,12 +459,13 @@ def reject(
     db: Session = Depends(get_db),
     membership: Membership = Depends(RequireRole(MembershipRole.admin)),
 ) -> SEOTaskResponse:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     task = _get_task_or_404(db, website_id, task_id)
     try:
         reject_task(db, task, decided_by=membership.user_id, reason=payload.reason)
     except ExecutionBlocked as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    _history(db, website, task, "rejected", membership.user_id, "Change rejected", "recommendation", "recommendation_rejected")
 
     db.add(
         AuditEvent(
@@ -531,6 +544,11 @@ def execute(
             metadata_json={"validation_status": change_record.validation_status.value},
         )
     )
+    if change_record.validation_status == ValidationStatus.failed:
+        _history(db, website, task, "failed", membership.user_id, "The change was applied but the CMS read-back did not match",
+                 "implementation", "change_failed")
+    else:
+        _history(db, website, task, "implemented", membership.user_id, "Change applied", "implementation", "change_applied")
     db.commit()
 
     # A growth recommendation's change is only "validated" once a crawler

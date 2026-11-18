@@ -112,16 +112,27 @@ def daily_sync_search_signals_for_all_websites() -> int:
                     refresh_ctr_opportunities(db, website)
                     db.commit()
                     synced += 1
+                    # Property-level daily totals with provenance; never raises (records its own failures).
+                    from app.history.metrics import sync_search_history
+
+                    sync_search_history(db, website)
+                    db.commit()
                 except Exception:
                     logger.exception("Failed to sync Search Console data for website %s", website.id)
                     db.rollback()
+                    _record_sync_failure(db, website, "google_search_console")
             if website.ga4_property_id:
+                from app.history.sync_log import SyncRun
+
+                run = SyncRun(db, website, "ga4")
                 try:
-                    sync_ga4_metrics(db, website)
+                    rows = sync_ga4_metrics(db, website)
+                    run.success(rows=int(rows or 0))
                     db.commit()
-                except Exception:
+                except Exception as exc:
                     logger.exception("Failed to sync GA4 data for website %s", website.id)
                     db.rollback()
+                    _record_sync_failure(db, website, "ga4", exc)
                 try:
                     sync_ga4_landing_pages(db, website)
                     db.commit()
@@ -240,6 +251,43 @@ def record_daily_usage_for_all_websites() -> int:
                 logger.exception("Failed to record usage for website %s", website.id)
                 db.rollback()
         return recorded
+    finally:
+        db.close()
+
+
+def _record_sync_failure(db, website, source: str, exc: BaseException | None = None) -> None:
+    """A failed data pull is part of the project's history (and of the timeline), never silent."""
+    try:
+        from app.history import activity
+        from app.history.sync_log import SyncRun
+        from datetime import date
+
+        SyncRun(db, website, source).failed(exc or "The sync failed; see the server log.")
+        label = "Search Console" if source == "google_search_console" else "Google Analytics"
+        activity.record_event(db, website, "integration", "integration_error", f"{label} data could not be refreshed",
+                              detail={"reason": str(exc)[:300] if exc else None}, dedupe_key=f"{source}_error:{date.today().isoformat()}")
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not record the %s sync failure", source)
+
+
+@celery_app.task(name="app.tasks.scheduler.run_history_maintenance")
+def run_history_maintenance() -> dict[str, int]:
+    """Back-fills any completed crawl that has no snapshot (older runs, or a hook that failed). Idempotent."""
+    from app.history.snapshots import ensure_history
+
+    db = SessionLocal()
+    created = 0
+    try:
+        for website in db.query(Website).filter(Website.status != WebsiteStatus.deleted).all():
+            try:
+                created += ensure_history(db, website)
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception("History back-fill failed for website %s", website.id)
+        return {"snapshots_created": created}
     finally:
         db.close()
 
