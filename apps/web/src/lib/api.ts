@@ -2093,3 +2093,15 @@ export const decideShopify = (t: string, o: string, s: string, id: string, actio
   request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/decision`, { method: "POST", headers: authHeaders(t), body: JSON.stringify({ action, edited_value: edited ?? null }) });
 export const applyShopify = (t: string, o: string, s: string, id: string) => request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/apply`, { method: "POST", headers: authHeaders(t) });
 export const rollbackShopify = (t: string, o: string, s: string, id: string) => request<ShopifyProposal>(`${shopBase(o, s)}/proposals/${id}/rollback`, { method: "POST", headers: authHeaders(t) });
+
+// ---- Customer progress report
+export interface ProgressReport {
+  project: { name: string; url: string }; generated_at: string; has_progress: boolean;
+  baseline: { taken_at: string } | null; latest: { taken_at: string } | null; period: { start: string; end: string } | null;
+  health: { initial: number | null; current: number | null; note: string };
+  issues: { identified_total: number; resolved: number; still_open: number; new_since_baseline: number | null };
+  work: { pages_optimized: number; recommendations_implemented: number; recommendations_validated: number; recommendations_failed: number };
+  highlights: string[]; google: { available: boolean; reason: string | null; lines: string[] };
+  data_sources: Record<string, { available: boolean; reason: string | null }>; warnings: string[]; limitations: string[];
+}
+export const getProgressReport = (t: string, o: string, s: string) => request<ProgressReport>(`/organizations/${o}/websites/${s}/history/report`, { headers: authHeaders(t) });

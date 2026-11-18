@@ -42,6 +42,15 @@ def overview(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = De
     return result
 
 
+@router.get(f"{_BASE}/report")
+def progress_report(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = Depends(get_db), _m: Membership = Depends(RequireRole(MembershipRole.viewer))) -> dict:
+    from app.history import report
+    website = get_website_or_404(db, organization_id, website_id)
+    result = report.build(db, website)
+    db.commit()
+    return result
+
+
 @router.get(f"{_BASE}/snapshots")
 def list_snapshots(organization_id: uuid.UUID, website_id: uuid.UUID, snapshot_type: str | None = None, page: int = Query(1, ge=1),
                    page_size: int = Query(25, ge=1, le=100), db: Session = Depends(get_db), _m: Membership = Depends(RequireRole(MembershipRole.viewer))) -> dict:

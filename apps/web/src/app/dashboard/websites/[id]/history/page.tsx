@@ -165,6 +165,7 @@ export default function HistoryPage() {
     <main className={styles.page}>
       <div className={styles.container}>
         <Link href={`/dashboard/websites/${websiteId}`} className={styles.back}>← Back to project</Link>
+        <Link href={`/dashboard/websites/${websiteId}/report`} className={styles.back}>Customer progress report</Link>
         <header className={styles.header}>
           <h1>SEO Performance · History &amp; Progress</h1>
           <p className={styles.sub}>Where this project started, what has changed since, and what still needs attention. Every figure shows its source.</p>
