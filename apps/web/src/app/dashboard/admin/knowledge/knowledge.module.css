@@ -230,3 +230,6 @@
   font-size: 13px;
   color: var(--rp-ink);
 }
+
+.explain { font-size: 13px; line-height: 1.5; background: #f4f7ff; border-radius: 8px; padding: 12px 14px; color: var(--rp-ink); }
+.actionRow { display: flex; gap: 10px; flex-wrap: wrap; }

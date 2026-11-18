@@ -20,6 +20,20 @@ import { getToken } from "@/lib/auth";
 import styles from "./knowledge.module.css";
 
 type Tab = "documents" | "ingestion" | "feedback";
+type Filter = "all" | "customer" | "internal";
+
+const TEMPLATE = `Question: (what a customer would ask, in their own words)
+
+Short answer: (1-2 sentences)
+
+Steps:
+1. (what to click, in order)
+2. 
+3. 
+
+Notes: (limits, what RankPilot cannot do, when to contact support)`;
+
+const isInternal = (d: { source_type: string }) => d.source_type === "seed_docs";
 
 const CATEGORY_OPTIONS = [
   "general",
@@ -76,6 +90,11 @@ function DocumentForm({
           ))}
         </select>
       </div>
+      {!initial && (
+        <button type="button" className={styles.secondaryButton} style={{ alignSelf: "flex-start" }} onClick={() => setContent((c) => c || TEMPLATE)}>
+          Use help-article template
+        </button>
+      )}
       <textarea
         className={styles.textarea}
         placeholder="Article content (plain text or markdown)"
@@ -105,6 +124,7 @@ export default function AdminKnowledgePage() {
 
   const [documents, setDocuments] = useState<AdminKnowledgeDocument[]>([]);
   const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState<Filter>("customer");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [jobs, setJobs] = useState<KnowledgeIngestionJob[]>([]);
@@ -212,7 +232,7 @@ export default function AdminKnowledgePage() {
         <div className={styles.header}>
           <div>
             <h1>Knowledge Base Admin</h1>
-            <p>Manage the AI Assistant&apos;s knowledge articles, re-index content, and review feedback.</p>
+            <p>Manage what the AI Assistant knows, re-index content, and review feedback.</p>
           </div>
         </div>
 
@@ -232,6 +252,19 @@ export default function AdminKnowledgePage() {
 
         {tab === "documents" && (
           <div className={styles.card}>
+            <div className={styles.explain} data-testid="kb-explain">
+              <strong>What is this?</strong> The AI Assistant answers customers&apos; questions using these articles. <strong>Customer help articles</strong> are
+              written by you in plain language (for example &ldquo;How do I connect Google Search Console?&rdquo;). <strong>Internal technical docs</strong> are
+              RankPilot&apos;s own engineering documents; they are loaded automatically, help the assistant describe how the product works, and are not meant to be
+              edited here. After adding or changing an article, open the <em>Ingestion</em> tab and press <em>Re-index now</em> so the assistant uses it.
+            </div>
+            <div className={styles.formRow} role="group" aria-label="Show">
+              {([["customer", "Customer help articles"], ["internal", "Internal technical docs"], ["all", "All"]] as [Filter, string][]).map(([key, text]) => (
+                <button key={key} type="button" aria-pressed={filter === key} className={`${styles.secondaryButton} ${filter === key ? styles.tabActive : ""}`} onClick={() => setFilter(key)}>
+                  {text} ({documents.filter((d) => key === "all" || (key === "internal") === isInternal(d)).length})
+                </button>
+              ))}
+            </div>
             <div className={styles.cardHeader}>
               <h2>Articles</h2>
               <button type="button" className={styles.primaryButton} onClick={() => setCreating((v) => !v)}>
@@ -241,9 +274,15 @@ export default function AdminKnowledgePage() {
 
             {creating && <DocumentForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />}
 
-            {documents.length === 0 && !creating && <p className={styles.empty}>No articles yet.</p>}
+            {documents.filter((d) => filter === "all" || (filter === "internal") === isInternal(d)).length === 0 && !creating && (
+              <p className={styles.empty}>
+                {filter === "customer"
+                  ? "No customer help articles yet. Click “+ New document” and use the help-article template to write the first one."
+                  : "Nothing here."}
+              </p>
+            )}
 
-            {documents.map((document) =>
+            {documents.filter((d) => filter === "all" || (filter === "internal") === isInternal(d)).map((document) =>
               editingId === document.id ? (
                 <DocumentForm
                   key={document.id}
@@ -260,12 +299,14 @@ export default function AdminKnowledgePage() {
                     </span>
                   </div>
                   <span className={styles.docMeta}>
-                    {document.category} &middot; {document.source_type} &middot; v{document.version}
+                    {isInternal(document) ? "Internal technical doc" : "Customer help article"} &middot; {document.category} &middot; v{document.version}
                   </span>
-                  <div className={styles.formRow}>
-                    <button type="button" className={styles.secondaryButton} onClick={() => setEditingId(document.id)}>
-                      Edit
-                    </button>
+                  <div className={styles.actionRow}>
+                    {!isInternal(document) && (
+                      <button type="button" className={styles.secondaryButton} onClick={() => setEditingId(document.id)}>
+                        Edit
+                      </button>
+                    )}
                     <button type="button" className={styles.secondaryButton} onClick={() => handleToggleActive(document)}>
                       {document.is_active ? "Disable" : "Enable"}
                     </button>
