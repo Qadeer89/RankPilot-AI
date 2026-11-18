@@ -2013,3 +2013,63 @@ export function getHistoryTimeline(token: string, org: string, site: string, cat
   if (category) q.set("category", category);
   return request<{ items: HistoryEvent[]; page: number; pages: number; total: number }>(`${historyBase(org, site)}/timeline?${q.toString()}`, { headers: authHeaders(token) });
 }
+
+// ---- Growth plan: journey, 30-day plan, unified recommendations, business profile
+export interface GrowthJourney {
+  mode: "analysing" | "baseline" | "connected"; message: string;
+  baseline: { taken_at: string; reconstructed: boolean } | null; last_analysis_at: string | null;
+  integrations: { google_search_console: { connected: boolean; has_data: boolean }; ga4: { connected: boolean; has_data: boolean }; cms: string | null };
+  panels: { panel: string; available: boolean; source: string; reason: string | null }[];
+  next_actions: { key: string; text: string; detail: string | null }[];
+  recommendations: { total: number; by_priority: Record<string, number>; by_type: Record<string, number>; by_stage: Record<string, number> };
+  expectations: string;
+}
+
+export interface GrowthPlanItem { text: string; status: "todo" | "done" | "blocked"; basis: string; count: number | null }
+export interface GrowthPlan {
+  generated_from: { pages: number; open_issues: number; critical_issues: number; open_recommendations: number };
+  size_class: string; pace_note: string; disclaimer: string; generated_at: string;
+  stages: { days: string; title: string; items: GrowthPlanItem[] }[];
+}
+
+export interface UnifiedRecommendation {
+  id: string; kind: string; title: string; affected: string | null; type: string; problem: string; evidence: Record<string, unknown>; why_it_matters: string;
+  suggested_solution: string; implementation: string; priority: string; effort: string; benefit_category: string; validation: string; stage: string; actions: string[]; data_source: string;
+}
+export interface UnifiedRecommendationList {
+  items: UnifiedRecommendation[]; page: number; page_size: number; total: number; pages: number;
+  summary: { total: number; by_priority: Record<string, number>; by_type: Record<string, number>; by_stage: Record<string, number> };
+}
+
+export interface BusinessProfile {
+  exists: boolean; confirmed: boolean; business_type: string | null; industry: string | null; offerings: string[]; target_customers: string[]; objective: string | null;
+  known_competitors: string[]; confirmed_at: string | null; target_countries?: string[]; target_language?: string;
+  ai_suggestions: null | {
+    business_type?: string; industry?: string; offerings?: string[]; audiences?: string[]; search_topics?: string[]; objective_ideas?: string[];
+    dropped_unsupported_offerings?: string[]; label?: string; generated_at?: string;
+  };
+}
+export type BusinessProfileInput = Pick<BusinessProfile, "business_type" | "industry" | "offerings" | "target_customers" | "objective" | "known_competitors">;
+
+const growthBase = (org: string, site: string) => `/organizations/${org}/websites/${site}`;
+
+export function getGrowthJourney(token: string, org: string, site: string) {
+  return request<GrowthJourney>(`${growthBase(org, site)}/growth/journey`, { headers: authHeaders(token) });
+}
+export function getGrowthPlan(token: string, org: string, site: string) {
+  return request<GrowthPlan>(`${growthBase(org, site)}/growth/plan`, { headers: authHeaders(token) });
+}
+export function listUnifiedRecommendations(token: string, org: string, site: string, filters: { type?: string; priority?: string; stage?: string; q?: string; page?: number }) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(filters)) if (v) q.set(k, String(v));
+  return request<UnifiedRecommendationList>(`${growthBase(org, site)}/growth/recommendations?${q.toString()}`, { headers: authHeaders(token) });
+}
+export function getBusinessProfile(token: string, org: string, site: string) {
+  return request<BusinessProfile>(`${growthBase(org, site)}/business-profile`, { headers: authHeaders(token) });
+}
+export function saveBusinessProfile(token: string, org: string, site: string, body: BusinessProfileInput) {
+  return request<BusinessProfile>(`${growthBase(org, site)}/business-profile`, { method: "PUT", headers: authHeaders(token), body: JSON.stringify(body) });
+}
+export function suggestBusinessProfile(token: string, org: string, site: string) {
+  return request<BusinessProfile>(`${growthBase(org, site)}/business-profile/suggest`, { method: "POST", headers: authHeaders(token) });
+}
