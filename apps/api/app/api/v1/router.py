@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     admin_knowledge,
     ai_agents,
     ai_search,
+    growth_plan,
     history,
     analytics,
     auth,
@@ -51,4 +52,5 @@ api_router.include_router(reference.router)
 api_router.include_router(billing.router)
 api_router.include_router(ai_search.router)
 api_router.include_router(history.router)
+api_router.include_router(growth_plan.router)
 api_router.include_router(admin.router)

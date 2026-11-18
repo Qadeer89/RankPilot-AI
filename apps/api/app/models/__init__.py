@@ -2,6 +2,7 @@ from app.models.agent_run import AgentRun, AgentRunStatus, AgentType
 from app.models.approval import Approval, ApprovalDecision
 from app.models.admin_setting import AdminSetting
 from app.models.ai_search_finding import AiSearchFinding
+from app.models.business_profile import BusinessProfile
 from app.models.history import (
     CollectionSnapshot, DataSourceSyncHistory, ProductSnapshot, ProjectActivityEvent, ProjectMetricHistory, ProjectSnapshot,
     RecommendationHistory, SnapshotFindings,
@@ -96,6 +97,7 @@ __all__ = [
     "Ga4LandingPageMetric",
     "AdminSetting",
     "AiSearchFinding",
+    "BusinessProfile",
     "CollectionSnapshot", "DataSourceSyncHistory", "ProductSnapshot", "ProjectActivityEvent", "ProjectMetricHistory", "ProjectSnapshot",
     "RecommendationHistory", "SnapshotFindings",
     "EmailVerificationToken",
