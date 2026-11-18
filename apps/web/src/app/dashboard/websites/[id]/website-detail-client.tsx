@@ -111,6 +111,23 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+function ScoreRing({ score }: { score: number | null }) {
+  const value = score === null ? 0 : Math.max(0, Math.min(100, Math.round(score)));
+  const r = 42, c = 2 * Math.PI * r;
+  const tone = score === null ? "var(--rp-border)" : value >= 85 ? "var(--rp-success)" : value >= 60 ? "#d98a00" : "var(--rp-danger)";
+  return (
+    <span className={styles.scoreRing} role="img" aria-label={score === null ? "Health score not available" : `Health score ${value} out of 100`}>
+      <svg viewBox="0 0 100 100" width="104" height="104">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="var(--rp-border)" strokeWidth="9" />
+        <circle cx="50" cy="50" r={r} fill="none" stroke={tone} strokeWidth="9" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)}
+                transform="rotate(-90 50 50)" style={{ transition: "stroke-dashoffset 0.8s ease" }} />
+      </svg>
+      <span className={styles.scoreRingValue}>{score === null ? "—" : value}</span>
+    </span>
+  );
+}
+
+
 const TAB_LABELS: Record<Tab, string> = {
   overview: "Overview",
   crawls: "Crawls",
@@ -133,6 +150,10 @@ export default function WebsiteDetailClient() {
   const orgIdRef = useRef<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const goTo = (tab: Tab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const [website, setWebsite] = useState<Website | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1047,7 +1068,7 @@ export default function WebsiteDetailClient() {
 
         {error && <p className={styles.error} role="alert">{error}</p>}
 
-        <div className={styles.tabs}>
+        <div className={styles.tabs} role="tablist" aria-label="Project sections">
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -1130,9 +1151,7 @@ export default function WebsiteDetailClient() {
                   return (
                     <>
                       <div className={styles.healthScoreHeader}>
-                        <span className={styles.healthScoreValue}>
-                          {current.overall_score !== null ? Math.round(current.overall_score) : "—"}
-                        </span>
+                        <ScoreRing score={current.overall_score} />
                         <span className={styles.rowMeta}>/ 100</span>
                         {delta !== null && (
                           <span className={delta >= 0 ? styles.scoreUp : styles.scoreDown}>
@@ -1146,11 +1165,12 @@ export default function WebsiteDetailClient() {
                             label: "Critical issues",
                             value: current.critical_count,
                             attention: current.critical_count > 0,
+                            onClick: () => goTo("findings"), hint: "See findings",
                           },
-                          { label: "Warnings", value: current.warning_count },
+                          { label: "Warnings", value: current.warning_count, onClick: () => goTo("findings"), hint: "See findings" },
                           { label: "Passed checks", value: current.passed_count },
-                          { label: "Auto-fixed issues", value: autoFixed },
-                          { label: "Pending approvals", value: pendingApprovals, attention: pendingApprovals > 0 },
+                          { label: "Auto-fixed issues", value: autoFixed, onClick: () => goTo("tasks"), hint: "See tasks" },
+                          { label: "Pending approvals", value: pendingApprovals, attention: pendingApprovals > 0, onClick: () => goTo("tasks"), hint: "Review" },
                           { label: "Technical score", value: fmt(current.technical_score) },
                           { label: "On-page score", value: fmt(current.on_page_score) },
                           { label: "Content score", value: fmt(current.content_score) },
@@ -1183,7 +1203,7 @@ export default function WebsiteDetailClient() {
               <h2>Site health</h2>
               <MetricGrid
                 metrics={[
-                  { label: "Pages crawled", value: pages.length },
+                  { label: "Pages crawled", value: pages.length, onClick: () => goTo("pages"), hint: "See pages" },
                   ...(overview?.pages_indexed !== null && overview?.pages_indexed !== undefined
                     ? [{ label: "Pages indexed by Google", value: overview.pages_indexed }]
                     : []),
@@ -1191,9 +1211,10 @@ export default function WebsiteDetailClient() {
                     label: "Open findings",
                     value: findings.filter((f) => f.status === "open").length,
                     attention: findings.some((f) => f.status === "open" && f.severity === "critical"),
+                    onClick: () => goTo("findings"), hint: "See findings",
                   },
-                  { label: "Open opportunities", value: opportunities.filter((o) => o.status === "open").length },
-                  { label: "Completed tasks", value: tasks.filter((t) => t.status === "completed").length },
+                  { label: "Open opportunities", value: opportunities.filter((o) => o.status === "open").length, onClick: () => goTo("opportunities"), hint: "See opportunities" },
+                  { label: "Completed tasks", value: tasks.filter((t) => t.status === "completed").length, onClick: () => goTo("tasks"), hint: "See tasks" },
                 ]}
               />
               {(() => {

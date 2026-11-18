@@ -46,33 +46,36 @@
 
 .tabs {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--rp-border);
-  overflow-x: auto;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
 }
 
 .tab {
-  padding: 10px 16px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  text-decoration: none;
   font-size: 14px;
   font-weight: 500;
   color: var(--rp-muted);
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 .tab:hover {
   color: var(--rp-ink);
+  background: var(--rp-bg);
 }
 
 .tabActive {
   color: var(--rp-primary);
-  border-bottom-color: var(--rp-primary);
+  background: var(--rp-surface);
+  border-color: var(--rp-primary);
 }
 
 .card {
@@ -420,3 +423,8 @@
     width: 100%;
   }
 }
+
+.scoreRing { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 104px; height: 104px; }
+.scoreRingValue { position: absolute; font-size: 30px; font-weight: 700; color: var(--rp-ink); }
+.scoreHistoryPoint { transition: transform 0.12s ease; cursor: default; }
+.scoreHistoryPoint:hover { transform: scale(1.15); }
