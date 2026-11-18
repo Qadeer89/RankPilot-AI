@@ -42,6 +42,15 @@ class HistoryError(Exception):
 
 # ---------------------------------------------------------------- one metric, before and after
 
+def open_total(issues: dict | None):
+    """Stored open total, or the sum of the stored per-severity counts when the total was not kept (rebuilt snapshots)."""
+    issues = issues or {}
+    if issues.get("open_total") is not None:
+        return issues["open_total"]
+    by = issues.get("by_severity")
+    return sum(by.values()) if by else None
+
+
 _COMPONENTS = ("technical", "on_page", "content", "performance")
 
 
@@ -122,7 +131,7 @@ def compare_snapshots(db: Session, website: Website, a: ProjectSnapshot, b: Proj
             names = ", ".join(c.replace("_", "-") for c in lfl["components"])
             add(group, f"Overall score on the same components ({names})", lfl["previous"], lfl["current"], "higher")
     ia, ib = a.summary_json.get("issues", {}), b.summary_json.get("issues", {})
-    add("Issues", "Open issues", ia.get("open_total"), ib.get("open_total"), "lower")
+    add("Issues", "Open issues", open_total(ia), open_total(ib), "lower")
     for sev in ("critical", "warning", "info"):
         add("Issues", f"{sev.title()} issues", (ia.get("by_severity") or {}).get(sev, 0 if ia.get("by_severity") is not None else None),
             (ib.get("by_severity") or {}).get(sev, 0 if ib.get("by_severity") is not None else None), "lower")
@@ -335,7 +344,7 @@ def series(db: Session, website: Website, metric: str, start: date, end: date) -
         for s in (db.query(ProjectSnapshot).filter(ProjectSnapshot.website_id == website.id, ProjectSnapshot.snapshot_type == "crawl",
                                                    ProjectSnapshot.created_at >= lo, ProjectSnapshot.created_at < hi).order_by(ProjectSnapshot.created_at)):
             summary = s.summary_json
-            value = {"health_overall": (summary.get("health") or {}).get("overall"), "issues_open": (summary.get("issues") or {}).get("open_total"),
+            value = {"health_overall": (summary.get("health") or {}).get("overall"), "issues_open": open_total(summary.get("issues")),
                      "issues_critical": ((summary.get("issues") or {}).get("by_severity") or {}).get("critical")}[metric]
             points.append({"date": s.created_at.date().isoformat(), "at": s.created_at.isoformat(), "value": value, "snapshot_id": str(s.id), "reconstructed": s.reconstructed})
     elif source == "google_search_console":

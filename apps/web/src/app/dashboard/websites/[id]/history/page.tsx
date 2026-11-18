@@ -159,8 +159,11 @@ export default function HistoryPage() {
     return () => { cancelled = true; };
   }, [token, orgId, websiteId, category, tlPage]);
 
-  const snapLabel = (s: HistorySnapshotMeta) =>
-    `${new Date(s.taken_at).toLocaleDateString("en-US", { dateStyle: "medium" })}${s.is_baseline ? " (baseline)" : ""}${s.reconstructed ? " (rebuilt)" : ""}`;
+  const snapLabel = (s: HistorySnapshotMeta) => {
+    const when = new Date(s.taken_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+    const score = s.health_overall !== null && s.health_overall !== undefined ? ` · score ${Math.round(s.health_overall * 10) / 10}` : "";
+    return `${when}${score}${s.is_baseline ? " · baseline" : ""}${s.reconstructed ? " · rebuilt" : ""}`;
+  };
 
   return (
     <main className={styles.page}>

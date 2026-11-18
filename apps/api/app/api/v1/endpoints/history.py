@@ -30,7 +30,7 @@ def _guard(call):
 
 def _row(s: ProjectSnapshot) -> dict:
     health = s.summary_json.get("health", {})
-    return {**compare._meta(s), "health_overall": health.get("overall"), "open_issues": (s.summary_json.get("issues") or {}).get("open_total"),
+    return {**compare._meta(s), "health_overall": health.get("overall"), "open_issues": compare.open_total(s.summary_json.get("issues")),
             "pages_crawled": (s.summary_json.get("pages") or {}).get("crawled"), "data_sources": s.data_sources}
 
 

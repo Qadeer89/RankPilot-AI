@@ -110,6 +110,7 @@ const TABS = [
   "reports",
 ] as const;
 type Tab = (typeof TABS)[number];
+const TASK_LABELS: Record<string, string> = { set_title: "Change page title", set_meta_description: "Change meta description", set_alt_text: "Set image alt text", set_canonical: "Set canonical URL", set_schema_json: "Add structured data" };
 
 function ScoreRing({ score }: { score: number | null }) {
   const value = score === null ? 0 : Math.max(0, Math.min(100, Math.round(score)));
@@ -1777,7 +1778,13 @@ export default function WebsiteDetailClient() {
               const renderTaskRow = (task: SEOTask) => (
                 <div key={task.id} className={styles.row}>
                   <div className={styles.rowMain}>
-                    <span>{task.task_type}</span>
+                    <span>{TASK_LABELS[task.task_type] ?? task.task_type.replace(/_/g, " ")}</span>
+                    {typeof task.proposed_change_json?.target_url === "string" && (
+                      <span className={styles.rowMeta} data-testid="task-target">{task.proposed_change_json.target_url}</span>
+                    )}
+                    {typeof task.proposed_change_json?.value === "string" && task.proposed_change_json.value && (
+                      <span className={styles.rowMeta} data-testid="task-value">New value: {task.proposed_change_json.value.length > 160 ? `${task.proposed_change_json.value.slice(0, 160)}…` : task.proposed_change_json.value}</span>
+                    )}
                     <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
                   </div>
                   <div className={styles.actions}>

@@ -84,7 +84,8 @@ def test_rebuilt_snapshots_are_compared_honestly(db_session):
     result = compare.compare_snapshots(db_session, site, base, live)
     assert result["issue_changes"]["available"] is False and "rebuilt" in result["issue_changes"]["reason"]
     rows = {r["label"]: r for r in result["rows"]}
-    assert rows["Open issues"]["status"] == "not_available"  # the old total was never stored
+    # the old total was never stored, but the per-severity counts were, so the total is their sum rather than "Not available"
+    assert rows["Open issues"]["previous"] is not None and rows["Open issues"]["previous"] >= 10 and rows["Open issues"]["status"] == "improved"
     assert rows["Critical issues"]["previous"] == 4 and rows["Critical issues"]["status"] == "improved"
     assert any("rebuilt" in w for w in result["warnings"]) and any("different rule or scoring versions" in w for w in result["warnings"])
 
@@ -403,3 +404,9 @@ def test_search_console_availability_explains_query_rows_without_daily_totals(db
     assert "query-level rows only" in panel["source"]
     _gsc_days(db_session, site, NOW.date() - timedelta(days=10), 3, clicks=1, impressions=10)
     assert compare.progress_overview(db_session, site)["data_sources"]["google_search_console"]["available"] is True
+
+
+def test_open_issues_are_derived_from_stored_severity_counts_when_the_total_was_not_kept():
+    assert compare.open_total({"open_total": None, "by_severity": {"critical": 0, "warning": 2, "info": 323}}) == 325
+    assert compare.open_total({"open_total": 7, "by_severity": {"info": 1}}) == 7
+    assert compare.open_total({"open_total": None}) is None and compare.open_total(None) is None
