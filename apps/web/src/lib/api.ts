@@ -2111,7 +2111,7 @@ export const getProgressReport = (t: string, o: string, s: string) => request<Pr
 
 // ---- Title repair (brand shown twice in page titles)
 export interface TitleRepairPlan {
-  candidates: { url: string; live_title: string; new_title: string }[];
+  candidates: { url: string; live_title: string; new_title: string; final_title?: string; final_length?: number; too_long?: boolean }[];
   skipped_already_pending: number; skipped: Record<string, number>; reason_none: string | null; pages_with_applied_titles: number; stopped_early: boolean;
 }
 export const planTitleRepair = (t: string, o: string, s: string, limit: number) =>

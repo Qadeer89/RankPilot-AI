@@ -57,6 +57,11 @@ export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: ()
                 <strong>{c.url}</strong>
                 <span className={styles.small}>Live now: {c.live_title}</span>
                 <span>New title: {c.new_title}</span>
+                {c.final_title && (
+                  <span className={c.too_long ? styles.warnText : styles.small}>
+                    In search results: {c.final_title} ({c.final_length} characters{c.too_long ? " — may be cut off; shorten it in a later round" : ""})
+                  </span>
+                )}
               </li>
             ))}
           </ul>

@@ -205,6 +205,8 @@ def test_the_plan_endpoint_is_read_only_and_lists_old_and_new_titles(client, db_
     r = client.post(f"{api_world.base}/plan?limit=2", headers=api_world.headers).json()
     assert len(r["candidates"]) == 2 and r["candidates"][0]["live_title"].endswith(f"{BRAND} | {BRAND}") and r["candidates"][0]["new_title"] == "Knee Pain"
     assert r["pages_with_applied_titles"] == 4 and r["stopped_early"] is False
+    first = r["candidates"][0]
+    assert first["final_title"] == f"Knee Pain | {BRAND}" and first["final_length"] == len(first["final_title"]) and first["too_long"] is False
     assert db_session.query(SEOTask).count() == before
 
 

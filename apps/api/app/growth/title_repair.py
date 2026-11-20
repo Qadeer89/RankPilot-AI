@@ -56,6 +56,7 @@ class RepairPlan:
     # why pages were left out, e.g. {"title is already fine": 12}
     skipped: Counter = field(default_factory=Counter)
     total_applied_pages: int = 0
+    suffix_joined: str = ""  # what the site's template appends to every title, e.g. " | Brand City"
     stopped_early: bool = False
 
 
@@ -118,6 +119,7 @@ def plan_title_repairs(
         .all()
     )
     plan = RepairPlan([])
+    plan.suffix_joined = suffix.joined
     plan.total_applied_pages = len({normalize_frontier_url(t.proposed_change_json["target_url"]) for t, _c in rows if (t.proposed_change_json or {}).get("target_url")})
     started = time.monotonic()
     seen: set[str] = set()

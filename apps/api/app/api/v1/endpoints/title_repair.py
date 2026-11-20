@@ -22,11 +22,15 @@ from app.models.membership import Membership, MembershipRole
 router = APIRouter(tags=["title-repair"])
 _BASE = "/organizations/{organization_id}/websites/{website_id}/title-repair"
 MAX_BATCH, MAX_SECONDS = 25, 40.0
+TITLE_DISPLAY_LIMIT = 60  # roughly what search results show before cutting a title off
 
 
 def _plan_json(plan: title_repair.RepairPlan) -> dict:
     return {
-        "candidates": [{"url": c.target_url, "live_title": c.live_title, "new_title": c.fixed_title} for c in plan.candidates],
+        "candidates": [{"url": c.target_url, "live_title": c.live_title, "new_title": c.fixed_title,
+                        # what search results will show once the site's template adds its brand again
+                        "final_title": c.fixed_title + plan.suffix_joined, "final_length": len(c.fixed_title + plan.suffix_joined),
+                        "too_long": len(c.fixed_title + plan.suffix_joined) > TITLE_DISPLAY_LIMIT} for c in plan.candidates],
         "skipped_already_pending": plan.skipped_already_pending, "skipped": dict(plan.skipped), "reason_none": plan.reason_none,
         "pages_with_applied_titles": plan.total_applied_pages, "stopped_early": plan.stopped_early,
     }
