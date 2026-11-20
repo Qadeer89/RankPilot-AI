@@ -5,9 +5,13 @@ data exists; health scores are labelled as RankPilot's own measure; nothing clai
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
+
+from app.history import work
+from app.models.history import ProjectMetricHistory
 
 from app.history import compare
 from app.history import snapshots as snap
@@ -31,6 +35,46 @@ def _line(row: dict) -> str | None:
     if row["status"] == "low_volume":
         text += " — small numbers, so no better/worse verdict"
     return f"{text} [{row['source']}]"
+
+
+REVIEW_AFTER_DAYS = (28, 56)
+
+
+def search_monthly(db: Session, website: Website) -> list[dict]:
+    """Search Console property totals per calendar month, with how many days of that month have data (a partial month is labelled)."""
+    rows = (db.query(ProjectMetricHistory).filter(ProjectMetricHistory.website_id == website.id, ProjectMetricHistory.source == "google_search_console",
+                                                  ProjectMetricHistory.scope_type == "property").order_by(ProjectMetricHistory.metric_date).all())
+    months: dict[str, dict] = {}
+    for r in rows:
+        m = months.setdefault(r.metric_date.strftime("%Y-%m"), {"clicks": 0, "impressions": 0, "days": 0, "last_day": r.metric_date})
+        m["clicks"] += r.clicks
+        m["impressions"] += r.impressions
+        m["days"] += 1
+        m["last_day"] = max(m["last_day"], r.metric_date)
+    out = []
+    for key, m in sorted(months.items()):
+        y, mo = int(key[:4]), int(key[5:])
+        in_month = monthrange(y, mo)[1]
+        out.append({"month": key, "clicks": m["clicks"], "impressions": m["impressions"], "days_with_data": m["days"], "days_in_month": in_month,
+                    "partial": m["days"] < in_month, "impressions_per_day": round(m["impressions"] / m["days"], 1) if m["days"] else None,
+                    "clicks_per_day": round(m["clicks"] / m["days"], 2) if m["days"] else None})
+    return out
+
+
+def work_timeline(db: Session, website: Website, today: date | None = None) -> dict:
+    """When changes were applied, and when it is fair to look for an effect. Review dates are a plan, not a prediction."""
+    today = today or datetime.now(timezone.utc).date()
+    rows = [r[0] for r in work.change_rows(db, website) if r[0].validation_status.value != "failed"]
+    if not rows:
+        return {"applied": 0, "first_change_at": None, "last_change_at": None, "milestones": []}
+    first, last = min(r.executed_at for r in rows), max(r.executed_at for r in rows)
+    milestones = []
+    for days in REVIEW_AFTER_DAYS:
+        due = last.date() + timedelta(days=days)
+        milestones.append({"date": due.isoformat(), "days_after_last_change": days, "reached": due <= today,
+                           "label": ("First check: Google has usually had time to re-read the changed pages." if days == REVIEW_AFTER_DAYS[0]
+                                     else "Main check: compare against the period before the changes.")})
+    return {"applied": len(rows), "first_change_at": first.isoformat(), "last_change_at": last.isoformat(), "milestones": milestones}
 
 
 def build(db: Session, website: Website) -> dict:
@@ -61,4 +105,7 @@ def build(db: Session, website: Website) -> dict:
         "google": {"available": bool(search.get("available")), "reason": search.get("reason"), "lines": google, "period": search.get("period")},
         "data_sources": overview["data_sources"], "warnings": (comparison or {}).get("warnings", []),
         "has_progress": comparison is not None, "limitations": LIMITATIONS,
+        "search_monthly": search_monthly(db, website), "work_timeline": work_timeline(db, website),
+        "improvement_verdict": ("Search improvement cannot be confirmed yet: too few weeks have passed since the changes, and search volumes are small. "
+                                "The dates below are when it becomes fair to check."),
     }

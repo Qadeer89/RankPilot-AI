@@ -2103,5 +2103,8 @@ export interface ProgressReport {
   work: { pages_optimized: number; recommendations_implemented: number; recommendations_validated: number; recommendations_failed: number };
   highlights: string[]; google: { available: boolean; reason: string | null; lines: string[] };
   data_sources: Record<string, { available: boolean; reason: string | null }>; warnings: string[]; limitations: string[];
+  search_monthly?: { month: string; clicks: number; impressions: number; days_with_data: number; days_in_month: number; partial: boolean; impressions_per_day: number | null; clicks_per_day: number | null }[];
+  work_timeline?: { applied: number; first_change_at: string | null; last_change_at: string | null; milestones: { date: string; days_after_last_change: number; reached: boolean; label: string }[] };
+  improvement_verdict?: string;
 }
 export const getProgressReport = (t: string, o: string, s: string) => request<ProgressReport>(`/organizations/${o}/websites/${s}/history/report`, { headers: authHeaders(t) });

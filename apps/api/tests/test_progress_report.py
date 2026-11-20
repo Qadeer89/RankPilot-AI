@@ -1,7 +1,7 @@
 """Customer progress report: built only from stored history, honest about gaps, tenant-isolated."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.history import report
 from app.history import snapshots as snap
@@ -56,3 +56,32 @@ def test_report_api_and_isolation(client, db_session):
     assert body["project"]["name"] == "R" and body["generated_at"] and body["has_progress"] is False
     other, _ = register(client, "report-intruder@example.com")
     assert client.get(url, headers=other).status_code in (403, 404) and client.get(url).status_code == 401
+
+
+def test_monthly_search_totals_label_partial_months_and_never_invent_days(db_session):
+    site = make_site(db_session)
+    today = datetime.now(timezone.utc).date()
+    _gsc_days(db_session, site, date(2026, 10, 1), 31, clicks=1, impressions=12)
+    _gsc_days(db_session, site, date(2026, 11, 1), 10, clicks=2, impressions=20)
+    months = report.search_monthly(db_session, site)
+    assert [m["month"] for m in months] == ["2026-10", "2026-11"]
+    oct_, nov = months
+    assert (oct_["clicks"], oct_["impressions"], oct_["partial"]) == (31, 372, False)
+    assert (nov["clicks"], nov["impressions"], nov["days_with_data"], nov["days_in_month"], nov["partial"]) == (20, 200, 10, 30, True)
+    assert nov["impressions_per_day"] == 20.0 and today  # per-day figures let a partial month be compared fairly
+
+
+def test_review_dates_follow_the_last_applied_change_and_are_not_predictions(db_session):
+    from tests.test_history_compare import NOW, _connector, _task
+    from app.models.change_record import ChangeActorType, ChangeRecord, ValidationStatus
+    site = make_site(db_session)
+    page = make_page(db_session, site)
+    assert report.work_timeline(db_session, site)["milestones"] == []
+    db_session.add(ChangeRecord(website_id=site.id, page_id=page.id, seo_task_id=_task(db_session, site, page), connector_type=_connector(), before_state_json={"value": "a"},
+                                after_state_json={"value": "b"}, actor_type=ChangeActorType.system, executed_at=NOW, validation_status=ValidationStatus.passed))
+    db_session.flush()
+    t = report.work_timeline(db_session, site, today=NOW.date() + timedelta(days=30))
+    assert t["applied"] == 1 and [m["days_after_last_change"] for m in t["milestones"]] == [28, 56]
+    assert t["milestones"][0]["date"] == (NOW.date() + timedelta(days=28)).isoformat() and [m["reached"] for m in t["milestones"]] == [True, False]
+    full = report.build(db_session, site)
+    assert "cannot be confirmed yet" in full["improvement_verdict"]

@@ -53,6 +53,47 @@ export default function ReportPage() {
             {report.highlights.length === 0 ? <p className={styles.small}>Nothing to compare yet.</p> : <ul>{report.highlights.map((h) => <li key={h}>{h}</li>)}</ul>}
             {report.warnings.map((w) => <p key={w} className={styles.warn}>{w}</p>)}
 
+            {report.work_timeline && report.work_timeline.applied > 0 && (
+              <>
+                <h2>Work completed</h2>
+                <p data-testid="work-done">
+                  {report.work_timeline.applied} change(s) applied and checked on the live pages, {report.work.pages_optimized} page(s) improved
+                  {report.work_timeline.first_change_at ? `, between ${day(report.work_timeline.first_change_at)} and ${day(report.work_timeline.last_change_at ?? undefined)}` : ""}.
+                </p>
+              </>
+            )}
+
+            {report.search_monthly && report.search_monthly.length > 0 && (
+              <>
+                <h2>Google search visibility by month</h2>
+                <table className={styles.table} data-testid="monthly">
+                  <thead><tr><th>Month</th><th>Clicks</th><th>Impressions</th><th>Impressions per day</th></tr></thead>
+                  <tbody>
+                    {report.search_monthly.map((m) => (
+                      <tr key={m.month}>
+                        <td>{m.month}{m.partial ? ` (${m.days_with_data} of ${m.days_in_month} days so far)` : ""}</td>
+                        <td>{m.clicks}</td><td>{m.impressions}</td><td>{m.impressions_per_day ?? "Not available"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className={styles.small}>Source: Google Search Console. A month still in progress is shown with its per-day figure so it can be compared fairly. These are small numbers, so month-to-month changes can be random.</p>
+              </>
+            )}
+
+            {report.improvement_verdict && <p className={styles.note} data-testid="verdict">{report.improvement_verdict}</p>}
+            {report.work_timeline && report.work_timeline.milestones.length > 0 && (
+              <>
+                <h2>When we will check the effect</h2>
+                <ul data-testid="milestones">
+                  {report.work_timeline.milestones.map((m) => (
+                    <li key={m.date}><strong>{m.date}</strong> ({m.days_after_last_change} days after the last change){m.reached ? " — due now" : ""}: {m.label}</li>
+                  ))}
+                </ul>
+                <p className={styles.small}>These are planned review dates, not a prediction that rankings will rise.</p>
+              </>
+            )}
+
             <h2>Google search performance</h2>
             {report.google.available ? <ul data-testid="google-lines">{report.google.lines.map((l) => <li key={l}>{l}</li>)}</ul> : <p data-testid="google-na">Not available — {report.google.reason}</p>}
 
