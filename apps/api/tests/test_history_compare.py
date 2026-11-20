@@ -410,3 +410,16 @@ def test_open_issues_are_derived_from_stored_severity_counts_when_the_total_was_
     assert compare.open_total({"open_total": None, "by_severity": {"critical": 0, "warning": 2, "info": 323}}) == 325
     assert compare.open_total({"open_total": 7, "by_severity": {"info": 1}}) == 7
     assert compare.open_total({"open_total": None}) is None and compare.open_total(None) is None
+
+
+def test_small_search_volumes_are_not_called_better_or_worse(db_session):
+    """Regression for the live site: 16 -> 14 clicks was shown as 'Declined -12.5%'."""
+    site = make_site(db_session)
+    end = date(2026, 11, 10)
+    _gsc_days(db_session, site, end - timedelta(days=55), 28, clicks=1, impressions=13, position=4.0)
+    _gsc_days(db_session, site, end - timedelta(days=27), 28, clicks=1, impressions=16, position=6.0)
+    result = compare.search_comparison(db_session, site, period="28d")
+    assert {r["label"]: r["status"] for r in result["rows"]} == {"Clicks": "unchanged", "Impressions": "low_volume", "CTR": "low_volume", "Average position": "low_volume"}
+    assert any("Small numbers" in w for w in result["warnings"])
+    clicks = next(r for r in result["rows"] if r["label"] == "Impressions")
+    assert clicks["change"] == 84 and clicks["change_pct"] is not None  # the numbers are still shown; only the verdict is withheld

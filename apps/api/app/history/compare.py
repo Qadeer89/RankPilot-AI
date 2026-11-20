@@ -266,6 +266,8 @@ def _freshness(db: Session, website: Website) -> dict:
 
 
 PRESET_DAYS = {"7d": 7, "28d": 28, "3m": 90}
+# Below these totals a percentage change is mostly noise (2 clicks fewer is "-12.5%"), so it is not called better or worse.
+LOW_VOLUME_CLICKS, LOW_VOLUME_IMPRESSIONS = 100, 1000
 
 
 def search_comparison(db: Session, website: Website, *, period: str = "28d", start: date | None = None, end: date | None = None, against: str = "previous") -> dict:
@@ -311,6 +313,12 @@ def search_comparison(db: Session, website: Website, *, period: str = "28d", sta
     for key, label, better in (("clicks", "Clicks", "higher"), ("impressions", "Impressions", "higher"), ("ctr", "CTR", "higher"), ("position", "Average position", "lower")):
         rows.append({"label": label, "source": "Google Search Console", **(metric_delta(before.get(key), after.get(key), better=better) if comparable else
                                                                             metric_delta(None, None))})
+    if comparable and all((w["clicks"] < LOW_VOLUME_CLICKS or w["impressions"] < LOW_VOLUME_IMPRESSIONS) for w in (before, after)):
+        warnings.append(f"Small numbers: {before['clicks']} and {after['clicks']} clicks, {before['impressions']} and {after['impressions']} impressions. Changes this small are "
+                        "often random, so they are shown without a better/worse verdict. Judge a trend over a longer period or when volumes are higher.")
+        for row in rows:
+            if row["status"] in ("improved", "declined"):
+                row["status"] = "low_volume"
     return {"available": comparable, "against": against, "previous": before, "current": after, "rows": rows, "warnings": warnings, "freshness": fresh,
             "note": "Search performance is influenced by competition, search engine updates, demand, seasonality and changes to the website. A difference "
                     "between two periods does not show that any single change caused it."}

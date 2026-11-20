@@ -1932,7 +1932,7 @@ export interface HistoryDelta {
   current: number | null;
   change: number | null;
   change_pct: number | null;
-  status: "improved" | "declined" | "unchanged" | "changed" | "not_available" | "not_comparable";
+  status: "improved" | "declined" | "unchanged" | "changed" | "not_available" | "not_comparable" | "low_volume";
 }
 
 export interface HistorySnapshotMeta {

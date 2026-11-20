@@ -219,3 +219,24 @@ test("an overall score that averages different components is shown as not compar
   await expect(card).toContainText("Changes applied");
   await expect(card).toContainText("106");
 });
+
+test("small Search Console volumes get no better/worse verdict, and CTR is shown in percentage points", async ({ page }) => {
+  const fake = new FakeHistory();
+  fake.search = {
+    available: true, against: "previous", freshness: { latest_data_date: "2026-11-17", last_synced_at: "2026-11-20T10:00:00Z", note: "Search Console reports with a delay of a few days, so the newest days are not yet available." },
+    previous: { start: "2026-09-23", end: "2026-10-20" }, current: { start: "2026-10-21", end: "2026-11-17" },
+    rows: [
+      { label: "Clicks", source: "Google Search Console", previous: 16, current: 14, change: -2, change_pct: -12.5, status: "low_volume" },
+      { label: "CTR", source: "Google Search Console", previous: 0.0442, current: 0.0317, change: -0.0125, change_pct: -28.28, status: "low_volume" },
+      { label: "Average position", source: "Google Search Console", previous: 4.2, current: 5.4, change: 1.189, change_pct: 28.44, status: "low_volume" },
+    ],
+    warnings: ["Small numbers: 16 and 14 clicks, 362 and 442 impressions. Changes this small are often random, so they are shown without a better/worse verdict."], note: "n",
+  };
+  await open(page, fake);
+  await expect(page.getByTestId("search-warning")).toContainText("Small numbers");
+  const table = page.locator("table").filter({ hasText: "Average position" }).first();
+  await expect(table.getByRole("row", { name: /^Clicks/ })).toContainText("Too few to judge");
+  await expect(table.getByRole("row", { name: /^CTR/ })).toContainText("-1.25 percentage points");
+  await expect(table.getByRole("row", { name: /^Average position/ })).toContainText("lower in results");
+  await expect(table).not.toContainText("Declined");
+});

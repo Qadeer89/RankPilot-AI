@@ -24,7 +24,13 @@ def _line(row: dict) -> str | None:
     if row["status"] == "not_available" or row["change"] is None:
         return None
     pct = f" ({row['change_pct']:+g}%)" if row.get("change_pct") is not None else ""
-    return f"{row['label']}: {row['previous']:g} → {row['current']:g}, {row['change']:+g}{pct} [{row['source']}]"
+    if row["label"] == "CTR":  # stored as a fraction
+        text = f"CTR: {row['previous'] * 100:.2f}% → {row['current'] * 100:.2f}%, {row['change'] * 100:+.2f} percentage points{pct}"
+    else:
+        text = f"{row['label']}: {row['previous']:g} → {row['current']:g}, {row['change']:+g}{pct}"
+    if row["status"] == "low_volume":
+        text += " — small numbers, so no better/worse verdict"
+    return f"{text} [{row['source']}]"
 
 
 def build(db: Session, website: Website) -> dict:

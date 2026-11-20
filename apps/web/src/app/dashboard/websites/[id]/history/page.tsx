@@ -24,10 +24,12 @@ function changeText(d: HistoryDelta): string {
   if (d.change === null) return "—";
   const sign = d.change > 0 ? "+" : "";
   const pct = d.change_pct === null ? "" : ` (${d.change_pct > 0 ? "+" : ""}${d.change_pct}%)`;
+  if (d.label === "CTR") return `${sign}${(d.change * 100).toFixed(2)} percentage points${pct}`;  // CTR is stored as a fraction
+  if (d.label === "Average position") return `${sign}${d.change.toFixed(1)}${pct}${d.change > 0 ? " (lower in results)" : d.change < 0 ? " (higher in results)" : ""}`;
   return `${sign}${d.change}${pct}`;
 }
 
-const STATUS_TEXT: Record<string, string> = { improved: "Improved", declined: "Declined", unchanged: "Unchanged", changed: "Changed", not_available: "Not available", not_comparable: "Not comparable" };
+const STATUS_TEXT: Record<string, string> = { improved: "Improved", declined: "Declined", unchanged: "Unchanged", changed: "Changed", not_available: "Not available", not_comparable: "Not comparable", low_volume: "Too few to judge" };
 
 function Status({ s }: { s: HistoryDelta["status"] }) {
   const cls = s === "improved" ? styles.good : s === "declined" ? styles.bad : styles.neutral;
