@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.ai.budget import BudgetExceeded
 from app.ai.competitor_gap import analyze_competitor_gaps
+from app.ai_search.terms import coverage
 from app.ai.runner import AI_CALL_FAILURES, classify_ai_failure
 from app.competitors.crawler import fetch_competitor_pages
 from app.keywords.seed_generation import generate_seed_keywords
 from app.models.competitor import CompetitorDomain, CompetitorPageSnapshot
 from app.models.keyword_idea import KeywordDataClassification, KeywordIdea, KeywordIdeaSource, SearchIntent
+from app.models.page import Page
 from app.models.website import Website
 
 logger = logging.getLogger(__name__)
@@ -68,6 +70,29 @@ class CompetitorAnalysisOutcome:
     # AI gap ideas were added (the crawl itself is still saved).
     ai_status: str = "ok"
     ai_message: str | None = None
+    # gap ideas the AI proposed that this site's own crawled pages already cover (not shown as gaps)
+    dropped_already_covered: list[str] = field(default_factory=list)
+
+
+OWN_COVERAGE_DROP = 0.6
+
+
+def own_site_corpus(db: Session, website: Website) -> str:
+    """Titles, headings and URL words of every page the crawler stored for this site (latest snapshot of each)."""
+    from sqlalchemy import func
+
+    from app.models.page_snapshot import PageSnapshot
+
+    latest = (db.query(PageSnapshot.page_id, func.max(PageSnapshot.fetched_at).label("at")).join(Page, Page.id == PageSnapshot.page_id)
+              .filter(Page.website_id == website.id).group_by(PageSnapshot.page_id).subquery())
+    rows = (db.query(Page.canonical_url, PageSnapshot).join(PageSnapshot, PageSnapshot.page_id == Page.id)
+            .join(latest, (latest.c.page_id == PageSnapshot.page_id) & (latest.c.at == PageSnapshot.fetched_at))
+            .filter(Page.website_id == website.id, PageSnapshot.status_code == 200).all())
+    parts = []
+    for url, snap in rows:
+        headings = [h for group in (snap.headings_json or {}).values() for h in group]
+        parts.append(" ".join([url.replace("-", " ").replace("/", " "), snap.title or "", *headings]))
+    return " ".join(parts)
 
 
 def run_competitor_analysis(db: Session, website: Website, competitor: CompetitorDomain) -> list[KeywordIdea]:
@@ -132,7 +157,13 @@ def run_competitor_analysis_detailed(
         return outcome
 
     ideas: list[KeywordIdea] = []
+    corpus = own_site_corpus(db, website)
     for gap in result.gaps:
+        # The AI is only given topic keywords, so it can call About/Team/Testimonials pages "missing" when they exist.
+        # Check the claim against everything the crawler actually found on this site before recommending it.
+        if corpus and coverage(gap.topic, corpus) >= OWN_COVERAGE_DROP:
+            outcome.dropped_already_covered.append(gap.topic)
+            continue
         existing = (
             db.query(KeywordIdea)
             .filter(

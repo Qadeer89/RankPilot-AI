@@ -186,3 +186,20 @@ def test_competitor_gap_result_rejects_fabricated_competitor_metrics():
     result = ai_competitor_gap.CompetitorGapResult(gaps=[draft])
     with pytest.raises(ValueError):
         result.validate_no_fabricated_claims()
+
+
+def test_gaps_the_sites_own_pages_already_cover_are_not_recommended(db_session, monkeypatch):
+    """Regression for the live site: the AI called 'Meet the Team' and 'Vision and Mission' gaps although the site has an About page."""
+    from tests.ai_search_helpers import make_page
+
+    website = _make_website(db_session, business_description="Rehab clinic")
+    make_page(db_session, website, "/about-our-team-and-mission", "About Us | Example Clinic", {"h1": ["Meet the team"], "h2": ["Our mission and vision"]})
+    competitor = competitor_service.add_competitor_domain(db_session, website, "competitor.example")
+    fake_page = SimpleNamespace(url="https://competitor.example/", title="Home", meta_description=None, headings={"h1": ["Home"]}, word_count=100, has_structured_data=False, error=None)
+    monkeypatch.setattr(competitor_service, "fetch_competitor_pages", lambda domain: [fake_page])
+    gap = lambda topic: ai_competitor_gap.ContentGapDraft(topic=topic, recommended_content_type="page", rationale="Competitor has it.", confidence=0.8)  # noqa: E731
+    monkeypatch.setattr(competitor_service, "analyze_competitor_gaps", lambda *a, **k: ai_competitor_gap.CompetitorGapResult(
+        gaps=[gap("Meet the Team"), gap("Vision and Mission"), gap("Knee Replacement Rehabilitation")]))
+    outcome = competitor_service.run_competitor_analysis_detailed(db_session, website, competitor)
+    assert [i.keyword for i in outcome.ideas] == ["Knee Replacement Rehabilitation"]
+    assert sorted(outcome.dropped_already_covered) == ["Meet the Team", "Vision and Mission"]
