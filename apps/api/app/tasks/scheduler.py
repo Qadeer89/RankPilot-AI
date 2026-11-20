@@ -127,10 +127,10 @@ def daily_sync_search_signals_for_all_websites() -> int:
 
                     sync_search_history(db, website)
                     db.commit()
-                except Exception:
+                except Exception as exc:
                     logger.exception("Failed to sync Search Console data for website %s", website.id)
                     db.rollback()
-                    _record_sync_failure(db, website, "google_search_console")
+                    _record_sync_failure(db, website, "google_search_console", exc)
             if website.ga4_property_id:
                 from app.history.sync_log import SyncRun
 
@@ -275,7 +275,7 @@ def _record_sync_failure(db, website, source: str, exc: BaseException | None = N
         SyncRun(db, website, source).failed(exc or "The sync failed; see the server log.")
         label = "Search Console" if source == "google_search_console" else "Google Analytics"
         activity.record_event(db, website, "integration", "integration_error", f"{label} data could not be refreshed",
-                              detail={"reason": str(exc)[:300] if exc else None}, dedupe_key=f"{source}_error:{date.today().isoformat()}")
+                              detail={"reason": (f"{type(exc).__name__}: {exc}"[:300]) if exc else "The sync failed; see the server log."}, dedupe_key=f"{source}_error:{date.today().isoformat()}")
         db.commit()
     except Exception:
         db.rollback()
