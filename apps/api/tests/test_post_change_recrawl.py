@@ -236,3 +236,49 @@ def test_a_doubled_brand_is_flagged_on_the_recrawl_result(db_session, monkeypatc
 
     assert result["status"] == "validated"
     assert result["warning"] == "The live title shows the brand twice."
+
+
+# ---------------------------------------------------------------- cached pages: look again before reporting a mismatch
+
+def test_a_mismatch_is_checked_again_because_the_live_page_may_be_cached(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website, rec, task, change = _applied_change(db_session, value="A Title The Live Page Does Not Show Yet")
+    job = schedule_post_change_crawl(db_session, website, change)
+    db_session.commit()
+    queued = []
+    monkeypatch.setattr(crawl_module.run_post_change_crawl, "apply_async", lambda args=None, countdown=None, **k: queued.append((args, countdown)))
+
+    assert _run_task(db_session, monkeypatch, website, job, change) == "completed"
+
+    db_session.refresh(change)
+    recrawl = change.after_state_json["recrawl"]
+    assert recrawl["status"] == "queued" and recrawl["attempt"] == 2 and "cached" in recrawl["note"]  # not reported as a failure yet
+    assert recrawl["last_found"] == "Home - Example"
+    assert len(queued) == 1 and queued[0][1] == 90 and queued[0][0][2] == str(change.id)
+
+
+def test_after_the_last_attempt_the_mismatch_stands_with_a_note(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website, rec, task, change = _applied_change(db_session, value="A Title The Live Page Does Not Show Yet")
+    for attempt in range(1, recrawl_module.MAX_LIVE_ATTEMPTS + 1):
+        job = schedule_post_change_crawl(db_session, website, change, attempt=attempt)
+        db_session.commit()
+        monkeypatch.setattr(crawl_module.run_post_change_crawl, "apply_async", lambda *a, **k: None)
+        _run_task(db_session, monkeypatch, website, job, change)
+        db_session.refresh(change)
+        if attempt < recrawl_module.MAX_LIVE_ATTEMPTS:
+            assert change.after_state_json["recrawl"]["status"] == "queued"
+    final = change.after_state_json["recrawl"]
+    assert final["status"] == "mismatch" and final["attempt"] == recrawl_module.MAX_LIVE_ATTEMPTS and "after 3 checks" in final["note"]
+
+
+def test_a_validated_change_is_never_rechecked(db_session, monkeypatch):
+    patch_crawler_network(monkeypatch)
+    website, rec, task, change = _applied_change(db_session)
+    job = schedule_post_change_crawl(db_session, website, change)
+    db_session.commit()
+    queued = []
+    monkeypatch.setattr(crawl_module.run_post_change_crawl, "apply_async", lambda *a, **k: queued.append(1))
+    _run_task(db_session, monkeypatch, website, job, change)
+    db_session.refresh(change)
+    assert change.after_state_json["recrawl"]["status"] == "validated" and queued == []

@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 # Task operations whose result is visible in a crawled page snapshot.
 RECRAWL_FIELDS = {"set_title": "title", "set_meta_description": "meta_description"}
 IN_FLIGHT = ("queued", "running")
+# A site that caches its pages (for example Next.js ISR) serves the OLD page to the first visitor after a change and
+# regenerates it in the background. The first verification crawl is that first visitor, so a mismatch is checked again
+# a little later before it is reported as one.
+MAX_LIVE_ATTEMPTS = 3
+STALE_RETRY_SECONDS = (90, 240)
 
 
 def applied_value(change: ChangeRecord, task: SEOTask) -> str | None:
@@ -49,7 +54,7 @@ def _set_recrawl(change: ChangeRecord, **fields) -> dict:
     return current
 
 
-def schedule_post_change_crawl(db: Session, website: Website, change: ChangeRecord) -> CrawlJob | None:
+def schedule_post_change_crawl(db: Session, website: Website, change: ChangeRecord, *, attempt: int = 1) -> CrawlJob | None:
     """Create the pending one-URL crawl job and record it on the change.
     Returns None (and records why) when there is nothing to crawl. The
     caller commits, then enqueues `run_post_change_crawl`."""
@@ -65,6 +70,7 @@ def schedule_post_change_crawl(db: Session, website: Website, change: ChangeReco
         crawl_job_id=str(job.id),
         url=target_url,
         queued_at=datetime.now(timezone.utc).isoformat(),
+        attempt=attempt,
         error=None,
         expected=None,
         found=None,
@@ -96,6 +102,24 @@ def enqueue_post_change_crawl(db: Session, website: Website, change: ChangeRecor
         except Exception:  # noqa: BLE001
             db.rollback()
         return None
+
+
+def retry_if_not_visible(db: Session, website: Website, change: ChangeRecord, result: dict) -> tuple[CrawlJob, int] | None:
+    """After a mismatch, queue another look at the same page (the caller commits and enqueues it after `countdown`
+    seconds). Returns None when the result is not a mismatch or the attempts are used up; the mismatch then stands."""
+    if result.get("status") != "mismatch":
+        return None
+    attempt = int(result.get("attempt") or 1)
+    if attempt >= MAX_LIVE_ATTEMPTS:
+        _set_recrawl(change, note=f"The live page still showed the old value after {attempt} checks.")
+        return None
+    previous_found = result.get("found")
+    job = schedule_post_change_crawl(db, website, change, attempt=attempt + 1)
+    if job is None:
+        return None
+    _set_recrawl(change, last_found=previous_found,
+                 note="The live page still showed the old value, which can be a cached copy. Checking again shortly.")
+    return job, STALE_RETRY_SECONDS[min(attempt - 1, len(STALE_RETRY_SECONDS) - 1)]
 
 
 def job_target(task) -> str | None:

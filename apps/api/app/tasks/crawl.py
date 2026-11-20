@@ -217,8 +217,15 @@ def run_post_change_crawl(self, website_id: str, crawl_job_id: str, change_recor
         run_crawl(db, website, job, trigger=CrawlTrigger.post_change, only_urls=[target_url] if target_url else [])
         db.commit()
 
-        record_recrawl_result(db, job, change)
+        result = record_recrawl_result(db, job, change)
         db.commit()
+        from app.growth.recrawl import retry_if_not_visible
+
+        again = retry_if_not_visible(db, website, change, result)
+        db.commit()
+        if again is not None:
+            next_job, countdown = again
+            run_post_change_crawl.apply_async(args=[str(website.id), str(next_job.id), str(change.id)], countdown=countdown)
         return job.status.value
     except _OtherCrawlRunning as exc:
         db.rollback()

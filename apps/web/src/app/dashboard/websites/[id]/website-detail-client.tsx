@@ -59,6 +59,7 @@ import {
   listOrphanPages,
   listPages,
   listReports,
+  listChangeRecords,
   listTasks,
   pauseWebsite,
   rejectTask,
@@ -112,6 +113,16 @@ const TABS = [
   "reports",
 ] as const;
 type Tab = (typeof TABS)[number];
+interface LiveCheck { status: string; note?: string | null; found?: string | null; expected?: string | null; attempt?: number }
+function liveCheckText(c: LiveCheck | undefined): { text: string; tone: "ok" | "wait" | "bad" | "none" } {
+  if (!c) return { text: "Live page: not checked yet", tone: "none" };
+  if (c.status === "validated") return { text: "Live page: change confirmed", tone: "ok" };
+  if (c.status === "queued" || c.status === "running") return { text: `Live page: checking${c.attempt && c.attempt > 1 ? ` (attempt ${c.attempt})` : ""}${c.note ? ` — ${c.note}` : ""}`, tone: "wait" };
+  if (c.status === "mismatch") return { text: `Live page still shows the old value${c.note ? ` — ${c.note}` : ""}`, tone: "bad" };
+  if (c.status === "failed") return { text: "Live page: could not be checked", tone: "bad" };
+  if (c.status === "not_applicable") return { text: "Live page: no visible check for this change", tone: "none" };
+  return { text: "Live page: not checked yet", tone: "none" };
+}
 const TASK_LABELS: Record<string, string> = { set_title: "Change page title", set_meta_description: "Change meta description", set_alt_text: "Set image alt text", set_canonical: "Set canonical URL", set_schema_json: "Add structured data" };
 
 function ScoreRing({ score }: { score: number | null }) {
@@ -172,6 +183,7 @@ export default function WebsiteDetailClient() {
   const [showCompletedOpportunities, setShowCompletedOpportunities] = useState(false);
   const [proposals, setProposals] = useState<Record<string, OpportunityProposal>>({});
   const [tasks, setTasks] = useState<SEOTask[]>([]);
+  const [liveChecks, setLiveChecks] = useState<Record<string, LiveCheck>>({});
   const [connections, setConnections] = useState<WebsiteConnection[]>([]);
   const [searchPerformance, setSearchPerformance] = useState<SearchPerformance | null>(null);
   const [showSearchPerformance, setShowSearchPerformance] = useState(false);
@@ -214,6 +226,30 @@ export default function WebsiteDetailClient() {
   // and dataset were right there, only the token has to be re-entered),
   // so there's no reason to make someone retype everything after a
   // disconnect just to reconnect the same site.
+  useEffect(() => {
+    if (activeTab !== "tasks") return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      const token = tokenRef.current;
+      const orgId = orgIdRef.current;
+      if (!token || !orgId) { timer = setTimeout(load, 1500); return; }
+      try {
+        const changes = await listChangeRecords(token, orgId, websiteId);
+        if (cancelled) return;
+        const map: Record<string, LiveCheck> = {};
+        for (const c of changes) {
+          const r = (c.after_state_json as { recrawl?: LiveCheck }).recrawl;
+          if (r) map[c.seo_task_id] = r;
+        }
+        setLiveChecks(map);
+        if (Object.values(map).some((r) => r.status === "queued" || r.status === "running")) timer = setTimeout(load, 20000);
+      } catch { /* the live-check line simply stays as it was */ }
+    };
+    void load();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [activeTab, websiteId, tasks.length]);
+
   useEffect(() => {
     const latestByType = new Map<string, WebsiteConnection>();
     for (const c of connections) {
@@ -1796,6 +1832,10 @@ export default function WebsiteDetailClient() {
                     {typeof task.proposed_change_json?.value === "string" && task.proposed_change_json.value && (
                       <span className={styles.rowMeta} data-testid="task-value">New value: {task.proposed_change_json.value.length > 160 ? `${task.proposed_change_json.value.slice(0, 160)}…` : task.proposed_change_json.value}</span>
                     )}
+                    {task.status === "completed" && (() => {
+                      const live = liveCheckText(liveChecks[task.id]);
+                      return <span className={styles.rowMeta} data-testid="live-check" data-tone={live.tone}>{live.tone === "ok" ? "✓ " : live.tone === "bad" ? "⚠ " : ""}{live.text}</span>;
+                    })()}
                     <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
                   </div>
                   <div className={styles.actions}>
