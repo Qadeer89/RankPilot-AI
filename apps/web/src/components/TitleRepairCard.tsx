@@ -51,6 +51,7 @@ export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: ()
           {plan.reason_none && <p className={styles.small}>{plan.reason_none}</p>}
           {plan.candidates.length === 0 && !plan.reason_none && <p className={styles.small}>No pages need this fix right now{plan.skipped_already_pending ? ` (${plan.skipped_already_pending} already have a task waiting)` : ""}.</p>}
           {plan.stopped_early && <p className={styles.warn}>Checking took too long, so this list is only part of the pages. Run it again to continue.</p>}
+          {done && plan.candidates.length > 0 && <p className={styles.small} data-testid="repair-created-for"><strong>Tasks were created for these pages.</strong> Find them in the task list below (status: waiting for approval), then Approve and Execute one at a time.</p>}
           <ul className={styles.list}>
             {plan.candidates.map((c) => (
               <li key={c.url}>
@@ -65,7 +66,7 @@ export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: ()
               </li>
             ))}
           </ul>
-          {plan.candidates.length > 0 && <p className={styles.small}>Showing the next {plan.candidates.length} page(s) of {plan.pages_with_applied_titles} that RankPilot changed. After these are done, check again for the next batch.</p>}
+          {plan.candidates.length > 0 && !done && <p className={styles.small}>Showing the next {plan.candidates.length} page(s) of {plan.pages_with_applied_titles} that RankPilot changed. After these are done, check again for the next batch.</p>}
         </div>
       )}
     </section>
