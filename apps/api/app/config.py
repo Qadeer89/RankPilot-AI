@@ -8,7 +8,7 @@ DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="RANKPILOT_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="RANKPILOT_", extra="ignore", env_ignore_empty=True)
 
     environment: str = "development"
     database_url: str = "postgresql+psycopg2://rankpilot:rankpilot_dev@localhost:5432/rankpilot"
