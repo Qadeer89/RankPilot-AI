@@ -24,13 +24,15 @@ def plan_title_repairs(db, site, **kwargs):
     return _plan(db, site, **kwargs)
 
 
-def _site(db_session, *, pages: list[tuple[str, str, str | None]], autopilot_optin=False):
+def _site(db_session, *, pages: list[tuple[str, str, str | None]], autopilot_optin=False, organization_id=None):
     """pages: (slug, live title, applied title or None if RankPilot never changed it)"""
-    org = Organization(name="Repair Org", slug=f"repair-{uuid.uuid4().hex[:8]}")
-    db_session.add(org)
-    db_session.flush()
+    if organization_id is None:
+        org = Organization(name="Repair Org", slug=f"repair-{uuid.uuid4().hex[:8]}")
+        db_session.add(org)
+        db_session.flush()
+        organization_id = org.id
     site = Website(
-        organization_id=org.id, canonical_url="https://clinic.example/", hostname="clinic.example", display_name="Clinic",
+        organization_id=organization_id, canonical_url="https://clinic.example/", hostname="clinic.example", display_name="Clinic",
         automation_policy={"auto_execute_risk_tier_1": True, "auto_execute_categories": {"metadata": True}} if autopilot_optin else {},
     )
     db_session.add(site)
@@ -179,3 +181,59 @@ def test_the_limit_stops_fetching_early(db_session):
 
     plan = _plan(db_session, site, limit=1, live_title=live)
     assert len(plan.candidates) == 1 and len(fetched) == 1
+
+
+# ---------------------------------------------------------------- the same flow from the app (API)
+
+import pytest  # noqa: E402
+
+from tests.billing_helpers import register  # noqa: E402
+
+
+@pytest.fixture
+def api_world(client, db_session, monkeypatch):
+    headers, org = register(client, "repair-owner@example.com")
+    site, made, _user = _site(db_session, pages=DOUBLED, organization_id=uuid.UUID(org))
+    db_session.commit()
+    # tests read the "live" title from the stored snapshot instead of the network
+    monkeypatch.setattr(title_repair, "_live_title", lambda website: (lambda url: title_repair._latest_snapshot_title(db_session, website, url)))
+    return type("W", (), dict(headers=headers, org=org, site=site, base=f"/api/v1/organizations/{org}/websites/{site.id}/title-repair"))
+
+
+def test_the_plan_endpoint_is_read_only_and_lists_old_and_new_titles(client, db_session, api_world):
+    before = db_session.query(SEOTask).count()
+    r = client.post(f"{api_world.base}/plan?limit=2", headers=api_world.headers).json()
+    assert len(r["candidates"]) == 2 and r["candidates"][0]["live_title"].endswith(f"{BRAND} | {BRAND}") and r["candidates"][0]["new_title"] == "Knee Pain"
+    assert r["pages_with_applied_titles"] == 4 and r["stopped_early"] is False
+    assert db_session.query(SEOTask).count() == before
+
+
+def test_creating_tasks_from_the_app_always_waits_for_approval(client, db_session, api_world):
+    r = client.post(f"{api_world.base}/tasks?limit=10", headers=api_world.headers).json()
+    assert r["created"] == 3 and "Nothing has been changed on your website" in r["message"]
+    pending = db_session.query(SEOTask).filter(SEOTask.website_id == api_world.site.id, SEOTask.status == SEOTaskStatus.pending).all()
+    assert len(pending) == 3 and all(t.approval_status == ApprovalStatus.pending for t in pending)
+    assert {t.proposed_change_json["value"] for t in pending} == {"Knee Pain", "Hip Hinge", "Shoulder"}
+    again = client.post(f"{api_world.base}/tasks?limit=10", headers=api_world.headers).json()
+    assert again["created"] == 0 and again["plan"]["skipped_already_pending"] == 3  # no duplicates
+
+
+def test_the_values_always_come_from_the_server_never_the_client(client, db_session, api_world):
+    r = client.post(f"{api_world.base}/tasks?limit=1", headers=api_world.headers, json={"value": "Buy now!!!", "url": "https://evil.example/"})
+    assert r.status_code == 200
+    task = db_session.query(SEOTask).filter(SEOTask.status == SEOTaskStatus.pending).one()
+    assert task.proposed_change_json["value"] != "Buy now!!!" and task.proposed_change_json["target_url"].startswith("https://clinic.example/")
+
+
+def test_batch_size_is_capped_and_roles_and_tenants_are_enforced(client, db_session, api_world):
+    assert client.post(f"{api_world.base}/plan?limit=500", headers=api_world.headers).status_code == 422
+    stranger, _ = register(client, "repair-stranger@example.com")
+    assert client.post(f"{api_world.base}/plan", headers=stranger).status_code in (403, 404)
+    assert client.post(f"{api_world.base}/tasks", headers=stranger).status_code in (403, 404)
+    assert client.post(f"{api_world.base}/plan").status_code == 401
+
+
+def test_a_slow_site_stops_early_and_says_so(db_session):
+    site, _, _ = _site(db_session, pages=DOUBLED)
+    plan = plan_title_repairs(db_session, site, max_seconds=-1.0)
+    assert plan.stopped_early is True and plan.candidates == []

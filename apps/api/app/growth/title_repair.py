@@ -55,6 +55,8 @@ class RepairPlan:
     reason_none: str | None = None
     # why pages were left out, e.g. {"title is already fine": 12}
     skipped: Counter = field(default_factory=Counter)
+    total_applied_pages: int = 0
+    stopped_early: bool = False
 
 
 def _latest_snapshot_title(db: Session, website: Website, target_url: str) -> str | None:
@@ -97,6 +99,7 @@ def plan_title_repairs(
     *,
     limit: int | None = None,
     live_title: Callable[[str], str | None] | None = None,
+    max_seconds: float | None = None,
 ) -> RepairPlan:
     """Pages whose newest applied title is shown with the brand twice on the
     live page, and the corrected value for each. `live_title` fetches the
@@ -115,8 +118,13 @@ def plan_title_repairs(
         .all()
     )
     plan = RepairPlan([])
+    plan.total_applied_pages = len({normalize_frontier_url(t.proposed_change_json["target_url"]) for t, _c in rows if (t.proposed_change_json or {}).get("target_url")})
+    started = time.monotonic()
     seen: set[str] = set()
     for task, change in rows:
+        if max_seconds is not None and time.monotonic() - started > max_seconds:
+            plan.stopped_early = True  # a request must not run for minutes; the rest can be checked in the next round
+            break
         url = (task.proposed_change_json or {}).get("target_url")
         if not url or normalize_frontier_url(url) in seen:
             continue

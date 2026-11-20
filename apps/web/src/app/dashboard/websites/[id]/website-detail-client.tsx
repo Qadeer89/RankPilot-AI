@@ -78,6 +78,7 @@ import { clearToken, getToken } from "@/lib/auth";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/EmptyState";
 import { ruleLabel } from "@/lib/ruleLabels";
+import { TitleRepairCard } from "@/components/TitleRepairCard";
 import { MetricGrid, type Metric as MetricCardMetric } from "@/components/MetricCard";
 import StatusBadge from "@/components/StatusBadge";
 import styles from "./detail.module.css";
@@ -1780,6 +1781,7 @@ export default function WebsiteDetailClient() {
                 </button>
               </div>
             )}
+            <TitleRepairCard getAuth={() => ({ token: tokenRef.current, orgId: orgIdRef.current })} websiteId={websiteId} onCreated={() => { void refreshAll(); }} />
             {tasks.length === 0 && (
               <EmptyState title="No tasks yet" description="A task is created once you accept an AI proposal for an opportunity." />
             )}

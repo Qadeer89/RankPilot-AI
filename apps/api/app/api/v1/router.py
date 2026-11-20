@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     ai_search,
     growth_plan,
     shopify_seo,
+    title_repair,
     history,
     analytics,
     auth,
@@ -55,4 +56,5 @@ api_router.include_router(ai_search.router)
 api_router.include_router(history.router)
 api_router.include_router(growth_plan.router)
 api_router.include_router(shopify_seo.router)
+api_router.include_router(title_repair.router)
 api_router.include_router(admin.router)

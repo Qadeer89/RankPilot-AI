@@ -2108,3 +2108,13 @@ export interface ProgressReport {
   improvement_verdict?: string;
 }
 export const getProgressReport = (t: string, o: string, s: string) => request<ProgressReport>(`/organizations/${o}/websites/${s}/history/report`, { headers: authHeaders(t) });
+
+// ---- Title repair (brand shown twice in page titles)
+export interface TitleRepairPlan {
+  candidates: { url: string; live_title: string; new_title: string }[];
+  skipped_already_pending: number; skipped: Record<string, number>; reason_none: string | null; pages_with_applied_titles: number; stopped_early: boolean;
+}
+export const planTitleRepair = (t: string, o: string, s: string, limit: number) =>
+  request<TitleRepairPlan>(`/organizations/${o}/websites/${s}/title-repair/plan?limit=${limit}`, { method: "POST", headers: authHeaders(t) });
+export const createTitleRepairTasks = (t: string, o: string, s: string, limit: number) =>
+  request<{ created: number; message: string; plan: TitleRepairPlan }>(`/organizations/${o}/websites/${s}/title-repair/tasks?limit=${limit}`, { method: "POST", headers: authHeaders(t) });
