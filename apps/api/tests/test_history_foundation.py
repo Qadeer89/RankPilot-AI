@@ -357,6 +357,8 @@ def test_run_site_crawl_saves_a_snapshot_and_a_redelivered_task_does_not_duplica
     crawl_module.run_site_crawl(str(website.id), str(job.id))  # broker redelivery
     snapshots = db_session.query(ProjectSnapshot).filter_by(website_id=website.id).all()
     assert len(snapshots) == 1 and snapshots[0].is_baseline and snapshots[0].crawl_job_id == job.id and snapshots[0].summary_json["pages"]["crawled"] > 0
+    # regression for the live site: the back-fill used to run first and rebuild this very crawl, so no live snapshot was ever recorded
+    assert snapshots[0].reconstructed is False and snapshots[0].partial_reason is None and snapshots[0].summary_json["issues"]["open_total"] is not None
     assert "baseline_established" in {e.event_type for e in db_session.query(ProjectActivityEvent).filter_by(website_id=website.id)}
 
 
@@ -371,3 +373,20 @@ def test_a_failure_while_saving_history_never_fails_the_crawl(db_session, monkey
     website, job = _make_website_and_job(db_session)
     assert crawl_module.run_site_crawl(str(website.id), str(job.id)) == "completed"
     assert db_session.get(CrawlJob, job.id).status == CrawlStatus.completed
+
+
+def test_a_later_crawl_through_the_task_is_recorded_live_not_rebuilt(db_session, monkeypatch):
+    from tests.crawl_fixtures import patch_crawler_network
+    from tests.test_crawl_task_notifications import _NoCloseSession, _make_website_and_job
+    from app.tasks import crawl as crawl_module
+
+    patch_crawler_network(monkeypatch)
+    monkeypatch.setattr(crawl_module, "SessionLocal", lambda: _NoCloseSession(db_session))
+    website, first_job = _make_website_and_job(db_session)
+    crawl_module.run_site_crawl(str(website.id), str(first_job.id))
+    from app.crawler.orchestrator import create_crawl_job
+    second = create_crawl_job(db_session, website, trigger=CrawlTrigger.scheduled)
+    db_session.commit()
+    crawl_module.run_site_crawl(str(website.id), str(second.id))
+    snapshots = db_session.query(ProjectSnapshot).filter_by(website_id=website.id).order_by(ProjectSnapshot.created_at).all()
+    assert len(snapshots) == 2 and [s.reconstructed for s in snapshots] == [False, False] and snapshots[0].is_baseline and not snapshots[1].is_baseline

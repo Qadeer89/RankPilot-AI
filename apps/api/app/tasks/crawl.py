@@ -95,8 +95,11 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
         try:
             from app.history.snapshots import ensure_history, record_crawl_snapshot
 
-            ensure_history(db, website)
+            # Record THIS run live first. Back-filling first (the old order) rebuilt this very crawl from its health score,
+            # so the live snapshot, with its per-issue detail, was never written.
             record_crawl_snapshot(db, website, crawl_job)
+            db.commit()
+            ensure_history(db, website)  # only older crawls that were missed (for example before history existed)
             db.commit()
         except Exception:
             db.rollback()
