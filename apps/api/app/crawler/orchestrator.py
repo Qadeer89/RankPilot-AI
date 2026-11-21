@@ -8,6 +8,8 @@ a single crawl.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import logging
 import time
 from datetime import datetime, timezone
@@ -155,6 +157,18 @@ def _sync_page_external_links(db: Session, page: Page, external_links: list) -> 
         )
 
 
+# Only these mean the page is gone. Everything else >= 400 (blocked, rate limited, server trouble) is left unchecked.
+DEFINITELY_GONE = frozenset({404, 410})
+BOT_BLOCKING_HOSTS = ("instagram.com", "facebook.com", "fb.com", "linkedin.com", "x.com", "twitter.com", "tiktok.com", "pinterest.com", "wa.me", "whatsapp.com")
+
+
+def _blocks_automated_checks(url: str) -> bool:
+    from urllib.parse import urlsplit
+
+    host = (urlsplit(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in BOT_BLOCKING_HOSTS)
+
+
 def _verify_external_links(db: Session, website: Website, page_ids: set) -> None:
     """Live-check a bounded number of this crawl's distinct external
     link URLs and record ok/redirect/broken -- the one place this
@@ -177,18 +191,25 @@ def _verify_external_links(db: Session, website: Website, page_ids: set) -> None
     for url, url_rows in rows_by_url.items():
         if checked >= MAX_EXTERNAL_LINKS_VERIFIED_PER_CRAWL:
             break
+        if _blocks_automated_checks(url):
+            # Social networks answer automated requests with errors or login walls even when the link works for people.
+            # Reporting that as "broken" put one Instagram link on every page and cut the health score by 15 points.
+            continue  # stays "unchecked": never a verdict RankPilot has not confirmed
         checked += 1
         try:
             result = safe_fetch(url, user_agent=USER_AGENT, timeout=EXTERNAL_LINK_CHECK_TIMEOUT_SECONDS)
-        except FetchError:
+        except FetchError as exc:
+            if "Could not resolve host" not in str(exc):
+                continue  # a timeout, refusal or network hiccup says nothing about the link itself
+            result = SimpleNamespace(status_code=404, redirect_chain=[])  # the domain no longer exists: that link is dead
+        if result.status_code in DEFINITELY_GONE:
             status = ExternalLinkStatus.broken
+        elif result.status_code >= 400:
+            continue  # 401/403/429/5xx: blocked, rate limited or down for a moment, not proof the link is dead
+        elif result.redirect_chain:
+            status = ExternalLinkStatus.redirect
         else:
-            if result.status_code >= 400:
-                status = ExternalLinkStatus.broken
-            elif result.redirect_chain:
-                status = ExternalLinkStatus.redirect
-            else:
-                status = ExternalLinkStatus.ok
+            status = ExternalLinkStatus.ok
         for row in url_rows:
             row.link_status = status
 

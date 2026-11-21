@@ -86,7 +86,7 @@ PAGES: dict[str, dict] = {
 def fake_safe_fetch(url: str, **_kwargs) -> FetchResult:
     entry = PAGES.get(url)
     if entry is None:
-        raise FetchError(f"no fixture registered for {url}")
+        raise FetchError(f"unsafe_url: Could not resolve host '{url}' (no fixture registered).")
     return FetchResult(
         final_url=url,
         status_code=entry["status_code"],

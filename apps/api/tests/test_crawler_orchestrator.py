@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
 
 from app.crawler import orchestrator as orchestrator_module
 from app.crawler.orchestrator import run_crawl
@@ -311,7 +314,7 @@ def test_verify_external_links_caps_checks_and_dedupes_shared_urls(db_session, m
 
     def fake_fetch(url, **kwargs):
         calls.append(url)
-        raise fetch_module.FetchError("simulated failure")
+        return SimpleNamespace(status_code=404, redirect_chain=[])  # a page that is really gone
 
     monkeypatch.setattr(orchestrator_module, "safe_fetch", fake_fetch)
 
@@ -443,3 +446,65 @@ def test_maybe_render_page_records_a_failed_render(db_session, monkeypatch):
     assert result.render_status == RenderStatus.failed
     assert result.rendered_word_count is None
     assert "navigation timeout" in result.error_message
+
+
+# ---------------------------------------------------------------- external links: only proven-dead links are "broken"
+
+def _link_world(db_session, urls):
+    from app.models.page_external_link import PageExternalLink
+
+    website = _make_website(db_session)
+    now = datetime.now(timezone.utc)
+    page = Page(website_id=website.id, canonical_url="https://example.com/p", normalized_url="https://example.com/p", first_seen_at=now, last_seen_at=now)
+    db_session.add(page)
+    db_session.flush()
+    for u in urls:
+        db_session.add(PageExternalLink(page_id=page.id, url=u))
+    db_session.flush()
+    return website, page
+
+
+def _statuses(db_session, page):
+    from app.models.page_external_link import PageExternalLink
+
+    return {r.url: r.link_status.value for r in db_session.query(PageExternalLink).filter(PageExternalLink.page_id == page.id)}
+
+
+def test_social_links_are_never_fetched_or_called_broken(db_session, monkeypatch):
+    """Regression for the live site: one Instagram link on every page produced 143 'broken link' warnings and a 15-point drop."""
+    website, page = _link_world(db_session, ["https://instagram.com/gulsrehab", "https://www.facebook.com/gulsrehab", "https://wa.me/923001234567"])
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("social links must not be fetched")))
+    orchestrator_module._verify_external_links(db_session, website, {page.id})
+    assert set(_statuses(db_session, page).values()) == {"unchecked"}
+
+
+@pytest.mark.parametrize("code,expected", [(404, "broken"), (410, "broken"), (200, "ok"), (403, "unchecked"), (429, "unchecked"), (401, "unchecked"), (500, "unchecked"), (503, "unchecked")])
+def test_only_proven_gone_pages_are_broken(db_session, monkeypatch, code, expected):
+    website, page = _link_world(db_session, ["https://partner.example/page"])
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", lambda *a, **k: SimpleNamespace(status_code=code, redirect_chain=[]))
+    orchestrator_module._verify_external_links(db_session, website, {page.id})
+    assert _statuses(db_session, page) == {"https://partner.example/page": expected}
+
+
+def test_a_network_failure_is_not_a_broken_link_and_a_redirect_is_still_a_redirect(db_session, monkeypatch):
+    from app.crawler import fetch as fetch_module
+
+    website, page = _link_world(db_session, ["https://flaky.example/a", "https://moved.example/b"])
+
+    def fake(url, **k):
+        if "flaky" in url:
+            raise fetch_module.FetchError("timed out")
+        return SimpleNamespace(status_code=200, redirect_chain=["https://moved.example/new"])
+
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", fake)
+    orchestrator_module._verify_external_links(db_session, website, {page.id})
+    assert _statuses(db_session, page) == {"https://flaky.example/a": "unchecked", "https://moved.example/b": "redirect"}
+
+
+def test_a_domain_that_no_longer_resolves_is_a_broken_link(db_session, monkeypatch):
+    from app.crawler import fetch as fetch_module
+
+    website, page = _link_world(db_session, ["https://gone-forever.example/x"])
+    monkeypatch.setattr(orchestrator_module, "safe_fetch", lambda *a, **k: (_ for _ in ()).throw(fetch_module.FetchError("unsafe_url: Could not resolve host 'gone-forever.example'.")))
+    orchestrator_module._verify_external_links(db_session, website, {page.id})
+    assert _statuses(db_session, page) == {"https://gone-forever.example/x": "broken"}
