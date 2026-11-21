@@ -428,3 +428,7 @@
 .scoreRingValue { position: absolute; font-size: 30px; font-weight: 700; color: var(--rp-ink); }
 .scoreHistoryPoint { transition: transform 0.12s ease; cursor: default; }
 .scoreHistoryPoint:hover { transform: scale(1.15); }
+
+/* In list rows the text takes the free width and the badges/buttons keep their own size, so long descriptions no longer push them onto a second line. */
+.row > .rowMain { flex: 1 1 340px; min-width: 0; }
+.row > .actions { flex-shrink: 0; }

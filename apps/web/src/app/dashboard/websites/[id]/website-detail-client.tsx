@@ -1728,6 +1728,7 @@ export default function WebsiteDetailClient() {
                     <>
                       <div className={styles.actions}>
                         <button
+                          className={styles.button}
                           type="button"
                           onClick={() =>
                             downloadCsv(
@@ -1785,6 +1786,7 @@ export default function WebsiteDetailClient() {
                   Show completed/resolved ({opportunities.filter((o) => o.status !== "open").length})
                 </label>
                 <button
+                  className={styles.button}
                   type="button"
                   onClick={() => {
                     const visible = opportunities.filter((o) => showCompletedOpportunities || o.status === "open");
@@ -1880,6 +1882,7 @@ export default function WebsiteDetailClient() {
             {tasks.length > 0 && (
               <div className={styles.actions}>
                 <button
+                  className={styles.button}
                   type="button"
                   onClick={() =>
                     downloadCsv(
