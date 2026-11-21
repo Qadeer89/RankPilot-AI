@@ -123,6 +123,31 @@ function liveCheckText(c: LiveCheck | undefined): { text: string; tone: "ok" | "
   if (c.status === "not_applicable") return { text: "Live page: no visible check for this change", tone: "none" };
   return { text: "Live page: not checked yet", tone: "none" };
 }
+
+function BulkBar({ ids, selected, action, progress, onSelectAll, onRun, buttonClass, barClass, metaClass }: {
+  ids: string[]; selected: Set<string>; action: "approve" | "execute"; progress: { action: "approve" | "execute"; done: number; total: number; failed: string[] } | null;
+  onSelectAll: (ids: string[]) => void; onRun: (action: "approve" | "execute", ids: string[]) => void; buttonClass: string; barClass: string; metaClass: string;
+}) {
+  const chosen = ids.filter((id) => selected.has(id));
+  const busy = progress !== null;
+  return (
+    <div className={barClass} data-testid="bulk-bar" style={{ margin: "8px 0", flexWrap: "wrap" }}>
+      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+        <input type="checkbox" checked={chosen.length === ids.length && ids.length > 0} disabled={busy} onChange={(e) => onSelectAll(e.target.checked ? ids : [])} />
+        Select all ({ids.length})
+      </label>
+      <button className={buttonClass} disabled={chosen.length === 0 || busy} onClick={() => onRun(action, chosen)}>
+        {action === "approve" ? "Approve" : "Execute"} selected ({chosen.length})
+      </button>
+      {progress && (
+        <span className={metaClass} role="status" data-testid="bulk-progress">
+          {progress.action === "approve" ? "Approving" : "Executing"} {progress.done} of {progress.total}…{progress.failed.length ? ` (${progress.failed.length} failed)` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const TASK_LABELS: Record<string, string> = { set_title: "Change page title", set_meta_description: "Change meta description", set_alt_text: "Set image alt text", set_canonical: "Set canonical URL", set_schema_json: "Add structured data" };
 
 function ScoreRing({ score }: { score: number | null }) {
@@ -196,6 +221,8 @@ export default function WebsiteDetailClient() {
   const [pageReportError, setPageReportError] = useState<string | null>(null);
   const [taskSubTab, setTaskSubTab] = useState<string | null>(null);
   const [taskNotice, setTaskNotice] = useState<string | null>(null);
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<{ action: "approve" | "execute"; done: number; total: number; failed: string[] } | null>(null);
   const [deployWebhookSecret, setDeployWebhookSecret] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
@@ -671,6 +698,48 @@ export default function WebsiteDetailClient() {
     const confirmMessage = confirmMessages[action];
     if (confirmMessage) requestConfirm(confirmMessage, run);
     else await run();
+  }
+
+  const MAX_BULK = 25;
+
+  /** Runs the same per-task approve/execute calls one after another, after one confirmation. Every task still passes the
+   *  server's own checks, audit trail and (for execute) the live-page verification. */
+  function handleBulk(action: "approve" | "execute", ids: string[]) {
+    const token = tokenRef.current;
+    const orgId = orgIdRef.current;
+    if (!token || !orgId || ids.length === 0) return;
+    const batch = ids.slice(0, MAX_BULK);
+    const sample = batch.slice(0, 3).map((id) => {
+      const t = tasks.find((x) => x.id === id);
+      return typeof t?.proposed_change_json?.target_url === "string" ? t.proposed_change_json.target_url.replace(/^https?:\/\/[^/]+/, "") : id;
+    });
+    const list = `${sample.join(", ")}${batch.length > 3 ? ` and ${batch.length - 3} more` : ""}`;
+    const message = action === "approve"
+      ? `Approve ${batch.length} change(s)? (${list}). Approving only allows them to run. Nothing is written to your website until you press Execute.`
+      : `Execute ${batch.length} change(s) now? (${list}). Each one makes a real, bounded write to your connected site and is checked on the live page afterwards. They run one after another.`;
+    requestConfirm(message, async () => {
+      setError(null);
+      setTaskNotice(null);
+      const failed: string[] = [];
+      setBulkProgress({ action, done: 0, total: batch.length, failed });
+      for (let i = 0; i < batch.length; i++) {
+        try {
+          if (action === "approve") await approveTask(token, orgId, websiteId, batch[i]);
+          else {
+            const changeRecord = await executeTask(token, orgId, websiteId, batch[i]);
+            setChangeRecords((prev) => ({ ...prev, [batch[i]]: changeRecord }));
+          }
+        } catch (err) {
+          failed.push(`${batch[i].slice(0, 8)}: ${err instanceof ApiError ? err.message : "failed"}`);
+        }
+        setBulkProgress({ action, done: i + 1, total: batch.length, failed: [...failed] });
+      }
+      setTasks(await listTasks(token, orgId, websiteId));
+      setSelectedTasks(new Set());
+      setBulkProgress(null);
+      const ok = batch.length - failed.length;
+      setTaskNotice(`${ok} of ${batch.length} ${action === "approve" ? "approved" : "executed"}${failed.length ? `; ${failed.length} failed (${failed.slice(0, 2).join("; ")}${failed.length > 2 ? "…" : ""})` : ""}.${ids.length > MAX_BULK ? ` Only the first ${MAX_BULK} were processed; run it again for the rest.` : ""}`);
+    });
   }
 
   async function handleRollback(taskId: string) {
@@ -1828,6 +1897,16 @@ export default function WebsiteDetailClient() {
             {(() => {
               const renderTaskRow = (task: SEOTask) => (
                 <div key={task.id} className={styles.row}>
+                  {task.status === "pending" && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${typeof task.proposed_change_json?.target_url === "string" ? task.proposed_change_json.target_url : task.id}`}
+                      checked={selectedTasks.has(task.id)}
+                      disabled={bulkProgress !== null}
+                      onChange={(e) => setSelectedTasks((prev) => { const next = new Set(prev); if (e.target.checked) next.add(task.id); else next.delete(task.id); return next; })}
+                      style={{ marginRight: 10, alignSelf: "flex-start", marginTop: 4 }}
+                    />
+                  )}
                   <div className={styles.rowMain}>
                     <span>{TASK_LABELS[task.task_type] ?? task.task_type.replace(/_/g, " ")}</span>
                     {typeof task.proposed_change_json?.target_url === "string" && (
@@ -1946,6 +2025,19 @@ export default function WebsiteDetailClient() {
                       </button>
                     ))}
                   </div>
+                  {selectedGroup && (selectedGroup.key === "needs_approval" || selectedGroup.key === "ready") && (
+                    <BulkBar
+                      ids={selectedGroup.items.map((t) => t.id)}
+                      selected={selectedTasks}
+                      action={selectedGroup.key === "needs_approval" ? "approve" : "execute"}
+                      progress={bulkProgress}
+                      onSelectAll={(ids) => setSelectedTasks(new Set(ids))}
+                      onRun={handleBulk}
+                      buttonClass={`${styles.button} ${styles.buttonPrimary}`}
+                      barClass={styles.actions}
+                      metaClass={styles.rowMeta}
+                    />
+                  )}
                   {selectedGroup && <div className={styles.taskGroup}>{selectedGroup.items.map(renderTaskRow)}</div>}
                 </>
               );
