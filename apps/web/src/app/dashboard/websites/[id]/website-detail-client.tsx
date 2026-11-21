@@ -643,7 +643,11 @@ export default function WebsiteDetailClient() {
     const token = tokenRef.current;
     const orgId = orgIdRef.current;
     if (!token || !orgId) return;
+    const target = tasks.find((t) => t.id === taskId);
+    const targetUrl = typeof target?.proposed_change_json?.target_url === "string" ? target.proposed_change_json.target_url : null;
+    const newValue = typeof target?.proposed_change_json?.value === "string" ? target.proposed_change_json.value : null;
     const confirmMessages: Partial<Record<"approve" | "reject" | "cancel" | "execute", string>> = {
+      approve: `Approve this change?${targetUrl ? ` Page: ${targetUrl}.` : ""}${newValue ? ` New value: “${newValue.length > 120 ? `${newValue.slice(0, 120)}…` : newValue}”.` : ""} Approving only allows it to run. Nothing is written to your website until you press Execute.`,
       reject: "Reject this task? It will not be executed.",
       cancel: "Cancel this task? It will be discarded and cannot be executed afterward.",
       execute:
