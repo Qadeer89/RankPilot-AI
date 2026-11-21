@@ -6,9 +6,9 @@ import styles from "./TitleRepairCard.module.css";
 
 const BATCH = 10;
 
-export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: () => { token: string | null; orgId: string | null }; websiteId: string; onCreated: () => void }) {
+export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: () => { token: string | null; orgId: string | null }; websiteId: string; onCreated: () => void | Promise<void> }) {
   const [plan, setPlan] = useState<TitleRepairPlan | null>(null);
-  const [busy, setBusy] = useState<"plan" | "create" | null>(null);
+  const [busy, setBusy] = useState<"plan" | "create" | "loading" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong. Try again.");
@@ -25,7 +25,9 @@ export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: ()
     setBusy("create"); setError(null);
     try {
       const r = await createTitleRepairTasks(token, orgId, websiteId, BATCH);
-      setDone(r.message); setPlan(r.plan); onCreated();
+      setDone(r.message); setPlan(r.plan);
+      setBusy("loading"); // the new tasks are being loaded into the list below
+      await onCreated();
     } catch (e) { setError(msg(e)); } finally { setBusy(null); }
   }
 
@@ -44,6 +46,15 @@ export function TitleRepairCard({ getAuth, websiteId, onCreated }: { getAuth: ()
           </button>
         )}
       </div>
+      {busy === "plan" && (
+        <p className={styles.busy} role="status" data-testid="repair-busy"><span className={styles.spinner} aria-hidden="true" />Checking the live pages one by one. This can take up to 40 seconds, please keep this page open.</p>
+      )}
+      {busy === "create" && (
+        <p className={styles.busy} role="status" data-testid="repair-busy"><span className={styles.spinner} aria-hidden="true" />Creating the tasks. This re-checks each live page, so it can take up to 40 seconds. Please keep this page open; the new tasks will appear in the list below.</p>
+      )}
+      {busy === "loading" && (
+        <p className={styles.busy} role="status" data-testid="repair-busy"><span className={styles.spinner} aria-hidden="true" />Tasks created. Loading them into the list below…</p>
+      )}
       {error && <p className={styles.error} role="alert">{error}</p>}
       {done && <p className={styles.ok} role="status" data-testid="repair-done">{done}</p>}
       {plan && (

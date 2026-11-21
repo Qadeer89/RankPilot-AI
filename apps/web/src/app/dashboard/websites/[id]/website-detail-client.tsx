@@ -1890,7 +1890,7 @@ export default function WebsiteDetailClient() {
                 </button>
               </div>
             )}
-            <TitleRepairCard getAuth={() => ({ token: tokenRef.current, orgId: orgIdRef.current })} websiteId={websiteId} onCreated={() => { void refreshAll(); }} />
+            <TitleRepairCard getAuth={() => ({ token: tokenRef.current, orgId: orgIdRef.current })} websiteId={websiteId} onCreated={async () => { await refreshAll(); setTaskSubTab("needs_approval"); }} />
             {tasks.length === 0 && (
               <EmptyState title="No tasks yet" description="A task is created once you accept an AI proposal for an opportunity." />
             )}
