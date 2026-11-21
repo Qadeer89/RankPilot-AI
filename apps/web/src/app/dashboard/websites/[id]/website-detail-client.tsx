@@ -118,7 +118,7 @@ function liveCheckText(c: LiveCheck | undefined): { text: string; tone: "ok" | "
   if (!c) return { text: "Live page: not checked yet", tone: "none" };
   if (c.status === "validated") return { text: "Live page: change confirmed", tone: "ok" };
   if (c.status === "queued" || c.status === "running") return { text: `Live page: checking${c.attempt && c.attempt > 1 ? ` (attempt ${c.attempt})` : ""}${c.note ? ` — ${c.note}` : ""}`, tone: "wait" };
-  if (c.status === "mismatch") return { text: `Live page still shows the old value${c.note ? ` — ${c.note}` : ""}`, tone: "bad" };
+  if (c.status === "mismatch") return { text: `Live page: ${c.note ?? "still shows the old value"}`, tone: "bad" };
   if (c.status === "failed") return { text: "Live page: could not be checked", tone: "bad" };
   if (c.status === "not_applicable") return { text: "Live page: no visible check for this change", tone: "none" };
   return { text: "Live page: not checked yet", tone: "none" };
@@ -265,11 +265,14 @@ export default function WebsiteDetailClient() {
         const changes = await listChangeRecords(token, orgId, websiteId);
         if (cancelled) return;
         const map: Record<string, LiveCheck> = {};
+        const latest: Record<string, ChangeRecord> = {};
         for (const c of changes) {
           const r = (c.after_state_json as { recrawl?: LiveCheck }).recrawl;
           if (r) map[c.seo_task_id] = r;
+          if (!latest[c.seo_task_id] || c.executed_at > latest[c.seo_task_id].executed_at) latest[c.seo_task_id] = c;
         }
         setLiveChecks(map);
+        setChangeRecords((prev) => ({ ...latest, ...prev })); // so earlier runs show their validation result after a reload too
         if (Object.values(map).some((r) => r.status === "queued" || r.status === "running")) timer = setTimeout(load, 20000);
       } catch { /* the live-check line simply stays as it was */ }
     };
@@ -1659,7 +1662,7 @@ export default function WebsiteDetailClient() {
                               report.change_history.map((change) => (
                                 <p key={change.id}>
                                   {new Date(change.executed_at).toLocaleString()} —{" "}
-                                  {change.validation_status}
+                                  <StatusBadge value={change.validation_status} label={`Validation ${change.validation_status}`} />
                                 </p>
                               ))
                             )}
@@ -1920,6 +1923,11 @@ export default function WebsiteDetailClient() {
                       const live = liveCheckText(liveChecks[task.id]);
                       return <span className={styles.rowMeta} data-testid="live-check" data-tone={live.tone}>{live.tone === "ok" ? "✓ " : live.tone === "bad" ? "⚠ " : ""}{live.text}</span>;
                     })()}
+                    {changeRecords[task.id] && (
+                      <span className={styles.rowMeta} data-testid="validation-badge" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        Last run: <StatusBadge value={changeRecords[task.id].validation_status} label={`Validation ${changeRecords[task.id].validation_status}`} />
+                      </span>
+                    )}
                     <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
                   </div>
                   </div>
@@ -1970,16 +1978,11 @@ export default function WebsiteDetailClient() {
                       </button>
                     )}
                   </div>
-                  {changeRecords[task.id] && (
-                    <span className={styles.rowMeta}>
-                      last execution validation: {changeRecords[task.id].validation_status}
-                    </span>
-                  )}
                   {qaSummaries[task.id] && (
                     <div className={styles.proposalBox}>
                       <span>{qaSummaries[task.id].summary}</span>
-                      <span className={styles.rowMeta}>
-                        validation status: {qaSummaries[task.id].validation_status}
+                      <span className={styles.rowMeta} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        Validation: <StatusBadge value={qaSummaries[task.id].validation_status} />
                       </span>
                     </div>
                   )}

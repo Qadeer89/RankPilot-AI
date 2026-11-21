@@ -23,6 +23,11 @@ test("each completed task says whether the live page was confirmed, is being re-
   await expect(lines.nth(0)).toContainText("change confirmed");
   await expect(lines.nth(1)).toContainText("checking (attempt 2)");
   await expect(lines.nth(1)).toContainText("cached copy");
-  await expect(lines.nth(2)).toContainText("still shows the old value");
+  await expect(lines.nth(2)).toContainText("still showed the old value after 3 checks");
   await expect(lines.nth(3)).toContainText("not checked yet");
+  // the validation result is a badge, not plain text
+  const badges = page.getByTestId("validation-badge");
+  await expect(badges.first()).toContainText("Validation passed");
+  await expect(badges.first().locator("span").first()).toBeVisible();
+  await expect(page.getByText("last execution validation")).toHaveCount(0);
 });
