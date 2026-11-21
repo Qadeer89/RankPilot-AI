@@ -203,10 +203,13 @@ def api_world(client, db_session, monkeypatch):
 def test_the_plan_endpoint_is_read_only_and_lists_old_and_new_titles(client, db_session, api_world):
     before = db_session.query(SEOTask).count()
     r = client.post(f"{api_world.base}/plan?limit=2", headers=api_world.headers).json()
-    assert len(r["candidates"]) == 2 and r["candidates"][0]["live_title"].endswith(f"{BRAND} | {BRAND}") and r["candidates"][0]["new_title"] == "Knee Pain"
-    assert r["pages_with_applied_titles"] == 4 and r["stopped_early"] is False
-    first = r["candidates"][0]
-    assert first["final_title"] == f"Knee Pain | {BRAND}" and first["final_length"] == len(first["final_title"]) and first["too_long"] is False
+    assert len(r["candidates"]) == 2 and r["pages_with_applied_titles"] == 4 and r["stopped_early"] is False
+    # the changes were all applied at the same instant, so which two come first is not defined: check any candidate by its own URL
+    by_slug = {c["url"].rsplit("/", 1)[1]: c for c in r["candidates"]}
+    expected = {"a": "Knee Pain", "b": "Hip Hinge", "d": "Shoulder"}
+    for slug, c in by_slug.items():
+        assert c["live_title"].endswith(f"{BRAND} | {BRAND}") and c["new_title"] == expected[slug]
+        assert c["final_title"] == f"{expected[slug]} | {BRAND}" and c["final_length"] == len(c["final_title"]) and c["too_long"] is False
     assert db_session.query(SEOTask).count() == before
 
 
