@@ -1897,14 +1897,15 @@ export default function WebsiteDetailClient() {
             {(() => {
               const renderTaskRow = (task: SEOTask) => (
                 <div key={task.id} className={styles.row}>
-                  {task.status === "pending" && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flex: "1 1 340px", minWidth: 0 }}>
+                    {task.status === "pending" && (
                     <input
                       type="checkbox"
                       aria-label={`Select ${typeof task.proposed_change_json?.target_url === "string" ? task.proposed_change_json.target_url : task.id}`}
                       checked={selectedTasks.has(task.id)}
                       disabled={bulkProgress !== null}
                       onChange={(e) => setSelectedTasks((prev) => { const next = new Set(prev); if (e.target.checked) next.add(task.id); else next.delete(task.id); return next; })}
-                      style={{ marginRight: 10, alignSelf: "flex-start", marginTop: 4 }}
+                      style={{ marginTop: 4, flexShrink: 0 }}
                     />
                   )}
                   <div className={styles.rowMain}>
@@ -1920,6 +1921,7 @@ export default function WebsiteDetailClient() {
                       return <span className={styles.rowMeta} data-testid="live-check" data-tone={live.tone}>{live.tone === "ok" ? "✓ " : live.tone === "bad" ? "⚠ " : ""}{live.text}</span>;
                     })()}
                     <span className={styles.rowMeta}>risk tier {task.risk_tier}</span>
+                  </div>
                   </div>
                   <div className={styles.actions}>
                     <StatusBadge value={task.approval_status} label={`approval: ${task.approval_status}`} />
