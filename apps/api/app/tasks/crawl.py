@@ -115,6 +115,16 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
             db.rollback()
             logger.exception("run_site_crawl: could not compute the domain quality assessment for website %s", website_id)
 
+        # Content intelligence history (pure database analysis, no network); best-effort.
+        try:
+            from app.intelligence import content as content_intel
+
+            content_intel.analyze(db, website)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("run_site_crawl: could not run content intelligence for website %s", website_id)
+
         # Best-effort: a regression (new critical finding or a health-score
         # category dropping sharply) is worth surfacing right away rather
         # than only on the next manual dashboard visit
