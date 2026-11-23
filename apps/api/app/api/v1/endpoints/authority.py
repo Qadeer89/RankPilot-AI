@@ -121,3 +121,11 @@ def delete_backlink(organization_id: uuid.UUID, website_id: uuid.UUID, backlink_
     db.delete(bl)
     db.commit()
     return Response(status_code=204)
+
+
+@router.get(f"{_BASE}/keywords/ranking-opportunities")
+def ranking_opportunity_scores(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = Depends(get_db), _m: Membership = Depends(RequireRole(MembershipRole.viewer))) -> dict:
+    from app.keywords.opportunity_score import ranking_opportunities
+
+    website = get_website_or_404(db, organization_id, website_id)
+    return ranking_opportunities(db, website)

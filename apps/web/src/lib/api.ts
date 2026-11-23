@@ -2140,3 +2140,6 @@ export function importBacklinks(token: string, org: string, site: string, body: 
 }
 export function checkBacklinks(token: string, org: string, site: string) { return request<{ checked: number; remaining_in_batch: number; analysis: BacklinkAnalysis }>(`${authorityBase(org, site)}/backlinks/check`, { method: "POST", headers: authHeaders(token) }); }
 export function deleteBacklink(token: string, org: string, site: string, id: string) { return request<void>(`${authorityBase(org, site)}/backlinks/${id}`, { method: "DELETE", headers: authHeaders(token) }); }
+
+export type RankingOpportunities = { available: boolean; reason: string | null; label?: string; formula_version: string; items: { query: string; page_url: string | null; impressions: number; clicks: number; position: number; score: number; confidence: string; data_source: string }[] };
+export function getRankingOpportunities(token: string, org: string, site: string) { return request<RankingOpportunities>(`/organizations/${org}/websites/${site}/keywords/ranking-opportunities`, { headers: authHeaders(token) }); }

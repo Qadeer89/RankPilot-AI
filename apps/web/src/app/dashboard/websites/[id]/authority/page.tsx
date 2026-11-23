@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError, AuthorityResponse, BacklinkList, MeResponse, checkBacklinks, deleteBacklink, getAuthority, getMe, importBacklinks, listBacklinks, refreshAuthority,
+  ApiError, AuthorityResponse, BacklinkList, MeResponse, RankingOpportunities, getRankingOpportunities, checkBacklinks, deleteBacklink, getAuthority, getMe, importBacklinks, listBacklinks, refreshAuthority,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import styles from "../growth/growth.module.css";
@@ -25,6 +25,7 @@ export default function AuthorityPage() {
   const orgId = me?.organizations[0]?.id;
   const [auth, setAuth] = useState<AuthorityResponse | null>(null);
   const [links, setLinks] = useState<BacklinkList | null>(null);
+  const [rank, setRank] = useState<RankingOpportunities | null>(null);
   const [text, setText] = useState("");
   const [source, setSource] = useState<"user_provided" | "gsc_export">("user_provided");
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +40,8 @@ export default function AuthorityPage() {
 
   const load = useCallback(() => {
     if (!token || !orgId) return;
-    Promise.all([getAuthority(token, orgId, websiteId), listBacklinks(token, orgId, websiteId)])
-      .then(([a, l]) => { setAuth(a); setLinks(l); })
+    Promise.all([getAuthority(token, orgId, websiteId), listBacklinks(token, orgId, websiteId), getRankingOpportunities(token, orgId, websiteId)])
+      .then(([a, l, r]) => { setAuth(a); setLinks(l); setRank(r); })
       .catch((e) => setError(msg(e)))
       .finally(() => setLoaded(true));
   }, [token, orgId, websiteId]);
@@ -169,6 +170,20 @@ export default function AuthorityPage() {
               </div>
             )}
             {an.lost.length > 0 && <p className={styles.warn}>Links no longer found: {an.lost.map((l) => l.source_url).join(", ")}</p>}
+          </section>
+        )}
+        {loaded && rank && (
+          <section className={styles.card} aria-label="Ranking opportunities">
+            <h2>Ranking opportunities <span className={`${styles.badge} ${styles.neutral}`}>Google Search Console + RankPilot calculated</span></h2>
+            {rank.label && <p className={styles.note}>{rank.label}</p>}
+            {rank.items.length === 0 ? <p className={styles.empty} data-testid="rank-empty">{rank.reason}</p> : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table} data-testid="rank-table">
+                  <thead><tr><th>Query</th><th>Page</th><th>Impressions</th><th>Clicks</th><th>Avg position</th><th>Score</th></tr></thead>
+                  <tbody>{rank.items.map((r) => <tr key={`${r.query}-${r.page_url}`}><td>{r.query}</td><td style={{ wordBreak: "break-all" }}>{r.page_url ?? "—"}</td><td>{r.impressions}</td><td>{r.clicks}</td><td>{r.position}</td><td>{r.score} <span className={styles.small}>({r.confidence} confidence)</span></td></tr>)}</tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
       </div>

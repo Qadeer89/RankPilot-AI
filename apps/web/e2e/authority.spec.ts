@@ -27,6 +27,7 @@ class Fake {
     const p = new URL(req.url()).pathname;
     this.calls.push({ path: p, method: req.method(), body: req.postData() });
     if (p.endsWith("/me")) return this.json(route, { user: { id: "u1", email: "o@example.com", is_platform_admin: false, is_super_admin: false, email_verified: true }, organizations: [{ id: ORG, name: "Org", slug: "org", role: "owner" }] });
+    if (p.endsWith("/keywords/ranking-opportunities")) return this.json(route, { available: false, reason: "No Search Console query data yet. Connect Search Console and sync to see opportunities.", items: [], formula_version: "ranking-opportunity-v1", label: "not search volume" });
     if (p.endsWith("/authority/refresh")) { this.assessed = true; return this.json(route, {}); }
     if (p.endsWith("/authority")) return this.json(route, { disclaimer: DISCLAIMER, empty_reason: "No assessment yet. Run one to calculate it from your latest crawl.", comparison: null, history: [],
       latest: this.assessed ? { id: "a", computed_at: "2026-11-23T10:00:00Z", formula_version: "authority-v1", domain_quality: 81.2, coverage: 0.9, confidence: "high", signals: SIGNALS, inputs: {}, data_source: "RankPilot calculated" } : null });
@@ -50,6 +51,7 @@ test("empty state, calculate, add and verify backlinks, with honest labels throu
   await expect(page.getByTestId("authority-disclaimer")).toContainText("not Domain Rating");
   await expect(page.getByTestId("authority-empty")).toContainText("No assessment yet");
   await expect(page.getByTestId("backlinks-empty")).toContainText("No backlinks recorded yet");
+  await expect(page.getByTestId("rank-empty")).toContainText("Connect Search Console");
   await expect(page.getByTestId("backlink-label")).toContainText("not a count of every link");
 
   await page.getByRole("button", { name: "Recalculate now" }).click();

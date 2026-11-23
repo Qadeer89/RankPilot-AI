@@ -168,3 +168,41 @@ def test_api_tenant_isolation(client, world):
     for method, path in (("get", "/authority"), ("post", "/authority/refresh"), ("get", "/backlinks"), ("post", "/backlinks/check")):
         resp = getattr(client, method)(f"{world.base}{path}", headers=other)
         assert resp.status_code in (403, 404), (path, resp.status_code)
+
+
+# ---- ranking opportunity score ----
+from datetime import date as _date  # noqa: E402
+
+from app.keywords import opportunity_score as O  # noqa: E402
+from app.models.keyword_observation import KeywordObservation  # noqa: E402
+
+
+def test_score_prefers_demand_and_headroom_and_is_pure():
+    rows = [{"query": f"q{i}", "page_id": None, "impressions": 200, "clicks": 20, "position": 5.0} for i in range(7)]
+    rows += [{"query": "page two", "page_id": None, "impressions": 500, "clicks": 1, "position": 12.0},
+             {"query": "already top", "page_id": None, "impressions": 500, "clicks": 150, "position": 1.5},
+             {"query": "tiny", "page_id": None, "impressions": 3, "clicks": 0, "position": 12.0}]
+    out = O.score_rows(rows)
+    names = [r["query"] for r in out]
+    assert "tiny" not in names  # too little evidence is not scored
+    assert names[0] == "page two" and names.index("already top") > names.index("page two")
+    assert O.score_rows(rows) == out
+    two = out[0]
+    assert two["components"]["ctr_gap"] is None  # no peers in its band, so not available rather than zero
+    assert 0 <= two["score"] <= 100
+
+
+def test_no_data_is_reported_not_scored(db_session):
+    site = make_site(db_session)
+    r = O.ranking_opportunities(db_session, site)
+    assert r["available"] is False and r["items"] == [] and "Search Console" in r["reason"]
+
+
+def test_endpoint_uses_real_observations(client, db_session, world):
+    site = db_session.get(Website, world.site.id)
+    today = _date.today()
+    db_session.add(KeywordObservation(website_id=site.id, query="physio rawalpindi", date=today, clicks=2, impressions=120, ctr=0.016, average_position=12.4, country="PK"))
+    db_session.commit()
+    r = client.get(f"{world.base}/keywords/ranking-opportunities", headers=world.headers).json()
+    assert r["available"] and r["items"][0]["query"] == "physio rawalpindi" and r["items"][0]["position"] == 12.4
+    assert "not search volume" in r["label"]

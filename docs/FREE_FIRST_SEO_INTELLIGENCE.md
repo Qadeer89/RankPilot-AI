@@ -46,6 +46,13 @@ Data labels used everywhere: **Verified** (observed from a source page or Google
 * Limits per call: 25 checks, 0.5 s delay, 40 s budget; up to 500 URLs per import; own-site, private and unsafe URLs rejected.
 * robots.txt of the linking site is respected; no login, CAPTCHA or paywall bypass.
 
+## Ranking Opportunity Score (formula `ranking-opportunity-v1`)
+
+Ranks queries the site already appears for (Search Console rows only, last 28 days), 0–100. Not search volume, difficulty or a prediction.
+Demand 50% (log impressions vs the set's maximum), headroom 35% (0 at position ≤3, rising to 1 at 8, flat to 15, falling to 0.3 by 40),
+CTR gap 15% (the site's own typical CTR in the same position band vs this query; needs ≥5 peers, otherwise not available and the other
+weights are re-normalised). Queries under 10 impressions are not scored. `GET /keywords/ranking-opportunities`.
+
 ## Endpoints
 
 `GET /authority`, `POST /authority/refresh`, `GET /backlinks`, `POST /backlinks/import`, `POST /backlinks/check`,
