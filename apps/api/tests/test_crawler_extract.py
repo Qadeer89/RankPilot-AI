@@ -212,3 +212,10 @@ def test_content_fingerprint_matches_for_identical_body_text_despite_different_s
     extraction_a = extract_page(html_a, base_url="https://example.com/a", site_hostname="example.com")
     extraction_b = extract_page(html_b, base_url="https://example.com/b", site_hostname="example.com")
     assert extraction_a.content_fingerprint == extraction_b.content_fingerprint
+
+
+def test_heading_text_split_across_tags_keeps_its_spaces():
+    html = "<html><body><h1>Your Journey to<br>Radiant Beauty<br/>Starts Here</h1><h2>  Spaced \n out   <b>bold</b>text </h2></body></html>"
+    result = extract_page(html, base_url="https://e.com/", site_hostname="e.com")
+    assert result.headings["h1"] == ["Your Journey to Radiant Beauty Starts Here"]
+    assert result.headings["h2"] == ["Spaced out bold text"]

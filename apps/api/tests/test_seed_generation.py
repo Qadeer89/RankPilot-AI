@@ -103,3 +103,20 @@ def test_old_noisy_seed_is_removed_but_dismissed_or_search_console_ones_are_kept
     db_session.flush()
     left = {r.keyword for r in db_session.query(KeywordIdea).filter_by(website_id=site.id)}
     assert removed == 1 and "What usually helps" not in left and {"Simple tests and clues", "some real query"} <= left
+
+
+def test_seed_labels_drop_the_brand_suffix_and_skip_utility_pages():
+    from app.keywords.seed_generation import _clean_page_label
+    assert _clean_page_label("Laser Hair Removal in Rawalpindi | Gul's Rehab Rawalpindi") == "Laser Hair Removal in Rawalpindi"
+    assert _clean_page_label("Privacy Policy | Gul's Rehab Rawalpindi | Gul's Rehab Rawalpindi") is None
+    assert _clean_page_label("Contact Gul's Rehab | Gul's Rehab Rawalpindi") is None
+    assert _clean_page_label("Contact") is None
+    assert _clean_page_label("Skin Rejuvenation") == "Skin Rejuvenation"
+    assert _clean_page_label(None) is None
+
+
+def test_utility_pages_do_not_become_seeds(db_session):
+    from app.keywords.seed_generation import generate_seed_keywords
+    site = _site_with_page(db_session, {"h1": ["Privacy Policy"], "h2": []}, title="Privacy Policy | Brand")
+    seeds = [s.lower() for s in generate_seed_keywords(db_session, site)]
+    assert "privacy policy" not in seeds and not any("brand" in s for s in seeds)

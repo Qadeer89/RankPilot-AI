@@ -75,6 +75,26 @@ _GENERIC_HEADINGS = frozenset(
 )
 
 
+# Pages that exist on every site and are never a topic people search for.
+_UTILITY_PAGE_NAMES = frozenset(
+    {"privacy policy", "terms of service", "terms and conditions", "terms & conditions", "cookie policy", "refund policy", "shipping policy",
+     "contact", "contact us", "cart", "checkout", "login", "log in", "my account", "thank you", "page not found", "404", "sitemap", "search"}
+)
+
+
+def _clean_page_label(text: str | None) -> str | None:
+    """A page title or heading as a topic: the part before the first brand separator ("Laser Hair Removal | Brand" ->
+    "Laser Hair Removal"), or None for utility pages such as privacy, terms or contact."""
+    if not text:
+        return None
+    first = text.split("|")[0].split(" – ")[0].strip()
+    label = first if len(first) >= MIN_HEADING_LENGTH else text.strip()
+    lowered = label.lower()
+    if lowered in _UTILITY_PAGE_NAMES or lowered.startswith("contact "):
+        return None
+    return label
+
+
 def _is_generic_heading(text: str) -> bool:
     cleaned = text.lower().strip(" .:?!")
     return cleaned in _GENERIC_HEADINGS or len(cleaned.split()) < 2
@@ -103,10 +123,10 @@ def generate_seed_details(db: Session, website: Website, *, extra_seeds: list[st
     add(website.display_name, "site_name")
 
     for snapshot in _latest_snapshots(db, website.id):
-        add(snapshot.title, "site_title")
+        add(_clean_page_label(snapshot.title), "site_title")
         page_topic = _topic_words(snapshot.title)
         for text in snapshot.headings_json.get("h1", []):
-            add(text, "site_h1")
+            add(_clean_page_label(text), "site_h1")
             page_topic |= _topic_words(text)
         # Section headings ("In this article", "What usually helps") are not keywords. Keep an h2 only if it is not a generic
         # section label and is about the same topic as the page's own title/h1. Even then it only shows what the site says,

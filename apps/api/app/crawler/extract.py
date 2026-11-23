@@ -128,7 +128,9 @@ def extract_page(html: str, *, base_url: str, site_hostname: str) -> PageExtract
     headings: dict[str, list[str]] = {}
     for level in range(1, 7):
         tag_name = f"h{level}"
-        texts = [h.get_text(strip=True) for h in soup.find_all(tag_name)]
+        # A separator keeps text split across tags (for example "Journey to<br>Radiant Beauty") as separate words instead of
+        # gluing them into "toRadiant"; split/join then collapses any run of whitespace.
+        texts = [" ".join(h.get_text(" ", strip=True).split()) for h in soup.find_all(tag_name)]
         if texts:
             headings[tag_name] = texts
 
