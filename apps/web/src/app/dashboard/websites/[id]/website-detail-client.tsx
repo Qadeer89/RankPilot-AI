@@ -78,10 +78,10 @@ import {
 import { clearToken, getToken } from "@/lib/auth";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import EmptyState from "@/components/EmptyState";
-import { ruleLabel } from "@/lib/ruleLabels";
 import { TitleRepairCard } from "@/components/TitleRepairCard";
 import { MetricGrid, type Metric as MetricCardMetric } from "@/components/MetricCard";
 import StatusBadge from "@/components/StatusBadge";
+import FindingsGroups from "@/components/FindingsGroups";
 import styles from "./detail.module.css";
 
 function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
@@ -1755,20 +1755,7 @@ export default function WebsiteDetailClient() {
                       {filtered.length === 0 ? (
                         <EmptyState title="No findings match these filters" description="Try a different search term or widen the severity/status filters." />
                       ) : (
-                        filtered.map((finding) => (
-                          <div key={finding.id} className={styles.row}>
-                            <div className={styles.rowMain}>
-                              <span title={finding.rule_code}>{ruleLabel(finding.rule_code)} <span className={styles.rowMeta}>({finding.rule_code})</span></span>
-                              <span className={styles.rowMeta}>
-                                {finding.page_id ? pageUrlById[finding.page_id] ?? finding.page_id : "site-wide"}
-                              </span>
-                            </div>
-                            <div className={styles.actions}>
-                              <StatusBadge value={finding.severity} />
-                              <StatusBadge value={finding.status} />
-                            </div>
-                          </div>
-                        ))
+                        <FindingsGroups findings={filtered} pageUrlById={pageUrlById} />
                       )}
                     </>
                   );
