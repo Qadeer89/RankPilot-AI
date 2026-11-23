@@ -63,6 +63,18 @@ export default function ReportPage() {
               </>
             )}
 
+            {report.site_quality?.available && (
+              <>
+                <h2>Site quality (RankPilot calculated)</h2>
+                <ul data-testid="site-quality">
+                  {report.site_quality.items.map((i) => (
+                    <li key={i.label}>{i.label}: {i.latest ?? "Not available"}{i.comparable && i.change !== null ? ` (${i.change > 0 ? "+" : ""}${i.change} since ${i.first})` : " (first measurement, nothing to compare yet)"}</li>
+                  ))}
+                </ul>
+                <p className={styles.small}>{report.site_quality.note}</p>
+              </>
+            )}
+
             {report.search_monthly && report.search_monthly.length > 0 && (
               <>
                 <h2>Google search visibility by month</h2>

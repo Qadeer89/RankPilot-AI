@@ -77,6 +77,30 @@ def work_timeline(db: Session, website: Website, today: date | None = None) -> d
     return {"applied": len(rows), "first_change_at": first.isoformat(), "last_change_at": last.isoformat(), "milestones": milestones}
 
 
+def site_quality(db: Session, website: Website) -> dict:
+    """First vs latest Domain Quality and Content Quality assessments, only when they were computed with the same formula version."""
+    from app.models.authority import AuthorityAssessment
+    from app.models.intelligence import IntelligenceRun
+
+    def pair(model, order, *flt):
+        q = db.query(model).filter(model.website_id == website.id, *flt)
+        return q.order_by(order.asc()).first(), q.order_by(order.desc()).first()
+
+    out: dict = {"available": False, "items": [], "note": "RankPilot's own calculations from your crawl and search data. They are not Domain Rating or Domain Authority and do not include links from other sites."}
+    for label, model, order, flt, version in (("Domain Quality", AuthorityAssessment, AuthorityAssessment.computed_at, (), "formula_version"),
+                                              ("Content Quality", IntelligenceRun, IntelligenceRun.computed_at, (IntelligenceRun.kind == "content",), "formula_version")):
+        first, last = pair(model, order, *flt)
+        if first is None or last is None:
+            continue
+        a = first.domain_quality if model is AuthorityAssessment else first.score
+        b = last.domain_quality if model is AuthorityAssessment else last.score
+        comparable = first.id != last.id and getattr(first, version) == getattr(last, version) and a is not None and b is not None
+        out["items"].append({"label": label, "first": a, "latest": b, "change": round(b - a, 1) if comparable else None, "first_at": first.computed_at.isoformat(), "latest_at": last.computed_at.isoformat(),
+                             "comparable": comparable, "confidence": getattr(last, "confidence", None)})
+    out["available"] = bool(out["items"])
+    return out
+
+
 def build(db: Session, website: Website) -> dict:
     overview = compare.progress_overview(db, website)
     base, latest = snap.baseline_snapshot(db, website.id), snap.latest_crawl_snapshot(db, website.id)
@@ -105,7 +129,7 @@ def build(db: Session, website: Website) -> dict:
         "google": {"available": bool(search.get("available")), "reason": search.get("reason"), "lines": google, "period": search.get("period")},
         "data_sources": overview["data_sources"], "warnings": (comparison or {}).get("warnings", []),
         "has_progress": comparison is not None, "limitations": LIMITATIONS,
-        "search_monthly": search_monthly(db, website), "work_timeline": work_timeline(db, website),
+        "site_quality": site_quality(db, website), "search_monthly": search_monthly(db, website), "work_timeline": work_timeline(db, website),
         "improvement_verdict": ("Search improvement cannot be confirmed yet: too few weeks have passed since the changes, and search volumes are small. "
                                 "The dates below are when it becomes fair to check."),
     }

@@ -182,3 +182,16 @@ def test_keyword_analysis_without_gsc_is_unavailable(db_session):
     from app.intelligence import keywords as K
     r = K.analyze(db_session, make_site(db_session))
     assert r["available"] is False and "Search Console" in r["reason"]
+
+
+def test_report_includes_site_quality_only_when_comparable(db_session):
+    from app.authority import assessment as A
+    from app.history import report
+    site = _site(db_session)
+    assert report.site_quality(db_session, site)["available"] is False
+    A.compute(db_session, site)
+    content.analyze(db_session, site)
+    q = report.site_quality(db_session, site)
+    assert q["available"] and {i["label"] for i in q["items"]} == {"Domain Quality", "Content Quality"}
+    assert all(i["comparable"] is False and i["change"] is None for i in q["items"])  # one run is a baseline, not a change
+    assert "not Domain Rating" in q["note"]

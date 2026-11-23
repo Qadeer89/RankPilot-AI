@@ -2106,6 +2106,7 @@ export interface ProgressReport {
   search_monthly?: { month: string; clicks: number; impressions: number; days_with_data: number; days_in_month: number; partial: boolean; impressions_per_day: number | null; clicks_per_day: number | null }[];
   work_timeline?: { applied: number; first_change_at: string | null; last_change_at: string | null; milestones: { date: string; days_after_last_change: number; reached: boolean; label: string }[] };
   improvement_verdict?: string;
+  site_quality?: { available: boolean; note: string; items: { label: string; first: number | null; latest: number | null; change: number | null; comparable: boolean; confidence: string | null }[] };
 }
 export const getProgressReport = (t: string, o: string, s: string) => request<ProgressReport>(`/organizations/${o}/websites/${s}/history/report`, { headers: authHeaders(t) });
 

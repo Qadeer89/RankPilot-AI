@@ -245,6 +245,29 @@ def generate_weekly_reports() -> int:
         db.close()
 
 
+@celery_app.task(name="app.tasks.scheduler.verify_backlinks_for_all_websites")
+def verify_backlinks_for_all_websites() -> int:
+    """Weekly re-check of the backlinks a customer is tracking (new/lost/changed history). Bounded per site by check_batch's
+    count and time budget; respects the linking sites' robots.txt; only runs for projects that actually track backlinks."""
+    from app.authority import backlinks as backlink_service
+    from app.models.authority import Backlink
+
+    db = SessionLocal()
+    checked = 0
+    try:
+        ids = [r[0] for r in db.query(Backlink.website_id).distinct().all()]
+        for website in db.query(Website).filter(Website.id.in_(ids), Website.status != WebsiteStatus.deleted).all():
+            try:
+                checked += backlink_service.check_batch(db, website)["checked"]
+                db.commit()
+            except Exception:
+                logger.exception("Backlink verification failed for website %s", website.id)
+                db.rollback()
+        return checked
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.scheduler.record_daily_usage_for_all_websites")
 def record_daily_usage_for_all_websites() -> int:
     """RP-0806."""

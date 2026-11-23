@@ -47,6 +47,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.scheduler.generate_weekly_reports",
         "schedule": crontab(hour=5, minute=0, day_of_week=1),
     },
+    "backlink-verification-weekly": {
+        "task": "app.tasks.scheduler.verify_backlinks_for_all_websites",
+        "schedule": crontab(hour=2, minute=15, day_of_week=3),
+    },
     "history-maintenance-daily": {
         "task": "app.tasks.scheduler.run_history_maintenance",
         "schedule": crontab(hour=3, minute=30),
