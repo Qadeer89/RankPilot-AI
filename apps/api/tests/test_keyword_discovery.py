@@ -144,7 +144,9 @@ def test_run_keyword_discovery_persists_seeds_and_ai_ideas(db_session, monkeypat
 
     seed_idea = next(i for i in ideas if i.source == KeywordIdeaSource.seed)
     assert seed_idea.data_classification == KeywordDataClassification.verified_first_party
-    assert seed_idea.confidence == 1.0
+    # Text found on the site is not search demand, so it is not given the confidence of a real Search Console query (1.0).
+    assert seed_idea.confidence < 1.0
+    assert seed_idea.evidence_json["origin"].startswith("site_")
 
 
 def test_run_keyword_discovery_is_idempotent_on_rerun(db_session, monkeypatch):

@@ -59,17 +59,33 @@ def _latest_snapshots(db: Session, website_id) -> list[PageSnapshot]:
     )
 
 
-def generate_seed_keywords(db: Session, website: Website, *, extra_seeds: list[str] | None = None) -> list[str]:
-    """Returns a deduplicated, length-bounded list of candidate seed
-    keywords built from: the website's display name, its business
-    description (if the user provided one), crawled page titles and
-    H1-H2 headings, its own recent GSC queries, and any explicit seeds
-    the caller passes in.
-    """
-    seeds: list[str] = []
+# Where a seed came from. Only Search Console queries show that people actually search for the phrase; text found on the
+# site only shows that the site says it, so the two are never given the same confidence.
+ORIGIN_CONFIDENCE = {"extra": 0.8, "site_name": 0.6, "site_title": 0.5, "site_h1": 0.5, "site_heading": 0.3, "gsc_query": 1.0}
+ORIGIN_LABEL = {
+    "extra": "A seed you supplied.", "site_name": "Your site's name.", "site_title": "Found in a page title on your site. This shows what your site says, not that people search for it.",
+    "site_h1": "Found in a main heading on your site. This shows what your site says, not that people search for it.",
+    "site_heading": "Found in a section heading on your site. This shows what your site says, not that people search for it.",
+    "gsc_query": "A real Search Console query for your site.",
+}
+# Section headings that only organise an article and are never a topic on their own.
+_GENERIC_HEADINGS = frozenset(
+    {"introduction", "overview", "summary", "conclusion", "faq", "faqs", "tips", "key points", "key takeaways", "takeaways", "related articles",
+     "in this article", "table of contents", "what usually helps", "what to do next", "how it works", "final thoughts", "next steps"}
+)
+
+
+def _is_generic_heading(text: str) -> bool:
+    cleaned = text.lower().strip(" .:?!")
+    return cleaned in _GENERIC_HEADINGS or len(cleaned.split()) < 2
+
+
+def generate_seed_details(db: Session, website: Website, *, extra_seeds: list[str] | None = None) -> list[tuple[str, str]]:
+    """(seed, origin) pairs, deduplicated and length-bounded; origin is a key of ORIGIN_CONFIDENCE."""
+    seeds: list[tuple[str, str]] = []
     seen: set[str] = set()
 
-    def add(text: str | None) -> None:
+    def add(text: str | None, origin: str) -> None:
         if not text:
             return
         cleaned = text.strip()
@@ -79,25 +95,25 @@ def generate_seed_keywords(db: Session, website: Website, *, extra_seeds: list[s
         if key in seen:
             return
         seen.add(key)
-        seeds.append(cleaned)
+        seeds.append((cleaned, origin))
 
     for seed in extra_seeds or []:
-        add(seed)
+        add(seed, "extra")
 
-    add(website.display_name)
+    add(website.display_name, "site_name")
 
     for snapshot in _latest_snapshots(db, website.id):
-        add(snapshot.title)
+        add(snapshot.title, "site_title")
         page_topic = _topic_words(snapshot.title)
         for text in snapshot.headings_json.get("h1", []):
-            add(text)
+            add(text, "site_h1")
             page_topic |= _topic_words(text)
-        # Generic section headings ("In this article", "What usually
-        # helps") are not keywords; keep an h2 only if it is about the
-        # same topic as the page's own title/h1.
+        # Section headings ("In this article", "What usually helps") are not keywords. Keep an h2 only if it is not a generic
+        # section label and is about the same topic as the page's own title/h1. Even then it only shows what the site says,
+        # so it gets the lowest confidence (see ORIGIN_CONFIDENCE).
         for text in snapshot.headings_json.get("h2", []):
-            if _topic_words(text) & page_topic:
-                add(text)
+            if not _is_generic_heading(text) and _topic_words(text) & page_topic:
+                add(text, "site_heading")
         if len(seeds) >= MAX_SEEDS:
             break
 
@@ -109,8 +125,14 @@ def generate_seed_keywords(db: Session, website: Website, *, extra_seeds: list[s
         .all()
     )
     for (query,) in top_queries:
-        add(query)
+        add(query, "gsc_query")
         if len(seeds) >= MAX_SEEDS:
             break
 
     return seeds[:MAX_SEEDS]
+
+
+def generate_seed_keywords(db: Session, website: Website, *, extra_seeds: list[str] | None = None) -> list[str]:
+    """Returns a deduplicated, length-bounded list of candidate seed keywords built from: the website's display name, crawled
+    page titles and H1/H2 headings, its own recent GSC queries, and any explicit seeds the caller passes in."""
+    return [text for text, _origin in generate_seed_details(db, website, extra_seeds=extra_seeds)]
