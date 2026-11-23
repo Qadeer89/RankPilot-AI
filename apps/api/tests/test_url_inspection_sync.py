@@ -144,3 +144,28 @@ def test_sync_skips_a_page_whose_inspection_call_fails_without_aborting_the_rest
 
     assert synced == 1
     assert db_session.query(PageIndexingStatus).count() == 1
+
+
+def test_each_run_moves_on_to_pages_not_yet_inspected(db_session, monkeypatch):
+    """Regression: the same newest pages were inspected every day, so the indexed count never covered the rest of the site."""
+    from app.config import get_settings
+
+    website, first = _make_website_with_page(db_session)
+    now = datetime.now(timezone.utc)
+    others = []
+    for i in range(4):
+        p = Page(website_id=website.id, canonical_url=f"https://example.com/p{i}", normalized_url=f"https://example.com/p{i}",
+                 first_seen_at=now, last_seen_at=now, last_status_code=200)
+        db_session.add(p)
+        others.append(p)
+    db_session.flush()
+    monkeypatch.setattr(get_settings(), "url_inspection_max_pages_per_sync", 2)
+    monkeypatch.setattr(url_inspection_sync.token_store, "get_valid_access_token", lambda *a, **kw: "t")
+    monkeypatch.setattr(url_inspection_sync, "inspect_url", lambda *a, **kw: {"indexStatusResult": {"verdict": "PASS"}, "mobileUsabilityResult": {}})
+
+    seen = set()
+    for _ in range(3):
+        url_inspection_sync.sync_url_inspection_status(db_session, website)
+        db_session.flush()
+        seen = {r.page_id for r in db_session.query(PageIndexingStatus).all()}
+    assert len(seen) == 5  # three runs of two covered all five pages instead of the same two over and over

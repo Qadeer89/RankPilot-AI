@@ -96,7 +96,8 @@ class Settings(BaseSettings):
     # Bounded per run for the same reason as pagespeed_max_pages_per_sync:
     # one inspection call per page, each taking real time against Google's
     # own quota.
-    url_inspection_max_pages_per_sync: int = 10
+    # Google allows 2,000 inspections per property per day; 60 a day covers a 300-page site in about five days.
+    url_inspection_max_pages_per_sync: int = 60
 
     # Email notifications (RP-0804). All optional: unset means
     # notifications are recorded as skipped_not_configured, never a crash.

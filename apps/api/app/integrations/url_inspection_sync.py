@@ -44,10 +44,13 @@ def sync_url_inspection_status(db: Session, website: Website) -> int:
         db, website.organization_id, OAuthProvider.google_search_console, refresh_fn=refresh_access_token
     )
 
+    # Never-inspected pages first, then the least recently inspected, so every run moves on to different pages and the whole site is
+    # covered over a few days. (The old order, newest-seen first, re-inspected the same few pages forever and left the rest unknown.)
     pages = (
         db.query(Page)
+        .outerjoin(PageIndexingStatus, PageIndexingStatus.page_id == Page.id)
         .filter(Page.website_id == website.id, Page.last_status_code == 200)
-        .order_by(Page.last_seen_at.desc())
+        .order_by(PageIndexingStatus.updated_at.asc().nullsfirst(), Page.last_seen_at.desc())
         .limit(settings.url_inspection_max_pages_per_sync)
         .all()
     )
