@@ -2118,3 +2118,25 @@ export const planTitleRepair = (t: string, o: string, s: string, limit: number) 
   request<TitleRepairPlan>(`/organizations/${o}/websites/${s}/title-repair/plan?limit=${limit}`, { method: "POST", headers: authHeaders(t) });
 export const createTitleRepairTasks = (t: string, o: string, s: string, limit: number) =>
   request<{ created: number; message: string; plan: TitleRepairPlan }>(`/organizations/${o}/websites/${s}/title-repair/tasks?limit=${limit}`, { method: "POST", headers: authHeaders(t) });
+
+// ---- Authority & backlinks (free-first, no paid link index) ----
+export type AuthoritySignal = { key: string; label: string; value: number | null; weight: number; status: "calculated" | "not_available"; how: string; inputs: Record<string, unknown>; note: string | null; contribution?: number | null };
+export type AuthorityAssessmentData = { id: string; computed_at: string; formula_version: string; domain_quality: number | null; coverage: number; confidence: string; signals: AuthoritySignal[]; inputs: Record<string, unknown>; data_source: string };
+export type AuthorityResponse = {
+  disclaimer: string; latest: AuthorityAssessmentData | null; empty_reason: string | null;
+  comparison: null | { available: boolean; reason?: string; domain_quality_change?: number | null; note?: string | null; signals?: { key: string; label: string; previous: number | null; current: number | null; change: number | null; status: string }[] };
+  history: { computed_at: string; domain_quality: number | null; coverage: number; confidence: string; formula_version: string }[];
+};
+export type BacklinkItem = { id: string; source_url: string; source_domain: string; target_url: string | null; anchor_text: string | null; rel_values: string[]; is_nofollow: boolean | null; link_location: string | null; discovery_source: string; status: string; http_status: number | null; first_discovered_at: string; last_checked_at: string | null; last_live_at: string | null; lost_at: string | null; note: string | null; data_source: string };
+export type BacklinkAnalysis = { label: string; recorded: number; verified_live: number; by_status: Record<string, number>; unchecked: number; referring_domains: number; followed: number; nofollow_or_ugc_sponsored: number;
+  top_domains: { domain: string; links: number }[]; anchor_distribution: { anchor: string; links: number; share: number }[]; destination_pages: { url: string; links: number }[]; single_domain_share: number | null; lost: { source_url: string; lost_at: string | null }[] };
+export type BacklinkList = { items: BacklinkItem[]; analysis: BacklinkAnalysis; limits: { max_import: number; max_checks_per_call: number }; empty_reason: string | null };
+const authorityBase = (org: string, site: string) => `/organizations/${org}/websites/${site}`;
+export function getAuthority(token: string, org: string, site: string) { return request<AuthorityResponse>(`${authorityBase(org, site)}/authority`, { headers: authHeaders(token) }); }
+export function refreshAuthority(token: string, org: string, site: string) { return request<AuthorityAssessmentData>(`${authorityBase(org, site)}/authority/refresh`, { method: "POST", headers: authHeaders(token) }); }
+export function listBacklinks(token: string, org: string, site: string) { return request<BacklinkList>(`${authorityBase(org, site)}/backlinks`, { headers: authHeaders(token) }); }
+export function importBacklinks(token: string, org: string, site: string, body: { text: string; source: "user_provided" | "gsc_export" }) {
+  return request<{ added: number; duplicates: number; rejected: { url: string; reason: string }[]; truncated: number }>(`${authorityBase(org, site)}/backlinks/import`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(body) });
+}
+export function checkBacklinks(token: string, org: string, site: string) { return request<{ checked: number; remaining_in_batch: number; analysis: BacklinkAnalysis }>(`${authorityBase(org, site)}/backlinks/check`, { method: "POST", headers: authHeaders(token) }); }
+export function deleteBacklink(token: string, org: string, site: string, id: string) { return request<void>(`${authorityBase(org, site)}/backlinks/${id}`, { method: "DELETE", headers: authHeaders(token) }); }

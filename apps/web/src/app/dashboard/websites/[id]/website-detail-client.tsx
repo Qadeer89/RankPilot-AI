@@ -1204,6 +1204,9 @@ export default function WebsiteDetailClient() {
               Shopify SEO
             </Link>
           )}
+          <Link href={`/dashboard/websites/${websiteId}/authority`} className={styles.tab}>
+            Authority &amp; Backlinks
+          </Link>
           <Link href={`/dashboard/websites/${websiteId}/history`} className={styles.tab}>
             History &amp; Progress
           </Link>
