@@ -2143,3 +2143,11 @@ export function deleteBacklink(token: string, org: string, site: string, id: str
 
 export type RankingOpportunities = { available: boolean; reason: string | null; label?: string; formula_version: string; items: { query: string; page_url: string | null; impressions: number; clicks: number; position: number; score: number; confidence: string; data_source: string }[] };
 export function getRankingOpportunities(token: string, org: string, site: string) { return request<RankingOpportunities>(`/organizations/${org}/websites/${site}/keywords/ranking-opportunities`, { headers: authHeaders(token) }); }
+
+// ---- Free-first intelligence (content, technical, lab, competitors, keywords) ----
+export type IntelKind = "content" | "technical" | "lab" | "competitors" | "keywords";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type IntelRun = { computed_at?: string; formula_version?: string; score?: number | null; coverage?: number | null; available?: boolean; data_source?: string; reason?: string | null; [k: string]: any };
+export type IntelResponse = { latest: IntelRun | null; history: { computed_at: string; score: number | null; coverage: number | null; formula_version: string }[]; empty_reason: string | null };
+export function getIntel(token: string, org: string, site: string, kind: IntelKind) { return request<IntelResponse>(`/organizations/${org}/websites/${site}/intelligence/${kind}`, { headers: authHeaders(token) }); }
+export function runIntel(token: string, org: string, site: string, kind: IntelKind) { return request<IntelRun>(`/organizations/${org}/websites/${site}/intelligence/${kind}/run`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({}) }); }
