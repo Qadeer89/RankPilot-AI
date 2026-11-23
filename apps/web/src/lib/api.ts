@@ -926,6 +926,7 @@ export interface KeywordIdea {
   rationale: string;
   cluster_key: string | null;
   status: KeywordIdeaStatus;
+  brand_search?: boolean;
   created_at: string;
 }
 

@@ -8,6 +8,7 @@ from app.core.deps import RequireRole
 from app.core.rate_limit import enforce_rate_limit
 from app.core.resources import country_param_or_400, get_website_or_404
 from app.db.session import get_db
+from app.keywords.brand import is_brand_navigational
 from app.keywords.discovery_service import run_keyword_discovery_detailed
 from app.models.keyword_idea import KeywordIdea, KeywordIdeaSource, KeywordIdeaStatus
 from app.models.membership import Membership, MembershipRole
@@ -19,6 +20,12 @@ from app.schemas.keyword_idea import (
 )
 
 router = APIRouter(tags=["keyword-ideas"])
+
+
+def _response(idea: KeywordIdea, website) -> KeywordIdeaResponse:
+    out = KeywordIdeaResponse.model_validate(idea)
+    out.brand_search = is_brand_navigational(idea.keyword, idea.search_intent.value, website.display_name, website.hostname)
+    return out
 
 
 @router.post(
@@ -44,7 +51,7 @@ def run_discovery(
     for idea in outcome.ideas:
         db.refresh(idea)
     return KeywordDiscoveryRunResponse(
-        ideas=[KeywordIdeaResponse.model_validate(i) for i in outcome.ideas],
+        ideas=[_response(i, website) for i in outcome.ideas],
         ai_status=outcome.ai_status,
         ai_message=outcome.ai_message,
     )
@@ -63,7 +70,7 @@ def list_keyword_ideas(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.viewer)),
 ) -> list[KeywordIdeaResponse]:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     query = db.query(KeywordIdea).filter(KeywordIdea.website_id == website_id)
     country = country_param_or_400(country)
     if country is not None:
@@ -73,7 +80,7 @@ def list_keyword_ideas(
     if status_filter is not None:
         query = query.filter(KeywordIdea.status == status_filter)
     ideas = query.order_by(KeywordIdea.relevance.desc()).limit(500).all()
-    return [KeywordIdeaResponse.model_validate(i) for i in ideas]
+    return [_response(i, website) for i in ideas]
 
 
 @router.patch(
@@ -88,7 +95,7 @@ def update_keyword_idea(
     db: Session = Depends(get_db),
     _membership: Membership = Depends(RequireRole(MembershipRole.editor)),
 ) -> KeywordIdeaResponse:
-    get_website_or_404(db, organization_id, website_id)
+    website = get_website_or_404(db, organization_id, website_id)
     idea = (
         db.query(KeywordIdea)
         .filter(KeywordIdea.id == idea_id, KeywordIdea.website_id == website_id)
@@ -99,4 +106,4 @@ def update_keyword_idea(
     idea.status = payload.status
     db.commit()
     db.refresh(idea)
-    return KeywordIdeaResponse.model_validate(idea)
+    return _response(idea, website)

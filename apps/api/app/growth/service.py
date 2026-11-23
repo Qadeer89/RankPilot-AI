@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.execution.connections import get_connected_content_connector
 from app.models.growth_recommendation import GrowthRecommendation, RecommendationLevel, RecommendationStatus
+from app.keywords.brand import is_brand_navigational
 from app.models.keyword_idea import KeywordIdea, KeywordIdeaSource, KeywordIdeaStatus
 from app.models.website import Website
 from app.opportunities.search_trend_signals import (
@@ -179,6 +180,12 @@ def generate_growth_recommendations(
         .all()
     )
     for idea in ideas:
+        # "contact <brand>" style searches are people who already know the business, not an audience to win.
+        if is_brand_navigational(idea.keyword, idea.search_intent.value, website.display_name, website.hostname):
+            stale = existing.get(f"new_content:{idea.id}")
+            if stale is not None and stale.status == RecommendationStatus.open:  # made before this rule existed; nobody acted on it
+                db.delete(stale)
+            continue
         from_competitor = idea.source == KeywordIdeaSource.competitor_gap
         touched.append(
             _upsert(

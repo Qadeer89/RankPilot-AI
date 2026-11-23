@@ -30,6 +30,8 @@ class KeywordIdeaResponse(BaseModel):
     cluster_key: str | None
     status: KeywordIdeaStatus
     created_at: datetime
+    # True when the phrase names the business and asks to reach it ("contact <brand>"): not an SEO opportunity, never recommended.
+    brand_search: bool = False
 
     model_config = {"from_attributes": True}
 

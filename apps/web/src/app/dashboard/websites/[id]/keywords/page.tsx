@@ -497,7 +497,7 @@ export default function KeywordWorkspacePage() {
                     <th>Intent</th>
                     <th>Content type</th>
                     <th>Classification</th>
-                    <th>Confidence</th>
+                    <th title="The AI's own guess of how well the idea fits your site. It is not search demand.">AI relevance estimate</th>
                     <th>Rationale</th>
                     <th></th>
                   </tr>
@@ -505,7 +505,12 @@ export default function KeywordWorkspacePage() {
                 <tbody>
                   {aiIdeas.map((idea) => (
                     <tr key={idea.id}>
-                      <td>{idea.keyword}</td>
+                      <td>
+                        {idea.keyword}
+                        {idea.brand_search && (
+                          <div><span className={`${styles.badge}`} data-testid="brand-search">Brand search, not an SEO opportunity</span></div>
+                        )}
+                      </td>
                       <td>{idea.search_intent}</td>
                       <td>{idea.recommended_content_type ?? "—"}</td>
                       <td>
@@ -707,7 +712,7 @@ export default function KeywordWorkspacePage() {
                   <tr>
                     <th>Topic</th>
                     <th>Content type</th>
-                    <th>Confidence</th>
+                    <th title="The AI's own guess of how well the topic fits your site. It is not search demand.">AI relevance estimate</th>
                     <th>Rationale</th>
                   </tr>
                 </thead>
@@ -743,7 +748,7 @@ export default function KeywordWorkspacePage() {
                     <th>Source</th>
                     <th>Content type</th>
                     <th>Classification</th>
-                    <th>Confidence</th>
+                    <th title="Search Console queries: 100%. Text found on your site: lower. AI ideas: the AI's own estimate, not demand.">Confidence / estimate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -752,7 +757,10 @@ export default function KeywordWorkspacePage() {
                     .slice(0, 50)
                     .map((idea) => (
                       <tr key={idea.id}>
-                        <td>{idea.keyword}</td>
+                        <td>
+                          {idea.keyword}
+                          {idea.brand_search && <div><span className={styles.badge}>Brand search, not an SEO opportunity</span></div>}
+                        </td>
                         <td>{idea.source}</td>
                         <td>{idea.recommended_content_type ?? "—"}</td>
                         <td>
