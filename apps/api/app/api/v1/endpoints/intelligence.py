@@ -13,13 +13,13 @@ from app.core.rate_limit import enforce_rate_limit
 from app.core.resources import get_website_or_404
 from app.core.url_safety import UnsafeUrlError
 from app.db.session import get_db
-from app.intelligence import common, competitors, content, lab, technical
+from app.intelligence import common, competitors, content, keywords, lab, technical
 from app.models.membership import Membership, MembershipRole
 
 router = APIRouter(tags=["intelligence"])
 _BASE = "/organizations/{organization_id}/websites/{website_id}/intelligence"
-KINDS = {"content": content, "technical": technical, "competitors": competitors}
-STORED = {"content": "content", "technical": "technical", "competitors": "competitor_structure", "lab": "lab_performance"}
+KINDS = {"content": content, "technical": technical, "competitors": competitors, "keywords": keywords}
+STORED = {"content": "content", "technical": "technical", "competitors": "competitor_structure", "lab": "lab_performance", "keywords": "keyword_clusters"}
 
 
 class LabBody(BaseModel):

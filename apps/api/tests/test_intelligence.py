@@ -161,3 +161,24 @@ def test_api_flow_and_isolation(client, db_session):
     other, _ = register(client, "intel-intruder@example.com")
     for method, path in (("get", "content"), ("post", "content/run"), ("get", "technical")):
         assert getattr(client, method)(f"{base}/{path}", headers=other).status_code in (403, 404)
+
+
+def test_keyword_clusters_group_similar_queries_and_flag_split_pages():
+    from app.intelligence import keywords as K
+    import uuid as _u
+    a, b = _u.uuid4(), _u.uuid4()
+    rows = [{"query": "back pain physio", "page_id": a, "impressions": 60, "clicks": 3, "position": 9.0},
+            {"query": "back pain physio", "page_id": b, "impressions": 40, "clicks": 1, "position": 14.0},
+            {"query": "physio for back pain", "page_id": a, "impressions": 30, "clicks": 1, "position": 11.0},
+            {"query": "how much does knee surgery cost", "page_id": b, "impressions": 20, "clicks": 0, "position": 20.0}]
+    out = K.cluster(rows)
+    assert len(out) == 2 and K.cluster(rows) == out
+    main = out[0]
+    assert main["possible_cannibalization"] is True and {q["query"] for q in main["queries"]} == {"back pain physio", "physio for back pain"}
+    assert out[1]["intent"] == "informational" and out[1]["possible_cannibalization"] is False
+
+
+def test_keyword_analysis_without_gsc_is_unavailable(db_session):
+    from app.intelligence import keywords as K
+    r = K.analyze(db_session, make_site(db_session))
+    assert r["available"] is False and "Search Console" in r["reason"]
