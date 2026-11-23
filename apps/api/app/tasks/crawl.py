@@ -105,6 +105,16 @@ def run_site_crawl(self, website_id: str, crawl_job_id: str) -> str:
             db.rollback()
             logger.exception("run_site_crawl: could not save the history snapshot for website %s", website_id)
 
+        # Domain quality assessment for this crawl (best-effort, one row per crawl, never fails the crawl).
+        try:
+            from app.authority.assessment import compute as compute_authority
+
+            compute_authority(db, website, crawl_job.id)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("run_site_crawl: could not compute the domain quality assessment for website %s", website_id)
+
         # Best-effort: a regression (new critical finding or a health-score
         # category dropping sharply) is worth surfacing right away rather
         # than only on the next manual dashboard visit
