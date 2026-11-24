@@ -61,6 +61,10 @@ class WebsiteOverviewResponse(BaseModel):
 
     pages_discovered: int
     pages_indexed: int | None
+    # How many pages Google has actually been asked about so far (None when none yet). pages_indexed counts only these, so it is
+    # "indexed out of checked", not "indexed out of all pages".
+    pages_inspected: int | None = None
+    indexing_last_checked_at: datetime | None = None
     pending_approvals: int
     latest_health_score: SiteHealthScoreResponse | None
 

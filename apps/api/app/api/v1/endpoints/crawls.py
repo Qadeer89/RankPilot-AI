@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import RequireRole
@@ -263,7 +264,15 @@ def get_website_overview(
         is not None
     )
     pages_indexed = None
+    pages_inspected = None
+    indexing_last_checked_at = None
     if has_indexing_data:
+        pages_inspected = (
+            db.query(PageIndexingStatus).join(Page, Page.id == PageIndexingStatus.page_id).filter(Page.website_id == website_id).count()
+        )
+        indexing_last_checked_at = (
+            db.query(func.max(PageIndexingStatus.updated_at)).join(Page, Page.id == PageIndexingStatus.page_id).filter(Page.website_id == website_id).scalar()
+        )
         pages_indexed = (
             db.query(PageIndexingStatus)
             .join(Page, Page.id == PageIndexingStatus.page_id)
@@ -283,6 +292,8 @@ def get_website_overview(
     return WebsiteOverviewResponse(
         pages_discovered=pages_discovered,
         pages_indexed=pages_indexed,
+        pages_inspected=pages_inspected,
+        indexing_last_checked_at=indexing_last_checked_at,
         pending_approvals=pending_approvals,
         latest_health_score=latest_health_score,
     )

@@ -427,6 +427,8 @@ export function listHealthScores(token: string, organizationId: string, websiteI
 export interface WebsiteOverview {
   pages_discovered: number;
   pages_indexed: number | null;
+  pages_inspected?: number | null;
+  indexing_last_checked_at?: string | null;
   pending_approvals: number;
   latest_health_score: SiteHealthScore | null;
 }

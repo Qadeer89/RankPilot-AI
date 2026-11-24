@@ -116,12 +116,22 @@ def test_overview_reports_pages_indexed_only_once_inspection_data_exists(client,
     )
     db_session.add(page)
     db_session.flush()
+    second = Page(website_id=website_id, canonical_url="https://example.com/b", normalized_url="https://example.com/b",
+                  first_seen_at=now, last_seen_at=now, last_status_code=200)
+    third = Page(website_id=website_id, canonical_url="https://example.com/c", normalized_url="https://example.com/c",
+                 first_seen_at=now, last_seen_at=now, last_status_code=200)  # never inspected
+    db_session.add_all([second, third])
+    db_session.flush()
     db_session.add(PageIndexingStatus(page_id=page.id, verdict="PASS"))
+    db_session.add(PageIndexingStatus(page_id=second.id, verdict="NEUTRAL"))
     db_session.commit()
 
     response = client.get(f"/api/v1/organizations/{org_id}/websites/{website_id}/overview", headers=headers)
     assert response.status_code == 200
-    assert response.json()["pages_indexed"] == 1
+    body = response.json()
+    assert body["pages_indexed"] == 1
+    # indexed is "out of the pages Google has been asked about", not out of every page
+    assert body["pages_inspected"] == 2 and body["pages_discovered"] == 3 and body["indexing_last_checked_at"]
 
 
 def test_overview_is_tenant_scoped(client, monkeypatch):

@@ -1334,7 +1334,11 @@ export default function WebsiteDetailClient() {
                     onClick: () => goTo("pages"), hint: "See pages",
                   },
                   ...(overview?.pages_indexed !== null && overview?.pages_indexed !== undefined
-                    ? [{ label: "Pages indexed by Google", value: overview.pages_indexed }]
+                    ? [{
+                        label: "Pages indexed by Google",
+                        value: overview.pages_inspected != null ? `${overview.pages_indexed} of ${overview.pages_inspected} checked` : overview.pages_indexed,
+                        meta: `Google has been asked about ${overview.pages_inspected ?? "some"} of ${overview.pages_discovered} pages so far; about 60 more are checked each night${overview.indexing_last_checked_at ? ` (last check ${new Date(overview.indexing_last_checked_at).toLocaleDateString()})` : ""}. Search Console's own Page indexing report counts differently and updates less often.`,
+                      }]
                     : []),
                   {
                     label: "Open findings",
