@@ -125,3 +125,7 @@ textarea {
 button:not(:disabled),
 [role="button"] { min-height: 32px; }
 a[class*="back"] { display: inline-flex; align-items: center; min-height: 32px; }
+
+/* public site: smooth anchor scrolling, switched off for people who ask for reduced motion */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }

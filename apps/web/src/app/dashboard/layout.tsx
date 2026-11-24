@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import AppShell from "@/components/AppShell";
 
@@ -7,6 +8,9 @@ import AppShell from "@/components/AppShell";
 // dashboard shell renders on the client without blocking the build
 // (mirrors the same pattern the website detail page already uses).
 export const instant = false;
+
+// The signed-in application is never for search results.
+export const metadata: Metadata = { title: "Dashboard", robots: { index: false, follow: false } };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (

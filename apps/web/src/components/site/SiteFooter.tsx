@@ -15,23 +15,24 @@ export default function SiteFooter() {
             <h4>Product</h4>
             <Link href="/features">Features</Link>
             <Link href="/pricing">Pricing</Link>
-            <Link href="/#how-it-works">How it works</Link>
-            <Link href="/#faq">FAQ</Link>
+            <Link href="/how-it-works">How it works</Link>
+            <Link href="/faq">FAQ</Link>
           </div>
           <div>
             <h4>Account</h4>
             <Link href="/login">Log in</Link>
-            <Link href="/register">Create an account</Link>
+            <Link href="/register">Sign up</Link>
           </div>
           <div>
             <h4>Company</h4>
+            <Link href="/about">About</Link>
             <Link href="/contact">Contact</Link>
             <Link href="/privacy">Privacy policy</Link>
             <Link href="/terms">Terms of service</Link>
             <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
           </div>
         </div>
-        <div className={styles.copy}>© {new Date().getFullYear()} RankPilot AI. No tool can guarantee rankings; RankPilot never does.</div>
+        <div className={styles.copy}>© RankPilot AI. All rights reserved. No tool can guarantee rankings; RankPilot never does.</div>
       </div>
     </footer>
   );

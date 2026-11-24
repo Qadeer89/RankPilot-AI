@@ -1,12 +1,8 @@
-import type { Metadata } from "next";
 import styles from "@/components/site/site.module.css";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { pageMeta } from "@/lib/marketing";
 
-export const metadata: Metadata = {
-  title: "Terms of service | RankPilot AI",
-  description: "The terms for using RankPilot AI.",
-  alternates: { canonical: "/terms" },
-};
+export const metadata = pageMeta({ title: "Terms of service", description: "The terms for using RankPilot AI: your account, changes to your website, no guarantee of results, acceptable use, plans and payment.", path: "/terms" });
 
 export default function Terms() {
   return (

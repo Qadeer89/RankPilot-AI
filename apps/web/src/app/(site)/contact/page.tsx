@@ -1,13 +1,9 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import styles from "@/components/site/site.module.css";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { pageMeta } from "@/lib/marketing";
 
-export const metadata: Metadata = {
-  title: "Contact | RankPilot AI",
-  description: "Questions about RankPilot AI? Get in touch.",
-  alternates: { canonical: "/contact" },
-};
+export const metadata = pageMeta({ title: "Contact RankPilot AI", description: "Questions about RankPilot AI? Get in touch.", path: "/contact" });
 
 export default function Contact() {
   return (

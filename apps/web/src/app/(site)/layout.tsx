@@ -5,6 +5,7 @@ import styles from "@/components/site/site.module.css";
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.wrap}>
+      <a href="#content" className={styles.skip}>Skip to content</a>
       <SiteHeader />
       <main id="content">{children}</main>
       <SiteFooter />

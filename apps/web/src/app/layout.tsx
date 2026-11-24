@@ -15,10 +15,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  alternates: { canonical: "./" },
   robots: IS_INDEXABLE ? { index: true, follow: true } : { index: false, follow: false },
-  title: "RankPilot AI",
-  description: "Autonomous SEO Growth Platform",
+  applicationName: "RankPilot AI",
+  title: { default: "RankPilot AI", template: "%s | RankPilot AI" },
+  description: "AI-powered SEO audit, recommendations and progress tracking for your website.",
+  openGraph: { siteName: "RankPilot AI", type: "website", locale: "en_US" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

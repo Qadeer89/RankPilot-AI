@@ -1,12 +1,8 @@
-import type { Metadata } from "next";
 import styles from "@/components/site/site.module.css";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { pageMeta } from "@/lib/marketing";
 
-export const metadata: Metadata = {
-  title: "Privacy policy | RankPilot AI",
-  description: "What data RankPilot AI collects, how it is used, how Google data is handled, and your choices.",
-  alternates: { canonical: "/privacy" },
-};
+export const metadata = pageMeta({ title: "Privacy policy", description: "What data RankPilot AI collects, how it is used, how Google data is handled, and your choices.", path: "/privacy" });
 
 export default function Privacy() {
   return (
