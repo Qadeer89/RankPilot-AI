@@ -62,6 +62,12 @@ def get_plans(_user: User = Depends(get_current_user), db: Session = Depends(get
     )
 
 
+@router.get("/public/pricing", response_model=PlansResponse)
+def public_pricing(db: Session = Depends(get_db)) -> PlansResponse:
+    """The plans exactly as offered to new buyers, readable without logging in so the marketing site never shows a stale price."""
+    return get_plans(None, db)  # type: ignore[arg-type]  # the user is not used
+
+
 @router.get("/organizations/{organization_id}/billing/overview")
 def billing_overview(
     organization_id: uuid.UUID,
