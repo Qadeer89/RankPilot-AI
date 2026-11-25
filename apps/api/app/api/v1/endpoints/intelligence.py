@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+from app.billing.entitlement import require as require_entitlement
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,6 +21,7 @@ from app.models.membership import Membership, MembershipRole
 router = APIRouter(tags=["intelligence"])
 _BASE = "/organizations/{organization_id}/websites/{website_id}/intelligence"
 KINDS = {"content": content, "technical": technical, "competitors": competitors, "keywords": keywords}
+FEATURE_FOR_KIND = {"content": "content_analysis", "technical": "technical_seo", "lab": "technical_seo", "competitors": "competitor_analysis", "keywords": "keyword_discovery"}
 STORED = {"content": "content", "technical": "technical", "competitors": "competitor_structure", "lab": "lab_performance", "keywords": "keyword_clusters"}
 
 
@@ -43,6 +46,7 @@ def run(organization_id: uuid.UUID, website_id: uuid.UUID, kind: str, body: LabB
     if kind not in STORED:
         raise HTTPException(404, detail="Unknown analysis.")
     website = get_website_or_404(db, organization_id, website_id)
+    require_entitlement(db, website, FEATURE_FOR_KIND[kind])
     enforce_rate_limit(f"intel_{kind}:{website.id}", max_attempts=3 if kind == "lab" else 10, window_seconds=3600)
     try:
         result = lab.run(db, website, body.url if body else None) if kind == "lab" else KINDS[kind].analyze(db, website)

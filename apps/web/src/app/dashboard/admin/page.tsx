@@ -8,11 +8,12 @@ import {
   AiCostsSection, AuditSection, HealthSection, OverviewSection, PaymentsSection, ProjectsSection, ReplacementsSection,
   RevenueSection, SettingsSection, SubscriptionsSection, TrialsSection, UsersSection, WebhooksSection,
 } from "./sections";
+import { BillingCustomersSection, PlansSection } from "./plans";
 import type { RangeValue } from "./parts";
 import styles from "./admin.module.css";
 
 const TABS = [
-  ["overview", "Overview"], ["users", "Users"], ["projects", "Projects"], ["subscriptions", "Subscriptions"], ["payments", "Payments"],
+  ["overview", "Overview"], ["users", "Users"], ["projects", "Projects"], ["plans", "Plans & Pricing"], ["subscriptions", "Subscriptions"], ["customers", "Billing Customers"], ["payments", "Payments"],
   ["revenue", "Revenue Analytics"], ["trials", "Trials"], ["replacements", "Project Replacements"], ["ai", "AI Usage & Costs"],
   ["integrations", "Integrations & Webhooks"], ["health", "System Health"], ["audit", "Audit Logs"], ["settings", "Settings"],
 ] as const;
@@ -99,6 +100,8 @@ function AdminDashboard() {
         {tab === "overview" && <OverviewSection range={range} setRange={setRange} />}
         {tab === "users" && <UsersSection />}
         {tab === "projects" && <ProjectsSection />}
+        {tab === "plans" && <PlansSection />}
+        {tab === "customers" && <BillingCustomersSection />}
         {tab === "subscriptions" && <SubscriptionsSection />}
         {tab === "payments" && <PaymentsSection range={range} setRange={setRange} />}
         {tab === "revenue" && <RevenueSection range={range} setRange={setRange} />}

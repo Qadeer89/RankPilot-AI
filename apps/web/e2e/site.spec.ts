@@ -41,7 +41,7 @@ test("a signed-in visitor gets a dashboard link instead of login buttons", async
 });
 
 test("every public page exists, has one h1 and a canonical + social metadata, and is linked from the footer", async ({ page }: { page: Page }) => {
-  const pages: [string, string, RegExp][] = [["/features", "Features", /Everything you need/], ["/how-it-works", "How it works", /From a website address/], ["/pricing", "Pricing", /Simple pricing/], ["/faq", "FAQ", /Frequently asked/], ["/about", "About", /show their working/], ["/contact", "Contact", /Contact us/], ["/privacy", "Privacy policy", /Privacy policy/], ["/terms", "Terms of service", /Terms of service/]];
+  const pages: [string, string, RegExp][] = [["/features", "Features", /Everything you need/], ["/how-it-works", "How it works", /From a website address/], ["/pricing", "Pricing", /Pricing/], ["/faq", "FAQ", /Frequently asked/], ["/about", "About", /show their working/], ["/contact", "Contact", /Contact us/], ["/privacy", "Privacy policy", /Privacy policy/], ["/terms", "Terms of service", /Terms of service/]];
   await page.goto("/");
   const footer = page.getByRole("contentinfo");
   for (const [path, name, heading] of pages) {
@@ -58,14 +58,14 @@ test("every public page exists, has one h1 and a canonical + social metadata, an
   }
 });
 
-test("pricing explains trial, payment and cancellation, and never invents a price", async ({ page }: { page: Page }) => {
+test("pricing never shows a price that has not been approved, and says so plainly", async ({ page }: { page: Page }) => {
   await page.goto("/pricing");
-  await expect(page.getByText("A payment method is collected when you start a trial", { exact: false })).toBeVisible();
-  await expect(page.getByText("cancel any time from the Billing page", { exact: false })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Start free" }).first()).toHaveAttribute("href", "/register");
-  const text = await page.locator("main").innerText();
-  // prices come from the billing configuration; when the API is unreachable the page says so instead of showing a number
-  if (!/\$\d/.test(text)) await expect(page.getByText("Current prices are shown when you sign up")).toBeVisible();
+  await expect(page.getByText("Pricing is being finalized.")).toBeVisible();
+  await expect(page.getByText("Create an account to explore RankPilot.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create an account" }).first()).toHaveAttribute("href", "/register");
+  expect(await page.locator("main").innerText()).not.toMatch(/\$\d/);
+  // no trial or payment promises appear before a plan is approved
+  await expect(page.getByText("A payment method is collected when you start a trial", { exact: false })).toHaveCount(0);
 });
 
 test("the privacy policy states the Google read-only and limited-use commitments", async ({ page }: { page: Page }) => {

@@ -13,6 +13,8 @@ from app.models.history import (
 from app.models.audit_event import AuditEvent
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.billing import (
+    BillingCustomer,
+    BillingPlan,
     BillingEvent,
     BillingEventStatus,
     BillingInterval,
@@ -109,6 +111,8 @@ __all__ = [
     "CollectionSnapshot", "DataSourceSyncHistory", "ProductSnapshot", "ProjectActivityEvent", "ProjectMetricHistory", "ProjectSnapshot",
     "RecommendationHistory", "SnapshotFindings",
     "EmailVerificationToken",
+    "BillingCustomer",
+    "BillingPlan",
     "BillingEvent",
     "BillingEventStatus",
     "BillingInterval",

@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEFAULT_JWT_SECRET = "change-me-in-production"
 
 
+PADDLE_API_BASES = {"sandbox": "https://sandbox-api.paddle.com", "live": "https://api.paddle.com"}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="RANKPILOT_", extra="ignore", env_ignore_empty=True)
 
@@ -166,6 +169,20 @@ class Settings(BaseSettings):
     lemonsqueezy_variant_monthly_no_trial: str | None = None
     lemonsqueezy_variant_annual_no_trial: str | None = None
     lemonsqueezy_request_timeout_seconds: float = 20.0
+
+    # Which provider starts NEW checkouts. Existing Lemon Squeezy subscriptions keep working through their own webhook
+    # either way; set this to "paddle" only once the Paddle account, prices and webhook are configured.
+    billing_provider: str = "lemonsqueezy"
+
+    # Paddle Billing (docs/PADDLE_BILLING.md). Sandbox and live use different accounts, keys and secrets: set the pair that
+    # matches `paddle_env`. Server-side only except `paddle_client_token`, which is designed to be public (Paddle.js).
+    paddle_env: str = "sandbox"  # sandbox | live
+    paddle_api_key: str | None = None
+    paddle_client_token: str | None = None
+    paddle_webhook_secret: str | None = None  # the destination's endpoint secret key (pdl_ntfset_...)
+    paddle_request_timeout_seconds: float = 20.0
+    # Paddle's own SDKs reject a webhook whose timestamp is more than 5 seconds old; keep the server clock on NTP.
+    paddle_signature_tolerance_seconds: int = 5
 
     # AI Search Opportunity Finder (docs/AI_SEARCH_OPPORTUNITY_FINDER.md). All thresholds are configurable.
     ai_search_long_tail_min_words: int = 5

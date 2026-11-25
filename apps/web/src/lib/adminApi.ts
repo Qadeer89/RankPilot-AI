@@ -16,7 +16,7 @@ export function adminGet<T>(token: string, path: string, params: Query = {}) {
   return request<T>(`/admin/${path}${qs(params)}`, { headers: { Authorization: `Bearer ${token}` } });
 }
 
-export function adminSend<T>(token: string, method: "POST" | "PUT" | "DELETE", path: string, body: unknown) {
+export function adminSend<T>(token: string, method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body: unknown) {
   return request<T>(`/admin/${path}`, { method, headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
 }
 

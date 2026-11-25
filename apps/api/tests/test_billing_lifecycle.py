@@ -98,7 +98,8 @@ def test_the_ai_endpoints_degrade_cleanly_for_an_unsubscribed_project(client, db
     headers, org = register(client, "ai-503@example.com")
     site = make_website(db_session, org)
     r = client.post(f"/api/v1/organizations/{org}/websites/{site.id}/keyword-discovery/run", json={}, headers=headers)
-    assert r.status_code == 503 and "subscription" in r.json()["detail"].lower()
+    # the endpoint now refuses up front with a structured 402 (it used to fail later with a 503 from the AI layer)
+    assert r.status_code == 402 and r.json()["detail"]["code"] == "subscription_required" and "subscription" in r.json()["detail"]["message"].lower()
 
 
 def test_applying_a_change_to_a_live_site_needs_an_entitlement(db_session, enforce):

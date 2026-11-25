@@ -210,18 +210,20 @@ def _dispatch(db: Session, event_name: str, payload: dict) -> tuple[str, Subscri
     return f"ignored {event_name}", None
 
 
-def _find_subscription(db: Session, provider_id: str | None) -> Subscription | None:
+def _find_subscription(db: Session, provider_id: str | None, provider: SubscriptionProvider = SubscriptionProvider.lemonsqueezy) -> Subscription | None:
     if not provider_id:
         return None
     return (
         db.query(Subscription)
-        .filter(Subscription.provider == SubscriptionProvider.lemonsqueezy, Subscription.provider_subscription_id == str(provider_id))
+        .filter(Subscription.provider == provider, Subscription.provider_subscription_id == str(provider_id))
         .one_or_none()
     )
 
 
 def apply_subscription_object(
-    db: Session, subscription_object: dict, *, custom_data: dict | None, test_mode: bool = False
+    db: Session, subscription_object: dict, *, custom_data: dict | None, test_mode: bool = False,
+    provider: SubscriptionProvider = SubscriptionProvider.lemonsqueezy, currency: str | None = None,
+    price_cents: int | None = None, plan_id: uuid.UUID | None = None,
 ) -> tuple[str, Subscription]:
     """Create or update a local subscription from a provider subscription object.
     Shared by the webhook and the reconciliation job so they can never disagree."""
@@ -229,7 +231,7 @@ def apply_subscription_object(
     attributes = subscription_object.get("attributes") or {}
     provider_id = str(subscription_object.get("id"))
     provider_updated = _parse_dt(attributes.get("updated_at"))
-    sub = _find_subscription(db, provider_id)
+    sub = _find_subscription(db, provider_id, provider)
 
     if sub is not None and sub.provider_updated_at and provider_updated and provider_updated < sub.provider_updated_at:
         return "ignored: older than the state already held", sub
@@ -241,13 +243,19 @@ def apply_subscription_object(
     if sub is None:
         reference = (custom_data or {}).get("reference")
         session = db.query(CheckoutSession).filter(CheckoutSession.reference == str(reference)).one_or_none() if reference else None
+        if session is None and provider == SubscriptionProvider.paddle:
+            # Paddle may report the subscription before (or without) our custom data; the transaction event links it to the checkout.
+            session = db.query(CheckoutSession).filter(CheckoutSession.provider_subscription_ref == provider_id).first()
         if session is None:
+            if provider == SubscriptionProvider.paddle:
+                raise TransientWebhookError("Paddle subscription not linked to a checkout yet; its transaction event may still be on the way.")
             raise PermanentWebhookError("Subscription event without a known checkout reference; it cannot be linked to a project.")
         sub = Subscription(
             organization_id=session.organization_id, user_id=session.user_id, website_id=session.website_id,
-            provider=SubscriptionProvider.lemonsqueezy, provider_subscription_id=provider_id,
-            status=status, billing_interval=session.billing_interval, price_cents=session.expected_price_cents,
-            currency=settings.billing_currency,
+            provider=provider, provider_subscription_id=provider_id,
+            status=status, billing_interval=session.billing_interval,
+            price_cents=price_cents if price_cents is not None else session.expected_price_cents,
+            currency=currency or settings.billing_currency, plan_id=plan_id or session.plan_id,
         )
         db.add(sub)
         try:
@@ -436,7 +444,12 @@ def reprocess_event(db: Session, event: BillingEvent) -> str:
     event.attempts += 1
     notifications.discard(db)
     try:
-        outcome, subscription = _dispatch(db, event.event_name, event.payload_json)
+        if event.provider == "paddle":
+            from app.billing.paddle_webhooks import dispatch_paddle  # lazy: that module imports this one
+
+            outcome, subscription = dispatch_paddle(db, event.event_name, event.payload_json)
+        else:
+            outcome, subscription = _dispatch(db, event.event_name, event.payload_json)
     except PermanentWebhookError as exc:
         db.rollback()
         notifications.discard(db)

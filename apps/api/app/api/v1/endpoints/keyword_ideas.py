@@ -1,5 +1,7 @@
 import uuid
 
+from app.billing.entitlement import require as require_entitlement
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -40,6 +42,7 @@ def run_discovery(
     _membership: Membership = Depends(RequireRole(MembershipRole.editor)),
 ) -> KeywordDiscoveryRunResponse:
     website = get_website_or_404(db, organization_id, website_id)
+    require_entitlement(db, website, "keyword_discovery")
     enforce_rate_limit(f"keyword_discovery:{website_id}", max_attempts=10, window_seconds=3600)
     try:
         outcome = run_keyword_discovery_detailed(

@@ -1668,6 +1668,10 @@ export function recrawlGrowthRecommendation(
 // --- Billing (per-project subscriptions) ---
 
 export interface BillingPlan {
+  code: string | null;
+  name: string | null;
+  description?: string | null;
+  test_plan?: boolean;
   interval: "month" | "year";
   price_cents: number;
   currency: string;
@@ -1695,6 +1699,9 @@ export interface BillingSubscription {
   replacements_remaining: number;
   customer_portal_url: string | null;
   update_payment_url: string | null;
+  plan_code?: string | null;
+  plan_name?: string | null;
+  can_manage?: boolean;
 }
 
 export interface BillingPayment {
@@ -1722,6 +1729,9 @@ export interface BillingProject {
 
 export interface BillingOverview {
   enforcement: "off" | "log" | "enforce";
+  provider?: "paddle" | "lemonsqueezy";
+  paddle_environment?: string | null;
+  project_allowance?: { limit: number | null; used: number } | null;
   plans: BillingPlan[];
   annual_saving_cents: number;
   projects: BillingProject[];
@@ -1742,12 +1752,26 @@ export function getBillingOverview(token: string, organizationId: string) {
   return request<BillingOverview>(`/organizations/${organizationId}/billing/overview`, { headers: authHeaders(token) });
 }
 
-export function startCheckout(token: string, organizationId: string, websiteId: string, interval: "month" | "year") {
+export function startCheckout(token: string, organizationId: string, websiteId: string, interval: "month" | "year", planCode?: string | null) {
   return request<CheckoutStarted>(`/organizations/${organizationId}/websites/${websiteId}/billing/checkout`, {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ interval }),
+    body: JSON.stringify(planCode ? { interval, plan_code: planCode } : { interval }),
   });
+}
+
+export function cancelSubscription(token: string, organizationId: string, subscriptionId: string) {
+  return request<{ status: string; message?: string }>(`/organizations/${organizationId}/billing/subscriptions/${subscriptionId}/cancel`, { method: "POST", headers: authHeaders(token) });
+}
+
+export function changeSubscriptionPlan(token: string, organizationId: string, subscriptionId: string, planCode: string) {
+  return request<{ status: string; message?: string }>(`/organizations/${organizationId}/billing/subscriptions/${subscriptionId}/change-plan`, {
+    method: "POST", headers: authHeaders(token), body: JSON.stringify({ plan_code: planCode }),
+  });
+}
+
+export function getInvoiceUrl(token: string, organizationId: string, paymentId: string) {
+  return request<{ url: string }>(`/organizations/${organizationId}/billing/payments/${paymentId}/invoice`, { headers: authHeaders(token) });
 }
 
 export interface ReplacementTargets {

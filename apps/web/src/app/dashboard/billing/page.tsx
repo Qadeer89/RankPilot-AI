@@ -13,6 +13,9 @@ import {
   getReplacementTargets,
   replaceSubscriptionProject,
   startCheckout,
+  cancelSubscription,
+  changeSubscriptionPlan,
+  getInvoiceUrl,
 } from "@/lib/api";
 import { formatDate, formatMoney, planLabel, priceLine, STATUS_LABEL, statusTone } from "@/lib/billingFormat";
 import { getToken } from "@/lib/auth";
@@ -38,12 +41,17 @@ function PlanPicker({
   project: BillingProject;
   plans: BillingPlan[];
   saving: number;
-  onStart: (interval: "month" | "year") => void;
+  onStart: (interval: "month" | "year", planCode: string | null) => void;
   busy: boolean;
 }) {
-  const [interval, setInterval] = useState<"month" | "year">("year");
+  const [selected, setSelected] = useState<string | null>(null);
   const [openedAt] = useState(() => Date.now());
-  const plan = plans.find((p) => p.interval === interval) ?? plans[0];
+  const keyOf = (p: BillingPlan) => p.code ?? p.interval;
+  const plan = plans.find((p) => keyOf(p) === selected) ?? plans.find((p) => p.interval === "year") ?? plans[0];
+  if (!plan) {
+    return <p className={styles.meta} data-testid="no-plans">Paid plans are not available yet. Your project keeps working as it does today.</p>;
+  }
+  const interval = plan.interval;
   const trial = project.trial_available;
   const firstCharge = trial ? new Date(openedAt + plan.trial_days * 86400000).toISOString() : null;
   return (
@@ -51,14 +59,14 @@ function PlanPicker({
       <div className={styles.plans} role="radiogroup" aria-label="Billing plan">
         {plans.map((p) => (
           <button
-            key={p.interval}
+            key={keyOf(p)}
             type="button"
             role="radio"
-            aria-checked={interval === p.interval}
-            className={`${styles.plan} ${interval === p.interval ? styles.planSelected : ""}`}
-            onClick={() => setInterval(p.interval)}
+            aria-checked={keyOf(plan) === keyOf(p)}
+            className={`${styles.plan} ${keyOf(plan) === keyOf(p) ? styles.planSelected : ""}`}
+            onClick={() => setSelected(keyOf(p))}
           >
-            <span className={styles.planName}>{planLabel(p.interval)}</span>
+            <span className={styles.planName}>{p.name ?? planLabel(p.interval)}{p.test_plan ? " (sandbox test)" : ""}</span>
             <span className={styles.planPrice}>{priceLine(p.price_cents, p.currency, p.interval)}</span>
             <span className={styles.planNote}>
               {p.interval === "year"
@@ -84,7 +92,7 @@ function PlanPicker({
         Includes every target country for this project.
       </p>
       <div className={styles.actions} style={{ marginTop: 12 }}>
-        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} disabled={busy} onClick={() => onStart(interval)}>
+        <button type="button" className={`${styles.button} ${styles.buttonPrimary}`} disabled={busy} onClick={() => onStart(interval, plan.code)}>
           {busy ? "Opening checkout…" : trial ? "Start free trial" : `Subscribe ${planLabel(interval).toLowerCase()}`}
         </button>
       </div>
@@ -234,17 +242,53 @@ function BillingContent() {
     return () => clearInterval(timer);
   }, [confirming, load]);
 
-  async function handleStart(project: BillingProject, interval: "month" | "year") {
+  async function handleStart(project: BillingProject, interval: "month" | "year", planCode: string | null) {
     const token = tokenRef.current;
     if (!token || !orgId) return;
     setBusyProject(project.website_id);
     setError(null);
     try {
-      const started = await startCheckout(token, orgId, project.website_id, interval);
+      const started = await startCheckout(token, orgId, project.website_id, interval, planCode);
       window.location.assign(started.checkout_url);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not start checkout.");
       setBusyProject(null);
+    }
+  }
+
+  async function handleCancel(subscriptionId: string) {
+    const token = tokenRef.current;
+    if (!token || !orgId || !window.confirm("Cancel this subscription? You keep access until the end of the period you have paid for.")) return;
+    try {
+      const r = await cancelSubscription(token, orgId, subscriptionId);
+      setNotice(r.message ?? "Cancellation requested.");
+      setError(null);
+      void load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not cancel.");
+    }
+  }
+
+  async function handleChangePlan(subscriptionId: string, planCode: string) {
+    const token = tokenRef.current;
+    if (!token || !orgId || !window.confirm("Change this project's plan? Any price difference is prorated by the payment provider.")) return;
+    try {
+      const r = await changeSubscriptionPlan(token, orgId, subscriptionId, planCode);
+      setNotice(r.message ?? "Plan change requested.");
+      setError(null);
+      void load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not change plan.");
+    }
+  }
+
+  async function handleInvoice(paymentId: string) {
+    const token = tokenRef.current;
+    if (!token || !orgId) return;
+    try {
+      window.open((await getInvoiceUrl(token, orgId, paymentId)).url, "_blank", "noopener");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No invoice is available for this payment.");
     }
   }
 
@@ -286,6 +330,11 @@ function BillingContent() {
           <p className={styles.subtitle}>One subscription covers one project, including all of its target countries.</p>
         </div>
 
+        {overview?.project_allowance && (
+          <p className={styles.meta} data-testid="project-allowance">
+            Projects in use: {overview.project_allowance.used}{overview.project_allowance.limit !== null ? ` of ${overview.project_allowance.limit} allowed by your plan` : " (no limit set by your plan)"}.
+          </p>
+        )}
         {overview?.enforcement === "off" && (
           <p className={styles.notice}>
             Billing is not enforced yet: your projects keep full access while plans are being rolled out.
@@ -326,7 +375,7 @@ function BillingContent() {
                     <div className={styles.fact}>
                       <span className={styles.factLabel}>Plan</span>
                       <span className={styles.factValue}>
-                        {sub.complimentary ? "Complimentary" : `${planLabel(sub.interval)} · ${priceLine(sub.price_cents, sub.currency, sub.interval)}`}
+                        {sub.complimentary ? "Complimentary" : `${sub.plan_name ?? planLabel(sub.interval)} · ${priceLine(sub.price_cents, sub.currency, sub.interval)}`}
                       </span>
                     </div>
                     {sub.status === "trialing" && (
@@ -366,6 +415,16 @@ function BillingContent() {
                         Update payment method
                       </a>
                     )}
+                    {sub.can_manage && !sub.cancellation_scheduled && (
+                      <button type="button" className={styles.button} onClick={() => handleCancel(sub.id)}>
+                        Cancel subscription
+                      </button>
+                    )}
+                    {sub.can_manage && overview.plans.filter((p) => p.code && p.code !== sub.plan_code).map((p) => (
+                      <button key={p.code} type="button" className={styles.button} onClick={() => handleChangePlan(sub.id, p.code as string)}>
+                        Switch to {p.name}
+                      </button>
+                    ))}
                     {sub.replacements_remaining > 0 && (
                       <button type="button" className={styles.button} onClick={() => openReplace(project)}>
                         Replace project
@@ -375,7 +434,7 @@ function BillingContent() {
                   {project.payments.length > 0 && (
                     <table className={styles.table} aria-label={`Payments for ${project.display_name}`}>
                       <thead>
-                        <tr><th>Date</th><th>Amount</th><th>Status</th></tr>
+                        <tr><th>Date</th><th>Amount</th><th>Status</th>{sub.can_manage && <th>Invoice</th>}</tr>
                       </thead>
                       <tbody>
                         {project.payments.map((p) => (
@@ -383,6 +442,7 @@ function BillingContent() {
                             <td>{formatDate(p.paid_at ?? p.created_at)}</td>
                             <td>{formatMoney(p.amount_cents, p.currency)}{p.refunded_cents > 0 ? ` (refunded ${formatMoney(p.refunded_cents, p.currency)})` : ""}</td>
                             <td>{p.status.replace("_", " ")}</td>
+                            {sub.can_manage && <td>{p.status === "paid" || p.status === "partially_refunded" || p.status === "refunded" ? <button type="button" className={styles.button} onClick={() => handleInvoice(p.id)}>Invoice</button> : null}</td>}
                           </tr>
                         ))}
                       </tbody>
@@ -395,7 +455,7 @@ function BillingContent() {
                   plans={overview.plans}
                   saving={overview.annual_saving_cents}
                   busy={busyProject === project.website_id}
-                  onStart={(interval) => handleStart(project, interval)}
+                  onStart={(interval, code) => handleStart(project, interval, code)}
                 />
               )}
             </section>

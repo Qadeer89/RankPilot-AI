@@ -39,6 +39,7 @@ class BillingInterval(str, enum.Enum):
 
 class SubscriptionProvider(str, enum.Enum):
     lemonsqueezy = "lemonsqueezy"
+    paddle = "paddle"
     # A grant by the Super Admin (existing projects, support cases). Price 0,
     # never counted as revenue.
     complimentary = "complimentary"
@@ -71,6 +72,55 @@ def _fk(table: str, *, nullable: bool = True, ondelete: str = "SET NULL", index:
     return mapped_column(UUID(as_uuid=True), ForeignKey(f"{table}.id", ondelete=ondelete), nullable=nullable, index=index)
 
 
+class BillingPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """The plan catalogue. Nothing about price, trial or limits is hard-coded elsewhere: checkout, the public pricing page,
+    the billing dashboard and entitlement checks all read this table.
+
+    A plan is offered to the public only when it is active, public AND approved. In the Paddle sandbox a plan flagged
+    `is_test_config` may be bought for testing without approval; in live mode approval is always required."""
+
+    __tablename__ = "billing_plans"
+
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    billing_interval: Mapped[BillingInterval] = mapped_column(Enum(BillingInterval, name="billing_interval", create_type=False), nullable=False)
+    # NULL until a price has been decided. Never shown or charged while NULL.
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    paddle_product_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The price that includes the free trial, and the one without (used once a customer has had their trial).
+    paddle_price_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    paddle_price_id_no_trial: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    trial_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # NULL = not limited by this plan. The existing model is one subscription per project, so these are only enforced
+    # where a plan sets them (see app/billing/features.py).
+    max_projects: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_websites: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_domains_per_project: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # {feature_key: bool}; a missing key means "not restricted by this plan". {usage_key: int}; a missing key means "unlimited".
+    entitlements_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    limits_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_test_config: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class BillingCustomer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """The link between a RankPilot user and their Paddle customer record (per Paddle environment)."""
+
+    __tablename__ = "billing_customers"
+    __table_args__ = (UniqueConstraint("provider_customer_id", "environment", name="uq_billing_customer_provider_ref"),)
+
+    user_id: Mapped[uuid.UUID | None] = _fk("users")
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    provider: Mapped[str] = mapped_column(String(32), default="paddle", nullable=False)
+    provider_customer_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    environment: Mapped[str] = mapped_column(String(16), default="sandbox", nullable=False)
+
+
 class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "subscriptions"
     __table_args__ = (
@@ -93,6 +143,7 @@ class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     organization_id: Mapped[uuid.UUID | None] = _fk("organizations")
     user_id: Mapped[uuid.UUID | None] = _fk("users")  # the purchaser
     website_id: Mapped[uuid.UUID | None] = _fk("websites")  # the project it unlocks
+    plan_id: Mapped[uuid.UUID | None] = _fk("billing_plans")  # the catalogue plan it was bought under (Paddle)
 
     provider: Mapped[SubscriptionProvider] = mapped_column(
         Enum(SubscriptionProvider, name="subscription_provider"), nullable=False
@@ -234,6 +285,11 @@ class CheckoutSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     checkout_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    plan_id: Mapped[uuid.UUID | None] = _fk("billing_plans")
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Paddle: the transaction created for this checkout, and the subscription Paddle later reported for it.
+    provider_ref: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    provider_subscription_ref: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     subscription_id: Mapped[uuid.UUID | None] = _fk("subscriptions")
     test_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 

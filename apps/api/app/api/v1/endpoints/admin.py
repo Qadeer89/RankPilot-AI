@@ -506,3 +506,172 @@ def reset_setting(key: str, body: ActionBody, admin: User = Depends(require_supe
         _fail(exc.code, exc.message, exc.http_status)
     db.commit()
     return result
+
+
+# ---------------------------------------------------------------- billing plan catalogue (Paddle)
+
+class PlanBody(BaseModel):
+    """Create / update a catalogue plan. Every field is optional on update. Prices are decided by the owner here, never defaulted."""
+    code: str | None = None
+    name: str | None = None
+    description: str | None = None
+    billing_interval: str | None = None
+    amount_cents: int | None = None
+    clear_amount: bool = False  # set true to take the price back to "not decided"
+    currency: str | None = None
+    paddle_product_id: str | None = None
+    paddle_price_id: str | None = None
+    paddle_price_id_no_trial: str | None = None
+    trial_days: int | None = None
+    max_projects: int | None = None
+    max_websites: int | None = None
+    max_domains_per_project: int | None = None
+    entitlements: dict[str, bool] | None = None
+    limits: dict[str, int] | None = None
+    is_active: bool | None = None
+    is_public: bool | None = None
+    is_approved: bool | None = None
+    is_test_config: bool | None = None
+    sort_order: int | None = None
+    reason: str
+    confirm: bool = False
+
+
+def _validate_plan_fields(body: PlanBody) -> None:
+    from app.billing.features import FEATURES, USAGE_LIMITS
+
+    unknown = sorted(set(body.entitlements or {}) - set(FEATURES))
+    if unknown:
+        _fail("unknown_feature", f"Unknown feature keys: {', '.join(unknown)}.")
+    unknown = sorted(set(body.limits or {}) - set(USAGE_LIMITS))
+    if unknown:
+        _fail("unknown_limit", f"Unknown usage limits: {', '.join(unknown)}.")
+    if any(v < 0 for v in (body.limits or {}).values()):
+        _fail("invalid_limit", "Limits cannot be negative.")
+    for name in ("amount_cents", "trial_days", "max_projects", "max_websites", "max_domains_per_project"):
+        value = getattr(body, name)
+        if value is not None and value < 0:
+            _fail("invalid_value", f"{name} cannot be negative.")
+    if body.billing_interval is not None and body.billing_interval not in ("month", "year"):
+        _fail("invalid_interval", "Interval must be month or year.")
+    for name in ("paddle_product_id", "paddle_price_id", "paddle_price_id_no_trial"):
+        value = getattr(body, name)
+        if value and not (value.startswith("pri_") or value.startswith("pro_")):
+            _fail("invalid_paddle_id", f"{name} must be a Paddle id (pro_… for products, pri_… for prices).")
+
+
+def _plan_snapshot(plan) -> dict:
+    from app.billing import catalog
+
+    return catalog.serialize(plan, admin=True)
+
+
+def _apply_plan_body(plan, body: PlanBody) -> None:
+    simple = ("name", "description", "currency", "paddle_product_id", "paddle_price_id", "paddle_price_id_no_trial", "trial_days", "max_projects",
+              "max_websites", "max_domains_per_project", "is_active", "is_public", "is_approved", "is_test_config", "sort_order")
+    for name in simple:
+        value = getattr(body, name)
+        if value is not None:
+            setattr(plan, name, (value or None) if isinstance(value, str) and name.startswith("paddle_") else value)
+    if body.billing_interval is not None:
+        plan.billing_interval = BillingInterval(body.billing_interval)
+    if body.clear_amount:
+        plan.amount_cents = None
+    elif body.amount_cents is not None:
+        plan.amount_cents = body.amount_cents
+    if body.entitlements is not None:
+        plan.entitlements_json = body.entitlements
+    if body.limits is not None:
+        plan.limits_json = body.limits
+
+
+def _check_approval_ready(plan) -> None:
+    """A plan can only be approved for real sales once the owner has decided the price and mapped the Paddle price."""
+    problems = []
+    if plan.amount_cents is None:
+        problems.append("no price has been decided")
+    if not plan.paddle_price_id:
+        problems.append("no Paddle price id is mapped")
+    if plan.trial_days > 0 and not plan.paddle_price_id_no_trial:
+        problems.append("it has a trial but no no-trial Paddle price id (needed for customers who already used their trial)")
+    if plan.is_test_config:
+        problems.append("it is still marked as a sandbox test configuration")
+    if problems:
+        _fail("plan_not_ready", "This plan cannot be approved: " + "; ".join(problems) + ".")
+
+
+@router.get("/billing/plans")
+def list_billing_plans(db: Session = Depends(get_db)) -> dict:
+    from app.billing import catalog
+    from app.billing.features import FEATURES, USAGE_LIMITS
+    from app.models.billing import BillingPlan
+
+    plans = db.query(BillingPlan).order_by(BillingPlan.sort_order, BillingPlan.created_at).all()
+    counts = {str(pid): n for pid, n in db.query(Subscription.plan_id, func.count()).filter(Subscription.plan_id.isnot(None)).group_by(Subscription.plan_id)}
+    settings = get_settings()
+    return {
+        "items": [{**catalog.serialize(p, admin=True), "subscriptions": counts.get(str(p.id), 0)} for p in plans],
+        "features": FEATURES, "usage_limits": USAGE_LIMITS,
+        "paddle": {"environment": settings.paddle_env, "provider_active": (settings.billing_provider or "").lower() == "paddle",
+                   "api_key_set": bool(settings.paddle_api_key), "client_token_set": bool(settings.paddle_client_token),
+                   "webhook_secret_set": bool(settings.paddle_webhook_secret), "webhook_url": f"{settings.api_public_url.rstrip('/')}/api/v1/billing/webhooks/paddle"},
+    }
+
+
+@router.post("/billing/plans", status_code=201)
+def create_billing_plan(body: PlanBody, admin: User = Depends(require_super_admin), db: Session = Depends(get_db)) -> dict:
+    from app.models.billing import BillingPlan
+
+    if not body.reason.strip() or not body.confirm:
+        _fail("confirmation_required", "A reason and explicit confirmation are required.")
+    _validate_plan_fields(body)
+    if not body.code or not body.name or not body.billing_interval:
+        _fail("missing_fields", "code, name and billing_interval are required.")
+    if db.query(BillingPlan).filter(BillingPlan.code == body.code).first():
+        _fail("duplicate_code", "A plan with this code already exists.", 409)
+    if body.is_approved:
+        _fail("approve_separately", "Create the plan first, then approve it in a separate step.")
+    plan = BillingPlan(code=body.code, name=body.name, billing_interval=BillingInterval(body.billing_interval), currency="USD", trial_days=0,
+                       is_active=False, is_public=False, is_approved=False, is_test_config=True)
+    _apply_plan_body(plan, body)
+    plan.is_approved = False
+    db.add(plan)
+    db.flush()
+    record_admin_action(db, admin, action="billing_plan.create", resource_type="billing_plan", resource_id=plan.id, reason=body.reason.strip(), after=_plan_snapshot(plan))
+    db.commit()
+    return _plan_snapshot(plan)
+
+
+@router.patch("/billing/plans/{plan_id}")
+def update_billing_plan(plan_id: uuid.UUID, body: PlanBody, admin: User = Depends(require_super_admin), db: Session = Depends(get_db)) -> dict:
+    from app.models.billing import BillingPlan
+
+    if not body.reason.strip() or not body.confirm:
+        _fail("confirmation_required", "A reason and explicit confirmation are required.")
+    plan = db.get(BillingPlan, plan_id)
+    if plan is None:
+        _fail("not_found", "Plan not found.", 404)
+    _validate_plan_fields(body)
+    if body.code and body.code != plan.code:
+        _fail("code_immutable", "A plan's code cannot be changed.")
+    before = _plan_snapshot(plan)
+    was_approved = plan.is_approved
+    _apply_plan_body(plan, body)
+    if plan.is_approved and not was_approved:
+        _check_approval_ready(plan)
+    if plan.is_approved and (plan.amount_cents is None or not plan.paddle_price_id):
+        _fail("plan_not_ready", "An approved plan must keep its price and Paddle price id.")
+    db.flush()
+    action = "billing_plan.approve" if plan.is_approved and not was_approved else "billing_plan.unapprove" if was_approved and not plan.is_approved else "billing_plan.update"
+    record_admin_action(db, admin, action=action, resource_type="billing_plan", resource_id=plan.id, reason=body.reason.strip(), before=before, after=_plan_snapshot(plan))
+    db.commit()
+    return _plan_snapshot(plan)
+
+
+@router.get("/billing/customers")
+def list_billing_customers(page: int = PageQ, page_size: int = SizeQ, db: Session = Depends(get_db)) -> dict:
+    from app.models.billing import BillingCustomer
+
+    rows, meta = _page(db.query(BillingCustomer).order_by(BillingCustomer.created_at.desc()), page, page_size)
+    return {"items": [{"id": str(c.id), "user_id": str(c.user_id) if c.user_id else None, "email": c.email, "provider": c.provider,
+                       "provider_customer_id": c.provider_customer_id, "environment": c.environment, "created_at": _iso(c.created_at)} for c in rows], **meta}

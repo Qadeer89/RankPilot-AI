@@ -54,6 +54,18 @@ def register_website(
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, detail={"code": "duplicate_project", "message": f"{key} is already a project in this workspace."})
 
+    # A plan can cap how many projects a workspace has. Enforced here on the server, so the API cannot be used to go over it.
+    from app.billing.entitlement import enforcement_mode
+    from app.billing.features import project_capacity
+
+    if enforcement_mode(db) == "enforce":
+        capacity = project_capacity(db, organization_id)
+        if capacity.reached:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, detail={
+                "code": "project_limit_reached", "limit": capacity.limit, "used": capacity.used,
+                "message": f"Your plan allows {capacity.limit} project{'s' if capacity.limit != 1 else ''} and you already have {capacity.used}. Upgrade your plan to add another.",
+                "upgrade_url": "/dashboard/billing"})
+
     website = Website(
         organization_id=organization_id,
         canonical_url=safe_url.normalized_url,

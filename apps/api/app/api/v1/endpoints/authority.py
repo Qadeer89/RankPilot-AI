@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+from app.billing.entitlement import require as require_entitlement
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -59,6 +61,7 @@ def get_authority(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session
 @router.post(f"{_BASE}/authority/refresh")
 def refresh_authority(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = Depends(get_db), _m: Membership = Depends(RequireRole(MembershipRole.editor))) -> dict:
     website = get_website_or_404(db, organization_id, website_id)
+    require_entitlement(db, website, "technical_seo")
     enforce_rate_limit(f"authority_refresh:{website.id}", max_attempts=20, window_seconds=3600)
     row = A.compute(db, website)
     db.commit()
@@ -78,6 +81,7 @@ def list_backlinks(organization_id: uuid.UUID, website_id: uuid.UUID, db: Sessio
 def import_backlinks(organization_id: uuid.UUID, website_id: uuid.UUID, body: ImportBody, db: Session = Depends(get_db),
                      _m: Membership = Depends(RequireRole(MembershipRole.editor))) -> dict:
     website = get_website_or_404(db, organization_id, website_id)
+    require_entitlement(db, website, "backlink_verification")
     if body.source not in ("user_provided", "gsc_export"):
         raise HTTPException(422, detail={"code": "bad_source", "message": "Source must be user_provided or gsc_export."})
     enforce_rate_limit(f"backlink_import:{website.id}", max_attempts=30, window_seconds=3600)
@@ -94,6 +98,7 @@ def import_backlinks(organization_id: uuid.UUID, website_id: uuid.UUID, body: Im
 @router.post(f"{_BASE}/backlinks/check")
 def check_backlinks(organization_id: uuid.UUID, website_id: uuid.UUID, db: Session = Depends(get_db), _m: Membership = Depends(RequireRole(MembershipRole.editor))) -> dict:
     website = get_website_or_404(db, organization_id, website_id)
+    require_entitlement(db, website, "backlink_verification")
     enforce_rate_limit(f"backlink_check:{website.id}", max_attempts=12, window_seconds=3600)
     result = B.check_batch(db, website)
     db.commit()

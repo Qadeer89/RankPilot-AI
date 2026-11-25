@@ -129,7 +129,7 @@ export default function Home() {
 
       <section id="pricing" className={`${styles.section} ${styles.sectionAlt}`} aria-labelledby="pricing-h">
         <div className={styles.container}>
-          <div className={styles.sectionHead}><h2 id="pricing-h">Simple pricing, per website</h2><p>One subscription unlocks everything for one website. Choose monthly, or save with yearly.</p></div>
+          <div className={styles.sectionHead}><h2 id="pricing-h">Pricing</h2><p>Plans appear here once they are finalized.</p></div>
           <Suspense fallback={<PricingFallback />}><PricingCardsLive compact /></Suspense>
           <p style={{ marginTop: 20 }}><Link href="/pricing" className={`${styles.btn} ${styles.btnGhost}`}>Pricing details</Link></p>
         </div>

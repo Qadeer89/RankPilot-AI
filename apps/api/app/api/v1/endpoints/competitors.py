@@ -1,5 +1,7 @@
 import uuid
 
+from app.billing.entitlement import require as require_entitlement
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -84,6 +86,7 @@ def analyze_competitor(
 ) -> CompetitorAnalysisResponse:
     website = get_website_or_404(db, organization_id, website_id)
     competitor = _get_competitor_or_404(db, website_id, competitor_id)
+    require_entitlement(db, website, "competitor_analysis")
     enforce_rate_limit(f"competitor_analysis:{website_id}", max_attempts=10, window_seconds=3600)
     outcome = run_competitor_analysis_detailed(db, website, competitor)
     db.commit()

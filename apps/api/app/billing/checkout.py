@@ -86,8 +86,13 @@ def start_checkout(
     website: Website,
     interval: BillingInterval,
     provider: BillingProvider | None = None,
+    plan_code: str | None = None,
 ) -> CheckoutOffer:
     settings = get_settings()
+    if (settings.billing_provider or "").lower() == "paddle":
+        from app.billing.paddle_checkout import start_paddle_checkout  # lazy: that module imports this one
+
+        return start_paddle_checkout(db, user=user, organization=organization, website=website, interval=interval, plan_code=plan_code, provider=provider)
     now = datetime.now(timezone.utc)
     plan = get_plan(interval, db)
 

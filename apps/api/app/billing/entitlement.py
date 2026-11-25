@@ -56,6 +56,9 @@ REASON_MESSAGES = {
     "paused": "The subscription is paused.",
     "expired": "The subscription has expired. Start a plan to continue.",
     "refunded": "The subscription was refunded and is no longer active.",
+    "feature_not_in_plan": "Your current plan does not include this feature. Upgrade your plan to use it.",
+    "usage_limit_reached": "You have reached the usage limit of your current plan. Upgrade your plan to continue.",
+    "project_limit_reached": "You have reached the number of projects your plan allows. Upgrade your plan to add more.",
 }
 
 
@@ -139,7 +142,25 @@ def check(db: Session, website: Website, feature: str) -> Entitlement:
         logger.warning("billing: %s on project %s not entitled (%s) [mode=%s]", feature, website.id, result.reason, mode)
         if mode == "enforce":
             raise EntitlementRequired(result, feature)
+    if result.entitled and mode == "enforce":
+        from app.billing.features import feature_blocked  # lazy: features imports models that import this package
+
+        if feature_blocked(db, website, feature):
+            blocked = Entitlement(False, "feature_not_in_plan", status=result.status, subscription_id=result.subscription_id)
+            logger.warning("billing: %s on project %s not in plan [mode=%s]", feature, website.id, mode)
+            raise EntitlementRequired(blocked, feature)
     return result
+
+
+def require(db: Session, website: Website, feature: str) -> None:
+    """For API endpoints: raise a 402 with a customer-readable reason, or return."""
+    from fastapi import HTTPException
+
+    try:
+        check(db, website, feature)
+    except EntitlementRequired as exc:
+        raise HTTPException(402, detail={"code": "subscription_required" if exc.entitlement.reason != "feature_not_in_plan" else "feature_not_in_plan",
+                                         "reason": exc.entitlement.reason, "message": exc.entitlement.message}) from exc
 
 
 def allowed(db: Session, website: Website, feature: str) -> bool:

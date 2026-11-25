@@ -77,7 +77,7 @@ export const FAQ: { q: string; a: string }[] = [
   { q: "Can I track SEO progress over time?", a: "Yes. RankPilot saves your starting point the first time it analyzes a site and compares later results with it, including health scores, issues fixed, and Search Console results when connected. A client-ready progress report is included." },
   { q: "Does RankPilot guarantee rankings?", a: "No. Rankings and traffic depend on search engines, competition, your website quality and how changes are implemented. RankPilot helps you find and fix what you can control, and shows honestly what changed." },
   { q: "Can I manage multiple projects?", a: "Yes. Each website is its own project with its own subscription, history and settings. You can add as many as you need." },
-  { q: "What happens after the trial?", a: "A payment method is collected when you start the trial. If you do not cancel before it ends, the first charge is made for the plan you chose. You can cancel from the Billing page before then and you will not be charged. The free trial is offered once per customer, so additional projects are billed from day one." },
+  { q: "What happens after the trial?", a: "If a plan includes a trial, its length and terms are shown with the plan before you pay. Trials are offered once per customer. You can cancel from the Billing page before the trial ends and you will not be charged." },
   { q: "Can I cancel my subscription?", a: "Yes, any time from the Billing page. After a paid period has started, access continues until the end of the period you paid for." },
 ];
 

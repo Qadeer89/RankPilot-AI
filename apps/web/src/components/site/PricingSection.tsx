@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getPublicPricing } from "@/lib/publicPricing";
 import { SITE_URL } from "@/lib/site";
 import JsonLd from "./JsonLd";
@@ -27,14 +26,17 @@ export async function PricingJsonLd({ withUrl = false }: { withUrl?: boolean }) 
 
 export async function TrialNote() {
   const pricing = await getPublicPricing();
-  const trial = pricing?.plans[0]?.trial_days;
+  const trial = pricing?.pricing_finalized ? pricing.plans[0]?.trial_days : undefined;
   return trial ? <span className={styles.note} style={{ color: "#9aa4c7" }}>{trial}-day free trial for new customers, once per customer. A payment method is collected when you start the trial.</span> : null;
 }
 
 export async function PricingTerms() {
   const pricing = await getPublicPricing();
-  const trial = pricing?.plans[0]?.trial_days;
+  if (!pricing?.pricing_finalized || pricing.plans.length === 0) return null;
+  const trial = pricing.plans[0]?.trial_days;
   return (
+    <>
+    <h2 style={{ marginTop: 40 }}>Trial, payment and cancellation</h2>
     <ul className={styles.terms}>
       <li>Each website is its own project with its own subscription. You can add as many projects as you need.</li>
       {trial ? <li>A {trial}-day free trial is available once per customer. Projects added after that are billed from the start.</li> : null}
@@ -43,9 +45,10 @@ export async function PricingTerms() {
       <li>Prices are shown in the currency above and may be subject to tax at checkout. Payments are processed by our payment provider.</li>
       <li>Creating an account is free and does not need a payment method.</li>
     </ul>
+    </>
   );
 }
 
 export function PricingFallback() {
-  return <div className={styles.card} style={{ maxWidth: 560 }} aria-busy="true"><p>Loading current prices…</p><Link href="/register" className={`${styles.btn} ${styles.btnPrimary}`} style={{ alignSelf: "flex-start" }}>Start free</Link></div>;
+  return <div className={styles.card} style={{ maxWidth: 560 }} aria-busy="true"><p>Loading pricing…</p></div>;
 }

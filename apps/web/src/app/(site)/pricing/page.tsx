@@ -5,8 +5,8 @@ import styles from "@/components/site/site.module.css";
 import { FAQ, pageMeta } from "@/lib/marketing";
 
 export const metadata = pageMeta({
-  title: "Pricing: one plan per website, with a free trial",
-  description: "One RankPilot AI subscription per website, billed monthly or yearly. Everything is included, with a free trial. Cancel any time.",
+  title: "Pricing",
+  description: "RankPilot AI pricing. Plans are shown here once they are finalized; you can create an account and explore the product in the meantime.",
   path: "/pricing",
 });
 
@@ -20,7 +20,7 @@ const INCLUDED = [
   "History, saved baseline and a client progress report",
   "Every target country you set for the website",
 ];
-const PRICING_FAQ = FAQ.filter((f) => ["What happens after the trial?", "Can I cancel my subscription?", "Can I manage multiple projects?", "Does RankPilot guarantee rankings?"].includes(f.q));
+const PRICING_FAQ = FAQ.filter((f) => ["Can I cancel my subscription?", "Can I manage multiple projects?", "Does RankPilot guarantee rankings?"].includes(f.q));
 
 export default function Pricing() {
   return (
@@ -28,15 +28,14 @@ export default function Pricing() {
       <Suspense fallback={null}><PricingJsonLd withUrl /></Suspense>
       <section className={styles.pageHero}>
         <div className={styles.container}>
-          <h1>Simple pricing, per website.</h1>
-          <p>One subscription unlocks everything for one website. Choose monthly, or save with yearly. New customers get a free trial, once per customer.</p>
+          <h1>Pricing</h1>
+          <p>Plans and prices appear here as soon as they are finalized. Nothing is charged until you choose a plan and complete checkout.</p>
         </div>
       </section>
       <section className={styles.container} style={{ paddingBottom: 48 }}>
         <Suspense fallback={<PricingFallback />}><PricingCardsLive /></Suspense>
         <h2 style={{ marginTop: 48 }}>What one subscription includes</h2>
         <ul className={styles.ticks} style={{ columns: 2, maxWidth: 860 }}>{INCLUDED.map((x) => <li key={x}>{x}</li>)}</ul>
-        <h2 style={{ marginTop: 40 }}>Trial, payment and cancellation</h2>
         <Suspense fallback={null}><PricingTerms /></Suspense>
         <div style={{ marginTop: 32 }}><Link href="/register" className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLarge}`}>Start free</Link></div>
       </section>

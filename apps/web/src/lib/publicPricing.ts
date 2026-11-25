@@ -1,9 +1,10 @@
 // The plans as offered to new buyers, read from the API without a login so the marketing pages never show a stale price.
-// Failure returns null and the pages simply say "see pricing at sign-up" rather than guessing a number.
+// Failure, or no approved plan yet, shows "Pricing is being finalized" rather than a guessed number.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
 
-export interface PublicPlan { interval: "month" | "year"; price_cents: number; currency: string; trial_days: number; monthly_equivalent_cents: number }
-export interface PublicPricing { plans: PublicPlan[]; annual_saving_cents: number }
+export interface PublicPlan { code: string; name: string; description: string | null; interval: "month" | "year"; price_cents: number; currency: string; trial_days: number; monthly_equivalent_cents: number }
+// `pricing_finalized` is false until the owner has approved at least one plan; until then no price is shown anywhere.
+export interface PublicPricing { plans: PublicPlan[]; annual_saving_cents: number; pricing_finalized: boolean }
 
 export async function getPublicPricing(): Promise<PublicPricing | null> {
   try {
