@@ -248,7 +248,9 @@ def test_webhook_history_hides_payloads_and_retry_needs_a_failed_event(client, d
     assert r.status_code == 409 and r.json()["detail"]["code"] == "not_failed"
 
 
-def test_settings_validate_confirm_audit_and_take_effect(client, db_session, seeded, admin):
+def test_settings_validate_confirm_audit_and_take_effect(client, db_session, seeded, admin, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "billing_provider", "lemonsqueezy")  # the legacy price config is what this setting drives
     listing = client.get("/api/v1/admin/settings", headers=seeded).json()
     prices = next(i for i in listing["items"] if i["key"] == "price_monthly_cents")
     assert prices["value"] == 1500 and prices["source"] == "environment"

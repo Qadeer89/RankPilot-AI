@@ -26,7 +26,7 @@ def billing_settings(monkeypatch):
         "lemonsqueezy_webhook_secret": SECRET, "lemonsqueezy_api_key": "k", "lemonsqueezy_store_id": "42",
         "lemonsqueezy_variant_monthly": "111", "lemonsqueezy_variant_annual": "222",
         "lemonsqueezy_variant_monthly_no_trial": "113", "lemonsqueezy_variant_annual_no_trial": "224",
-        "lemonsqueezy_test_mode": True, "price_monthly_cents": 1500, "price_annual_cents": 15000, "trial_days": 7,
+        "lemonsqueezy_test_mode": True, "billing_provider": "lemonsqueezy", "price_monthly_cents": 1500, "price_annual_cents": 15000, "trial_days": 7,
         "billing_grace_days": 7,
     }.items():
         monkeypatch.setattr(s, name, value, raising=False)

@@ -1,7 +1,7 @@
 # Paddle Billing — setup, operation and Live activation
 
 RankPilot bills **per project** (one subscription = one website). Paddle Billing (not Classic) is a second payment provider next to
-the existing Lemon Squeezy integration. Nothing changes until `RANKPILOT_BILLING_PROVIDER=paddle` is set.
+the existing Lemon Squeezy integration. Paddle is the default provider (`RANKPILOT_BILLING_PROVIDER=paddle`). With no Paddle prices mapped and approved, nothing is buyable and no price is shown. Lemon Squeezy code remains only for any legacy subscriptions.
 
 ## 1. Architecture (what was built)
 
@@ -30,7 +30,7 @@ Safety rules enforced in code (and covered by `tests/test_paddle_billing.py`):
 ## 2. Environment variables (API, `apps/api/.env`)
 
 ```
-RANKPILOT_BILLING_PROVIDER=paddle          # default lemonsqueezy
+RANKPILOT_BILLING_PROVIDER=paddle          # default
 RANKPILOT_PADDLE_ENV=sandbox               # sandbox | live
 RANKPILOT_PADDLE_API_KEY=                  # server-side key (pdl_sdbx_apikey_… / pdl_live_apikey_…)
 RANKPILOT_PADDLE_CLIENT_TOKEN=             # public client-side token (test_… / live_…)

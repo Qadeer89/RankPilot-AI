@@ -170,9 +170,9 @@ class Settings(BaseSettings):
     lemonsqueezy_variant_annual_no_trial: str | None = None
     lemonsqueezy_request_timeout_seconds: float = 20.0
 
-    # Which provider starts NEW checkouts. Existing Lemon Squeezy subscriptions keep working through their own webhook
-    # either way; set this to "paddle" only once the Paddle account, prices and webhook are configured.
-    billing_provider: str = "lemonsqueezy"
+    # Which provider starts NEW checkouts. Paddle is the provider; with no Paddle prices configured nothing is buyable. Old Lemon Squeezy
+    # subscriptions (if any) keep working through their own webhook; "lemonsqueezy" is only for tests/legacy.
+    billing_provider: str = "paddle"
 
     # Paddle Billing (docs/PADDLE_BILLING.md). Sandbox and live use different accounts, keys and secrets: set the pair that
     # matches `paddle_env`. Server-side only except `paddle_client_token`, which is designed to be public (Paddle.js).
